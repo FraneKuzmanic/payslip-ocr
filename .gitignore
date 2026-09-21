@@ -11,14 +11,6 @@ dist/
 # Bake-off caches: raw provider responses over real payslips (personal data)
 .bakeoff/
 
-# Vendored agent toolkit — ~200 static files, installed twice, never hand-edited.
-# Reproducible from skills-lock.json via the setup-matt-pocock-skills skill, so there is
-# nothing to gain from versioning it. Project-specific agent content is NOT ignored:
-# .agents/ROADMAP.md, .agents/plans/, .agents/history/ and .claude/commands/ stay tracked.
-.claude/skills/
-.claude/commands/
-.agents/skills/
-
 # REAL PERSONAL DATA — never commit.
 # 17 Croatian payslips carrying names, home addresses, OIBs, IBANs and salaries.
 payslip_examples/
@@ -30,9 +22,29 @@ __pycache__/
 # Scratch
 .scratch/
 
-# Re-include this project's own docs. The monorepo root .gitignore lists the bare filenames
-# AGENTS.md and CONTEXT.md, which is unanchored and so catches them here too. CONTEXT.md is the
-# Croatian payroll glossary referenced by PRD.md, ROADMAP.md, prime.md and docs/agents/domain.md;
-# it has to survive a clone.
+# ---------------------------------------------------------------------------
+# Re-includes.
+#
+# The monorepo root .gitignore excludes the bare names AGENTS.md, CONTEXT.md,
+# .agents, .claude and skills-lock.json. Those patterns are unanchored, so they
+# catch this project's copies too — which breaks us, because .agents/plans/,
+# .agents/history/ and .agents/specs/ ARE the handoff between sessions and have
+# to be committed. Without these negations every future plan and history record
+# is silently ignored.
+#
+# A file cannot be re-included while its parent directory is excluded, so the
+# directories are re-included first and the vendored subfolders excluded after.
+# ---------------------------------------------------------------------------
 !AGENTS.md
 !CONTEXT.md
+!skills-lock.json
+!.agents/
+!.claude/
+
+# Vendored agent toolkit — ~200 static files, installed twice, never hand-edited.
+# Reproducible from skills-lock.json, so there is nothing to gain from versioning it.
+.agents/skills/
+.claude/skills/
+
+# Local command set — kept off the repo by preference.
+.claude/commands/
