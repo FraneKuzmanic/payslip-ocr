@@ -1,0 +1,60 @@
+{
+  "sample": "C01",
+  "sourceFile": "C01.pdf",
+  "layoutFamily": "C",
+  "layoutName": "Roman-numeral IP1 I–XV with REKAPITULACIJA table",
+  "sourceKind": "native-pdf",
+  "pageCount": 1,
+  "currency": "EUR",
+
+  "employerName": "HRVATSKE VODE - DIREKCIJA",
+  "employerAddress": "ZAGREB ULICA GRADA VUKOVARA 220",
+  "employerOib": "28921383001",
+  "employerIban": "2360000-1101425545",
+  "employeeName": "MARIO BURAZER",
+  "employeeAddress": "DVOR, ALOJZIJA STEPINCA 9",
+  "employeeOib": "98482989972",
+  "employeeIban": "HR5524070003283530349",
+  "period": "2025-06",
+  "paymentDate": "2025-07-01",
+  "ukupnoSati": "168.00",
+
+  "brutoPlaca": "1627.87",
+  "doprinosiIzPlace": "325.58",
+  "doprinosMioIStup": "244.19",
+  "doprinosMioIiStup": "81.39",
+  "dohodak": "1302.29",
+  "osobniOdbitak": "600.00",
+  "poreznaOsnovica": "702.29",
+  "porezNaDohodak": "140.46",
+  "netoPlaca": "1161.83",
+  "neoporeziviPrimiciUkupno": "44.24",
+  "obustaveUkupno": "451.15",
+  "iznosZaIsplatu": "754.92",
+  "doprinosiNaPlacu": "268.59",
+  "ukupanTrosakRada": "1940.70",
+
+  "payComponents": [
+    { "naziv": "Redovan rad - bodovi", "sati": "104.00", "koeficijent": null, "iznos": "800.85" },
+    { "naziv": "Blagdani - satnica 1 mj.", "sati": "8.00", "koeficijent": null, "iznos": "73.36" },
+    { "naziv": "Stalni dodat. na plaću - iznos", "sati": "0.00", "koeficijent": null, "iznos": "120.00" },
+    { "naziv": "Godišnji odmor - satnica 1", "sati": "56.00", "koeficijent": null, "iznos": "513.53" },
+    { "naziv": "STIMULACIJA 1", "sati": "0.00", "koeficijent": null, "iznos": "120.13" }
+  ],
+
+  "neoporeziviPrimici": [
+    { "naziv": "TROŠAK PREHRANE", "iznos": "44.24" }
+  ],
+
+  "obustave": [
+    { "naziv": "583 OTP BANKA", "vjerovnik": null, "iznos": "451.15", "ostatakSalda": "49626.50", "brojRata": "10/120" }
+  ],
+
+  "notes": [
+    "NON-IBAN IN AN IBAN FIELD. The employer's field 4 is labelled 'IBAN broj računa' but contains '2360000-1101425545', an old-style Croatian account number. Recorded verbatim as printed. An extractor that rejects it for failing IBAN validation would be wrong; one that silently drops it would lose a real value.",
+    "The employee's IBAN in the same position IS a valid IBAN, so the two sides of the same document disagree in format.",
+    "Pay components come from the REKAPITULACIJA OBRAČUNA BRUTA table at the foot of the page, not from section VI. They sum to 168.00 hours and 1627.87, matching the table's own Ukupno row.",
+    "Section VI's hierarchy (1 = 2 + 3 + 4) restates the same money in a different grouping; it is not the line-item table.",
+    "obustave.brojRata is recorded as printed, '10/120' (instalment 10 of 120), rather than split into two fields."
+  ]
+}

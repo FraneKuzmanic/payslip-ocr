@@ -1,0 +1,59 @@
+{
+  "sample": "E01",
+  "sourceFile": "E01.pdf",
+  "layoutFamily": "E",
+  "layoutName": "Multi-panel grid (R P S d.o.o., Obrazac 3F5)",
+  "sourceKind": "native-pdf",
+  "pageCount": 1,
+  "currency": "EUR",
+
+  "employerName": null,
+  "employerAddress": null,
+  "employerOib": null,
+  "employerIban": null,
+  "employeeName": "MARJANOVIĆ NEVIO",
+  "employeeAddress": null,
+  "employeeOib": "47068696336",
+  "employeeIban": "HR3324020063212595202",
+  "period": "2025-06",
+  "paymentDate": "2025-07-08",
+  "ukupnoSati": "168.00",
+
+  "brutoPlaca": "1220.52",
+  "doprinosiIzPlace": "238.14",
+  "doprinosMioIStup": "177.11",
+  "doprinosMioIiStup": "61.03",
+  "dohodak": "982.38",
+  "osobniOdbitak": "600.00",
+  "poreznaOsnovica": "382.38",
+  "porezNaDohodak": "82.59",
+  "netoPlaca": "899.79",
+  "neoporeziviPrimiciUkupno": "400.00",
+  "obustaveUkupno": "0.00",
+  "iznosZaIsplatu": "1299.79",
+  "doprinosiNaPlacu": "0.00",
+  "ukupanTrosakRada": null,
+
+  "payComponents": [
+    { "naziv": "REDOVITI RAD", "sati": "160.00", "koeficijent": null, "iznos": "1162.40" },
+    { "naziv": "DRŽAVNI PRAZNICI", "sati": "8.00", "koeficijent": null, "iznos": "58.12" }
+  ],
+
+  "neoporeziviPrimici": [
+    { "naziv": "ISPLATA PUTNIH NALOGA", "iznos": "300.00" },
+    { "naziv": "PREHRANA", "iznos": "100.00" }
+  ],
+
+  "obustave": [],
+
+  "notes": [
+    "NEEDS A HUMAN DECISION — employerName. This payslip has no Poslodavac block of any kind. The only company name on the page is 'Registrirani korisnik: R P S d.o.o.' in the vertical sidebar, printed beside 'Obrazac: 3F5', which reads as the payroll software's licensed user rather than a payslip field. Recorded as null on that basis. If the reviewer decides R P S d.o.o. is the employer, change employerName, employerAddress/Oib/Iban stay null regardless.",
+    "Consequence: three of the seven critical fields (employerName among them) cannot be extracted from this document at all. It is the golden set's floor case for identity coverage.",
+    "iznosZaIsplatu is printed as 'Osobni račun 1.299,79' in the summary box — a label that names a bank account, not an amount. doc-guard's template_E mapped total_payment to exactly this label. Verified: 899.79 + 400.00 = 1299.79.",
+    "doprinosiNaPlacu is genuinely 0.00 ('Doprinosi na plaće (0,00)'), not missing. Most likely a first-employment health-contribution relief. An extractor returning null here is wrong.",
+    "ukupanTrosakRada is absent; the nearest line is 'Bruto 2' at 1220.52, which is not the same concept and must not be mapped to it.",
+    "The tax line is labelled 'Porez na dohodak i prirez na porez' and combines both, though prirez is 0 post-2024. Rate is 21.60%.",
+    "'31.03.2027' appears between the two pay rows — a contract end date, not a component.",
+    "Hours sum to 168.00 and components to 1220.52, matching the UKUPNO row."
+  ]
+}

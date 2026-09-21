@@ -1,0 +1,63 @@
+{
+  "sample": "B02",
+  "sourceFile": "B02.jpg",
+  "layoutFamily": "B",
+  "layoutName": "Roman-numeral IP1, two-column header",
+  "sourceKind": "phone-photo",
+  "pageCount": 1,
+  "currency": "EUR",
+
+  "employerName": "OTP banka",
+  "employerAddress": "Domovinskog rata 61, SPLIT",
+  "employerOib": "52508873833",
+  "employerIban": "HR5324070001024070003",
+  "employeeName": "Viktorija Mišetić",
+  "employeeAddress": "Split, Sukoišanska 24",
+  "employeeOib": "58837196616",
+  "employeeIban": "HR4224070003236295754",
+  "period": "2025-05",
+  "paymentDate": "2025-06-02",
+  "ukupnoSati": "176.00",
+
+  "brutoPlaca": "1348.76",
+  "doprinosiIzPlace": "269.75",
+  "doprinosMioIStup": "202.31",
+  "doprinosMioIiStup": "67.44",
+  "dohodak": "1079.01",
+  "osobniOdbitak": "600.00",
+  "poreznaOsnovica": "479.01",
+  "porezNaDohodak": "102.99",
+  "netoPlaca": "976.02",
+  "neoporeziviPrimiciUkupno": "135.84",
+  "obustaveUkupno": "9.76",
+  "iznosZaIsplatu": "1102.10",
+  "doprinosiNaPlacu": "222.55",
+  "ukupanTrosakRada": "1707.15",
+
+  "payComponents": [
+    { "naziv": "REDOVAN RAD", "sati": "88.00", "koeficijent": null, "iznos": "627.50" },
+    { "naziv": "HOME OFFICE", "sati": "64.00", "koeficijent": null, "iznos": "456.36" },
+    { "naziv": "DODATAK SUBOTA", "sati": "10.00", "koeficijent": null, "iznos": "36.06" },
+    { "naziv": "DRŽAVNI BLAGDAN", "sati": "16.00", "koeficijent": null, "iznos": "114.09" },
+    { "naziv": "PLAĆENI DOPUST", "sati": "8.00", "koeficijent": null, "iznos": "57.05" },
+    { "naziv": "SMJENSKI RAD - 5.2025", "sati": "80.00", "koeficijent": null, "iznos": "57.70" }
+  ],
+
+  "neoporeziviPrimici": [
+    { "naziv": "PRIJEVOZ - 5.2025", "iznos": "35.84" },
+    { "naziv": "Naknada za topli obrok - 5.2025", "iznos": "100.00" }
+  ],
+
+  "obustave": [
+    { "naziv": "% OD NETA DO ZAŠTIĆENE PLAĆE Sindikat SBF-članarina", "vjerovnik": null, "iznos": "9.76", "ostatakSalda": null, "brojRata": null }
+  ],
+
+  "notes": [
+    "THE HARD PHOTO. A genuine phone photo of paper lying on a desk: perspective skew, a visible page edge and a dark background on the left, uneven lighting, and the sheet is not flat. This is the golden set's floor case for image quality and the best test of whether bounding boxes land correctly on a non-rectilinear page.",
+    "PRINTED TAX RATE IS WRONG. The document prints 'Porez 21%' but the arithmetic is 479.01 x 21.5% = 102.99, which is Split's actual rate (A03, also Split, prints 21,50%). The printed percentage is a rounded display. Store the amount, never recompute tax from the printed rate.",
+    "The pay table is hierarchical. Rows 1.1, 1.7 and 2 are subtotals; only the six leaf rows are recorded. Subtotals verified: 88+64+10 = 162 h / 627.50+456.36+36.06 = 1119.92; 16+8 = 24 h / 114.09+57.05 = 171.14. Leaves sum to 1348.76, matching BRUTO PLAĆA.",
+    "HOURS DO NOT SUM TO ukupnoSati. Leaf hours total 266 (186 plus 80 of pripravnost for SMJENSKI RAD) against a printed BRUTO PLAĆA figure of 176,00, which is the contractual fond sati. A pay_components_sum check must apply to amounts only, not to hours.",
+    "Employee IBAN is at the same bank as the employer (OTP), so a naive 'first IBAN on the page' heuristic will pick the wrong one.",
+    "Prints a 'Prirez SPLIT (554)' row at 0% — the row survives post-2024 with a zero value."
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "sample": "A03",
+  "sourceFile": "A03.pdf",
+  "layoutFamily": "A",
+  "layoutName": "COP — Registar zaposlenih (javni sektor)",
+  "sourceKind": "native-pdf",
+  "pageCount": 1,
+  "currency": "EUR",
+
+  "employerName": "SVEUČILIŠTE U SPLITU - MEDICINSKI FAKULTET",
+  "employerAddress": "ŠOLTANSKA 2, 21000 Split",
+  "employerOib": "02879747067",
+  "employerIban": "HR5810010051563100552",
+  "employeeName": "MATIJACA DANIRA",
+  "employeeAddress": "Ulica Antuna Branka Šimića 6, 21000 Split",
+  "employeeOib": "64729020442",
+  "employeeIban": "HR6024020063213131805",
+  "period": "2025-06",
+  "paymentDate": "2025-07-11",
+  "ukupnoSati": "168",
+
+  "brutoPlaca": "2801.60",
+  "doprinosiIzPlace": "560.32",
+  "doprinosMioIStup": "420.24",
+  "doprinosMioIiStup": "140.08",
+  "dohodak": "2241.28",
+  "osobniOdbitak": "1320.00",
+  "poreznaOsnovica": "921.28",
+  "porezNaDohodak": "198.08",
+  "netoPlaca": "2043.20",
+  "neoporeziviPrimiciUkupno": "0.00",
+  "obustaveUkupno": "0.00",
+  "iznosZaIsplatu": "2043.20",
+  "doprinosiNaPlacu": "462.26",
+  "ukupanTrosakRada": "3263.86",
+
+  "payComponents": [
+    { "naziv": "NAKNADA ZA GODIŠNJI ODMOR PO PROSJEKU (NAJPOVOLJNIJI IZRAČUN)", "sati": "24", "koeficijent": "1.00", "iznos": "400.32" },
+    { "naziv": "REDOVAN RAD", "sati": "136", "koeficijent": "2.20", "iznos": "1737.50" },
+    { "naziv": "NAKNADA PLAĆE ZA DRŽAVNI BLAGDAN I NERADNI DANI", "sati": "8", "koeficijent": "2.20", "iznos": "102.21" },
+    { "naziv": "DODATAK ZA RADNI STAŽ", "sati": null, "koeficijent": "0.135", "iznos": "248.36" },
+    { "naziv": "DODATAK NA OSNOVNU PLAĆU - DR.SC.", "sati": null, "koeficijent": "0.15", "iznos": "313.21" }
+  ],
+
+  "neoporeziviPrimici": [],
+  "obustave": [],
+
+  "notes": [
+    "Income tax rate is 21.50% (Split) against A01's 20.00% (Oroslavje) — municipality-set rates since the 2024 prirez abolition. The rate is not a stored field; noted because it explains why identical dohodak values would produce different tax.",
+    "Sections 10 (NEOPOREZIVI PRIHODI) and 12 (OBUSTAVE) are printed with a 0,00 total and no rows. Expected extraction is an explicit 0.00 total with an empty table, not a null.",
+    "Hours sum to 168 and pay components to 2801.60, matching the printed totals."
+  ]
+}

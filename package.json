@@ -1,0 +1,24 @@
+{
+  "name": "@payslip/bakeoff",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24.0.0" },
+  "description": "Phase 2 extraction bake-off: Azure Content Understanding vs DI layout + LLM. Throwaway spike; the winning adapter is ported into api/ afterwards.",
+  "scripts": {
+    "layout": "tsx scripts/bakeoff/run-layout.ts",
+    "cu": "tsx scripts/bakeoff/run-cu.ts",
+    "llm": "tsx scripts/bakeoff/run-llm.ts",
+    "score": "tsx scripts/bakeoff/score.ts",
+    "check:golden": "python scripts/check-golden-set.py"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.70.0",
+    "@azure-rest/ai-document-intelligence": "^1.1.0",
+    "dotenv": "^17.4.2"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.12",
+    "typescript": "^5.9.3",
+    "@types/node": "^24.10.1"
+  }
+}

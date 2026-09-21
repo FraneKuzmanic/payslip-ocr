@@ -1,0 +1,56 @@
+{
+  "sample": "B01",
+  "sourceFile": "B01.pdf",
+  "layoutFamily": "B",
+  "layoutName": "Roman-numeral IP1, two-column header",
+  "sourceKind": "native-pdf",
+  "pageCount": 1,
+  "currency": "EUR",
+
+  "employerName": "Denona d.o.o.",
+  "employerAddress": "Getaldićeva 1, GRAD ZAGREB",
+  "employerOib": "97373082565",
+  "employerIban": "HR9824020061100059744",
+  "employeeName": "Vedran Franc",
+  "employeeAddress": "Zagreb, Novomarofska ulica 18",
+  "employeeOib": "48005353134",
+  "employeeIban": "HR4424020063202596147",
+  "period": "2025-06",
+  "paymentDate": "2025-07-10",
+  "ukupnoSati": "128.00",
+
+  "brutoPlaca": "996.75",
+  "doprinosiIzPlace": "199.35",
+  "doprinosMioIStup": "149.51",
+  "doprinosMioIiStup": "49.84",
+  "dohodak": "797.40",
+  "osobniOdbitak": "797.40",
+  "poreznaOsnovica": "0.00",
+  "porezNaDohodak": "0.00",
+  "netoPlaca": "797.40",
+  "neoporeziviPrimiciUkupno": "98.52",
+  "obustaveUkupno": "0.00",
+  "iznosZaIsplatu": "895.92",
+  "doprinosiNaPlacu": "164.46",
+  "ukupanTrosakRada": "1259.73",
+
+  "payComponents": [
+    { "naziv": "redovan rad", "sati": "104.00", "koeficijent": null, "iznos": "841.37" },
+    { "naziv": "praznik", "sati": "8.00", "koeficijent": null, "iznos": "64.72" },
+    { "naziv": "bolovanje na teret poslodavca", "sati": "16.00", "koeficijent": null, "iznos": "90.66" }
+  ],
+
+  "neoporeziviPrimici": [
+    { "naziv": "Prijevoz", "iznos": "31.85" },
+    { "naziv": "Prehrana", "iznos": "66.67" }
+  ],
+
+  "obustave": [],
+
+  "notes": [
+    "THE ZERO-FLOOR CASE. Osobni odbitak (797.40) exactly equals dohodak, so porezna osnovica and porez na dohodak are both 0.00. A porezna-osnovica check written as dohodak - osobni odbitak without a floor at zero would mark this valid payslip as failing.",
+    "The payslip still prints a 'Prirez GRAD ZAGREB (306)' row at 0% even though prirez was abolished on 2024-01-01. The row exists with a zero value; prirez is not a field in this schema.",
+    "The pay table is hierarchical: rows 1.1 and 1.7 are subtotals over the leaf rows beneath them. Only the three leaf rows are recorded. Leaves sum to 128.00 hours and 996.75, matching BRUTO PLAĆA.",
+    "Employer is on the left and employee on the right, the opposite of D01."
+  ]
+}

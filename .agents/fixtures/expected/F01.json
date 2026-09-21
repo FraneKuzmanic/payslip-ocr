@@ -1,0 +1,62 @@
+{
+  "sample": "F01",
+  "sourceFile": "F01.jpg",
+  "layoutFamily": "F",
+  "layoutName": "Platni list — single-column running calculation",
+  "sourceKind": "phone-screenshot",
+  "pageCount": 1,
+  "currency": "EUR",
+
+  "employerName": null,
+  "employerAddress": null,
+  "employerOib": "14610016674",
+  "employerIban": "HR4023600001102259150",
+  "employeeName": "Stipanović Renata",
+  "employeeAddress": "Kneza Borne 45, 31000 Osijek",
+  "employeeOib": "51683656754",
+  "employeeIban": "HR5023900013298357871",
+  "period": "2025-05",
+  "paymentDate": "2025-06-06",
+  "ukupnoSati": "179",
+
+  "brutoPlaca": "2009.94",
+  "doprinosiIzPlace": "401.99",
+  "doprinosMioIStup": "301.49",
+  "doprinosMioIiStup": "100.50",
+  "dohodak": "1607.95",
+  "osobniOdbitak": "900.00",
+  "poreznaOsnovica": "707.95",
+  "porezNaDohodak": "141.59",
+  "netoPlaca": "1466.36",
+  "neoporeziviPrimiciUkupno": "158.91",
+  "obustaveUkupno": null,
+  "iznosZaIsplatu": "1625.27",
+  "doprinosiNaPlacu": "331.64",
+  "ukupanTrosakRada": "2500.49",
+
+  "payComponents": [
+    { "naziv": "Redovan rad", "sati": "132.00", "koeficijent": "1.000", "iznos": "784.63" },
+    { "naziv": "Bolovanje do 42 dana", "sati": "33.00", "koeficijent": "1.000", "iznos": "137.31" },
+    { "naziv": "Državni praznik", "sati": "14.00", "koeficijent": "1.000", "iznos": "83.22" },
+    { "naziv": "Redovan rad - Stimulacija", "sati": null, "koeficijent": "1.000", "iznos": "935.66" },
+    { "naziv": "Redovan rad - Stimulacija 4", "sati": null, "koeficijent": "1.000", "iznos": "69.12" }
+  ],
+
+  "neoporeziviPrimici": [
+    { "naziv": "Naknada za prijevoz", "iznos": "29.77" },
+    { "naziv": "Neoporezivi dio", "iznos": "47.58" },
+    { "naziv": "Naknada za topli obrok", "iznos": "81.56" }
+  ],
+
+  "obustave": [],
+
+  "notes": [
+    "Phone screenshot of a gallery/viewer app. The app's title bar ('Platni list 2025-5-1 (35)'), status bar (16:51, 4G, battery 73) and a bottom action row (Zakreni / Dijaprojekcija / Dijeli / Pretraživanje) are all in frame and must be ignored.",
+    "EMPLOYER NAME UNREADABLE. The employer's name and address sit at the top-left and are cropped/covered by a grey '1/1' page badge, leaving only the bank block (SWIFT/BIC ESBCHR22, two IBANs) and the OIB. employerName and employerAddress are recorded as null; a perfect extractor returns null plus a missing_critical_field warning.",
+    "The employer OIB is printed with an HR prefix as 'HR14610016674'. Recorded normalised to 14610016674, whose ISO 7064 MOD 11,10 check digit is valid (verified). The employee's 51683656754 is also checksum-valid.",
+    "TWO EMPLOYER IBANs are listed (HR4023600001102259150 and HR9723400091110577964) with no label distinguishing them. The first is recorded. If an extractor returns the second, that is a defensible reading, not a clear error — review before scoring it wrong.",
+    "NO OBUSTAVE SECTION AT ALL. The document never prints obustave, and IZNOS ZA ISPLATU equals neto plus naknade with nothing subtracted (1466.36 + 158.91 = 1625.27). obustaveUkupno is therefore null, not 0.00 — the distinction between 'printed as zero' (A03) and 'not printed' (here) is real, and doc-guard's own template for this vendor also set deductions to null.",
+    "Two pay components carry an amount but no hours (the two Stimulacija rows). Hours over the three timed rows sum to exactly 179; amounts over all five sum to exactly 2009.94.",
+    "Osobni odbitak is 900.00 (faktor 1,5000), not the 600.00 base — a dependant is claimed."
+  ]
+}

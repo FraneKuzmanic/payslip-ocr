@@ -1,0 +1,62 @@
+{
+  "sample": "D01",
+  "sourceFile": "D01.pdf",
+  "layoutFamily": "D",
+  "layoutName": "Roman-numeral IP1, employee-left / employer-right",
+  "sourceKind": "native-pdf",
+  "pageCount": 2,
+  "currency": "EUR",
+
+  "employerName": "Electus usluge d.o.o. za usluge",
+  "employerAddress": "Strojarska cesta 20, 10000 Zagreb",
+  "employerOib": "24535211509",
+  "employerIban": "HR7524020061100700164",
+  "employeeName": "Antonija Totar",
+  "employeeAddress": "Barutanski jarak 76, 10000 Zagreb",
+  "employeeOib": "35368971066",
+  "employeeIban": "HR9523400093233742227",
+  "period": "2025-05",
+  "paymentDate": "2025-06-10",
+  "ukupnoSati": "200",
+
+  "brutoPlaca": "1220.00",
+  "doprinosiIzPlace": "238.00",
+  "doprinosMioIStup": "177.00",
+  "doprinosMioIiStup": "61.00",
+  "dohodak": "982.00",
+  "osobniOdbitak": "600.00",
+  "poreznaOsnovica": "382.00",
+  "porezNaDohodak": "87.86",
+  "netoPlaca": "894.14",
+  "neoporeziviPrimiciUkupno": "207.78",
+  "obustaveUkupno": "0.00",
+  "iznosZaIsplatu": "1101.92",
+  "doprinosiNaPlacu": "201.31",
+  "ukupanTrosakRada": "1629.09",
+
+  "payComponents": [
+    { "naziv": "Redovan rad", "sati": "104", "koeficijent": "6.25", "iznos": "650.00" },
+    { "naziv": "Prekovremeni rad nedjeljom", "sati": "8", "koeficijent": "6.25", "iznos": "75.00" },
+    { "naziv": "Prekovremeni rad subotom", "sati": "16", "koeficijent": "6.25", "iznos": "150.00" },
+    { "naziv": "Bolovanje 1-10 dana 70%", "sati": "56", "koeficijent": "6.25", "iznos": "245.00" },
+    { "naziv": "Praznik", "sati": "16", "koeficijent": "6.25", "iznos": "100.00" }
+  ],
+
+  "neoporeziviPrimici": [
+    { "naziv": "Trošak prehrane do 1.200,00 EUR", "iznos": "100.00" },
+    { "naziv": "Prijevoz-iznos", "iznos": "47.78" },
+    { "naziv": "Nagrade radnicima do 1.200,00 EUR", "iznos": "60.00" }
+  ],
+
+  "obustave": [],
+
+  "notes": [
+    "REVERSED PARTY BLOCKS. Section I is PODACI O RADNIKU (employee) and section II is PODACI O POSLODAVCU (employer) — the opposite order to B01 and C01. An extractor keying on block position rather than the heading will swap the two OIBs on this sample.",
+    "Two-page document, but everything except sections XII–XIV is on page 1.",
+    "ukupnoSati is 200 (hours actually paid, section VI row 2), not 176 (REDOVNI MJESEČNI FOND SATI, row 1). Leaf pay components sum to exactly 200 hours and 1220.00.",
+    "koeficijent holds the printed satnica (6.25 EUR/h) rather than a multiplier — this layout uses the same column for an hourly rate.",
+    "MIO I. stup is charged on a reduced base of 1180.00 (a -40.00 'umanjenje osnovice') while MIO II. stup uses 1220.00. Verified: 1180 x 15% = 177.00, 1220 x 5% = 61.00.",
+    "doprinosiNaPlacu of 201.31 equals 1220.00 x 16.5%, although section XIII.1 prints the osnovica as 1180.00. The document is internally inconsistent here; the printed amount is recorded.",
+    "Income tax rate is 23% (Zagreb)."
+  ]
+}

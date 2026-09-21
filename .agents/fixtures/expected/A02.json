@@ -1,0 +1,70 @@
+{
+  "sample": "A02",
+  "sourceFile": "A02.jpg",
+  "layoutFamily": "A",
+  "layoutName": "COP — Registar zaposlenih (javni sektor)",
+  "sourceKind": "scan",
+  "pageCount": 1,
+  "currency": "EUR",
+
+  "employerName": "CENTAR ZA REHABILITACIJU STANČIĆ",
+  "employerAddress": "ZAGREBAČKA 23, 10370 Stančić",
+  "employerOib": "82103973646",
+  "employerIban": "HR5910010051563101504",
+  "employeeName": "STANKOVIĆ MARIJANKA",
+  "employeeAddress": "Šaškovečka 71/1, 10370 Dugo Selo",
+  "employeeOib": "94011734285",
+  "employeeIban": "HR4223600003244607807",
+  "period": "2025-05",
+  "paymentDate": "2025-06-09",
+  "ukupnoSati": "176",
+
+  "brutoPlaca": "1854.91",
+  "doprinosiIzPlace": "370.99",
+  "doprinosMioIStup": "278.24",
+  "doprinosMioIiStup": "92.75",
+  "dohodak": "1483.92",
+  "osobniOdbitak": "600.00",
+  "poreznaOsnovica": "883.92",
+  "porezNaDohodak": "176.78",
+  "netoPlaca": "1307.14",
+  "neoporeziviPrimiciUkupno": "49.28",
+  "obustaveUkupno": "13.07",
+  "iznosZaIsplatu": "1343.35",
+  "doprinosiNaPlacu": "306.06",
+  "ukupanTrosakRada": "2210.25",
+
+  "payComponents": [
+    { "naziv": "REDOVAN RAD", "sati": "15.5", "koeficijent": "1.35", "iznos": "115.99" },
+    { "naziv": "RAD U DRUGOJ SMJENI", "sati": "63", "koeficijent": "1.35", "iznos": "471.45" },
+    { "naziv": "RAD U DRUGOJ SMJENI, NEDJELJOM", "sati": "7", "koeficijent": "1.35", "iznos": "52.38" },
+    { "naziv": "RAD NOĆU", "sati": "24", "koeficijent": "1.35", "iznos": "179.60" },
+    { "naziv": "RAD SUBOTOM", "sati": "21", "koeficijent": "1.35", "iznos": "157.15" },
+    { "naziv": "RAD NEDJELJOM", "sati": "7", "koeficijent": "1.35", "iznos": "52.38" },
+    { "naziv": "RAD BLAGDANOM", "sati": "7", "koeficijent": "1.35", "iznos": "52.38" },
+    { "naziv": "RAD BLAGDANOM, NOĆU", "sati": "7.5", "koeficijent": "1.35", "iznos": "56.12" },
+    { "naziv": "SLOBODNI DANI", "sati": "24", "koeficijent": "1.35", "iznos": "179.60" },
+    { "naziv": "DODATAK ZA RADNI STAŽ", "sati": null, "koeficijent": "0.065", "iznos": "85.58" },
+    { "naziv": "DODATAK ZA RAD SUBOTOM", "sati": null, "koeficijent": "0.25", "iznos": "41.84" },
+    { "naziv": "DODATAK ZA RAD NEDJELJOM", "sati": null, "koeficijent": "0.50", "iznos": "55.78" },
+    { "naziv": "DODATAK ZA RAD BLAGDANOM", "sati": null, "koeficijent": "1.50", "iznos": "173.34" },
+    { "naziv": "DODATAK ZA RAD NOĆU", "sati": null, "koeficijent": "0.50", "iznos": "125.53" },
+    { "naziv": "DODATAK ZA RAD U DRUGOJ SMJENI", "sati": null, "koeficijent": "0.10", "iznos": "55.79" }
+  ],
+
+  "neoporeziviPrimici": [
+    { "naziv": "NAKNADA TROŠKOVA MEĐUMJESNOG PRIJEVOZA U VISINI KARTE", "iznos": "49.28" }
+  ],
+
+  "obustave": [
+    { "naziv": "OBUSTAVA U POSTOTKU", "vjerovnik": "SIND. 0,60 SOCIJAL. SKRBI", "iznos": "7.84", "ostatakSalda": null, "brojRata": null },
+    { "naziv": "OBUSTAVA U POSTOTKU", "vjerovnik": "SIND. 0,40 - STANČIĆ", "iznos": "5.23", "ostatakSalda": null, "brojRata": null }
+  ],
+
+  "notes": [
+    "Supplied as a JPEG, but it is a clean flatbed-quality scan rather than a phone photo — text is crisp throughout.",
+    "Hours sum to 176 and pay components to 1854.91, both matching the printed totals.",
+    "Both obustave are percentages of neto plaća: 1307.14 x 0.60% = 7.84, x 0.40% = 5.23.",
+    "Same layout family as A01/A03/A04 but a different employer, and a much shorter document — single olakšica row, one neoporezivi primitak, two obustave."
+  ]
+}

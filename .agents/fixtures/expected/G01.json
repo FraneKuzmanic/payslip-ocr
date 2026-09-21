@@ -1,0 +1,77 @@
+{
+  "sample": "G01",
+  "sourceFile": "G01.png",
+  "layoutFamily": "G",
+  "layoutName": "Roman-numeral IP1 with fully enumerated XIII sub-rows",
+  "sourceKind": "phone-screenshot",
+  "pageCount": 1,
+  "currency": "EUR",
+  "employerName": null,
+  "employerAddress": null,
+  "employerOib": null,
+  "employerIban": null,
+  "employeeName": null,
+  "employeeAddress": null,
+  "employeeOib": null,
+  "employeeIban": null,
+  "period": null,
+  "paymentDate": null,
+  "ukupnoSati": null,
+  "brutoPlaca": "1755.00",
+  "doprinosiIzPlace": "351.00",
+  "doprinosMioIStup": "263.25",
+  "doprinosMioIiStup": "87.75",
+  "dohodak": "1404.00",
+  "osobniOdbitak": "600.00",
+  "poreznaOsnovica": "804.00",
+  "porezNaDohodak": "184.92",
+  "netoPlaca": "1219.08",
+  "neoporeziviPrimiciUkupno": "200.00",
+  "obustaveUkupno": "442.09",
+  "iznosZaIsplatu": "976.99",
+  "doprinosiNaPlacu": "0.00",
+  "ukupanTrosakRada": "1955.00",
+  "payComponents": [],
+  "neoporeziviPrimici": [
+    {
+      "naziv": "Nagrada za rezultate rada",
+      "iznos": "100.00"
+    },
+    {
+      "naziv": "Naknada za topli obrok",
+      "iznos": "100.00"
+    }
+  ],
+  "obustave": [
+    {
+      "naziv": "Anuitet po kr.par.7116111860",
+      "vjerovnik": null,
+      "iznos": "442.09",
+      "ostatakSalda": null,
+      "brojRata": null
+    }
+  ],
+  "unscorable": [
+    {
+      "field": "payComponents",
+      "reason": "Section VI is scrolled off the top of the screenshot. The visible table fragment is empty rows only, so no component is readable. Exclude from line-item scoring rather than counting an empty array as correct."
+    },
+    {
+      "field": "ukupnoSati",
+      "reason": "Printed in the off-screen section VI."
+    },
+    {
+      "field": "paymentDate",
+      "reason": "Printed in the off-screen section IV."
+    }
+  ],
+  "notes": [
+    "THE WORST CASE IN THE SET, and the most useful one. An iPhone screenshot of a PDF viewer ('Obrazac IP1 38.pdf') scrolled part-way down, so the ENTIRE identity header — sections I to VI, both parties, both OIBs, both IBANs, the period and all pay components — is above the visible area and simply absent from the image. Dark iOS chrome (19:00, battery 20%, a SmartThings back-link, close and share icons) frames the page, and the document is rendered as two separate page panels with a gap between them.",
+    "FOUR OF SEVEN CRITICAL FIELDS ARE UNREADABLE: employerName, employeeName, employeeOib all null, and only period survives. A correct extraction returns nulls and raises missing_critical_field for each. This sample exists to prove the product degrades honestly rather than inventing identity.",
+    "period is null BY DECISION (product owner, 2026-09-20). Section V is off-screen; the only date evidence is the RAZDOBLJE column of the naknade table (01.06.2025-30.06.2025). Inferring 2025-06 from that was judged over-reach: an extractor must not derive a value the document does not state. An engine returning 2025-06 here is now scored wrong.",
+    "doprinosiNaPlacu is genuinely 0.00 (section XIII.2 prints 0,00 with every sub-row blank), confirmed by XIV: 1755.00 + 200.00 + 0.00 = 1955.00.",
+    "Section XII's printed formula reads (IX.+X.+XI.) but obustave are subtracted: 1219.08 + 200.00 - 442.09 = 976.99. Do not implement the formula as printed.",
+    "Section 10 (UKUPNO POREZ I PRIREZ) has an empty value cell; the tax figure lives in VIII.6 (184.92). An extractor anchoring on the 'UKUPNO POREZ' label will read a blank.",
+    "Income tax rate is 23.00% (Zagreb): 804.00 x 23% = 184.92."
+  ]
+}

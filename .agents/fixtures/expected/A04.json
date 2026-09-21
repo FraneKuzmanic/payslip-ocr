@@ -1,0 +1,83 @@
+{
+  "sample": "A04",
+  "sourceFile": "A04.jpg",
+  "layoutFamily": "A",
+  "layoutName": "COP — Registar zaposlenih (javni sektor)",
+  "sourceKind": "phone-screenshot",
+  "pageCount": 1,
+  "currency": "EUR",
+
+  "employerName": "MINISTARSTVO UNUTARNJIH POSLOVA",
+  "employerAddress": "ULICA GRADA VUKOVARA 33, 10000 Zagreb",
+  "employerOib": "36162371878",
+  "employerIban": "HR7610010051563100325",
+  "employeeName": "MATOŠEVIĆ IVICA",
+  "employeeAddress": "ZRINSKA 21, 32245 Nijemci",
+  "employeeOib": "60352784507",
+  "employeeIban": "HR2623400093201922522",
+  "period": "2025-05",
+  "paymentDate": "2025-06-09",
+  "ukupnoSati": "176",
+
+  "brutoPlaca": "2930.02",
+  "doprinosiIzPlace": "586.00",
+  "doprinosMioIStup": "439.50",
+  "doprinosMioIiStup": "146.50",
+  "dohodak": "2344.02",
+  "osobniOdbitak": "600.00",
+  "poreznaOsnovica": "1744.02",
+  "porezNaDohodak": "348.80",
+  "netoPlaca": "1995.22",
+  "neoporeziviPrimiciUkupno": "38.10",
+  "obustaveUkupno": "231.55",
+  "iznosZaIsplatu": null,
+  "doprinosiNaPlacu": "813.96",
+  "ukupanTrosakRada": "3782.08",
+
+  "payComponents": [
+    { "naziv": "NADOPUNA SATNICE - BLAGDAN", "sati": "16", "koeficijent": "1.65", "iznos": "146.34" },
+    { "naziv": "RAD U TURNUSU", "sati": "52", "koeficijent": "1.65", "iznos": "475.61" },
+    { "naziv": "RAD U TURNUSU, NOĆU", "sati": "32", "koeficijent": "1.65", "iznos": "292.68" },
+    { "naziv": "RAD U TURNUSU, SUBOTOM", "sati": "28", "koeficijent": "1.65", "iznos": "256.10" },
+    { "naziv": "RAD U TURNUSU, SUBOTOM, NOĆU", "sati": "8", "koeficijent": "1.65", "iznos": "73.17" },
+    { "naziv": "RAD U TURNUSU, NEDJELJOM", "sati": "16", "koeficijent": "1.65", "iznos": "146.34" },
+    { "naziv": "RAD U TURNUSU, NEDJELJOM, NOĆU", "sati": "8", "koeficijent": "1.65", "iznos": "73.17" },
+    { "naziv": "RAD U TURNUSU, BLAGDANOM", "sati": "2", "koeficijent": "1.65", "iznos": "18.29" },
+    { "naziv": "RAD U TURNUSU, BLAGDANOM, NOĆU", "sati": "6", "koeficijent": "1.65", "iznos": "54.88" },
+    { "naziv": "RAD ORGANIZIRAN NA DRUGAČIJI NAČIN", "sati": "2", "koeficijent": "1.65", "iznos": "18.29" },
+    { "naziv": "RAD ORGANIZIRAN NA DRUGAČIJI NAČIN, NOĆU", "sati": "2", "koeficijent": "1.65", "iznos": "18.29" },
+    { "naziv": "RAD ORGANIZIRAN NA DRUGAČIJI NAČIN, SUBOTOM, NOĆU", "sati": "4", "koeficijent": "1.65", "iznos": "36.59" },
+    { "naziv": "DODATAK ZA RADNI STAŽ", "sati": null, "koeficijent": "0.16", "iznos": "257.57" },
+    { "naziv": "DODATAK ZA RAD SUBOTOM", "sati": null, "koeficijent": "0.25", "iznos": "106.10" },
+    { "naziv": "DODATAK ZA RAD NEDJELJOM", "sati": null, "koeficijent": "0.50", "iznos": "127.32" },
+    { "naziv": "DODATAK ZA RAD BLAGDANOM", "sati": null, "koeficijent": "1.50", "iznos": "127.32" },
+    { "naziv": "DODATAK ZA RAD U TURNUSU", "sati": null, "koeficijent": "0.05", "iznos": "80.63" },
+    { "naziv": "DODATAK ZA RAD NOĆU", "sati": null, "koeficijent": "0.50", "iznos": "318.29" },
+    { "naziv": "DODATAK ZA RAD ORGANIZIRAN NA DRUGAČIJI NAČIN", "sati": null, "koeficijent": "0.05", "iznos": "4.24" },
+    { "naziv": "DODATAK ZA RADNI STAŽ OSTVAREN U DRŽAVNIM TIJELIMA", "sati": null, "koeficijent": "0.08", "iznos": "149.40" },
+    { "naziv": "DODATAK ZA ZVANJE POLICIJSKIH SLUŽBENIKA", "sati": null, "koeficijent": "0.08", "iznos": "149.40" }
+  ],
+
+  "neoporeziviPrimici": [
+    { "naziv": "NAKNADA ZA MEĐUMJESNI PRIJEVOZ (MUP) - IZNOS", "iznos": "38.10" }
+  ],
+
+  "obustave": [
+    { "naziv": "SINDIKALNI KREDIT - RATA U IZNOSU, SA KONTROLOM SALDA", "vjerovnik": "SPH PU VUKOVAR", "iznos": "40.00", "ostatakSalda": "0.00", "brojRata": "0" },
+    { "naziv": "KREDIT - RATA U IZNOSU, BEZ KONTROLE SALDA", "vjerovnik": "KREDITNA UNIJA JAMSTVO", "iznos": "121.80", "ostatakSalda": null, "brojRata": null },
+    { "naziv": "ČLANARINA BLAGAJNE UZAJAMNE POMOĆI - RATA U IZNOSU, BEZ KONTROLE SALDA", "vjerovnik": "SPH PU VUKOVAR", "iznos": "30.00", "ostatakSalda": null, "brojRata": null },
+    { "naziv": "OSIGURANJE - RATA U IZNOSU, BEZ KONTROLE SALDA", "vjerovnik": "CROATIA OSIGUR.-NOVI VJEROVNIK", "iznos": "9.90", "ostatakSalda": null, "brojRata": null },
+    { "naziv": "OSIGURANJE - RATA U IZNOSU, BEZ KONTROLE SALDA", "vjerovnik": "CROATIA OSIGUR.-NOVI VJEROVNIK", "iznos": "9.90", "ostatakSalda": null, "brojRata": null },
+    { "naziv": "SINDIKALNA ČLANARINA - RATA KAO POSTOTAK NA NETO PLAĆU, BEZ KONTROLE SALDA", "vjerovnik": "SPH PU VUKOVAR", "iznos": "12.97", "ostatakSalda": null, "brojRata": null },
+    { "naziv": "SINDIKALNA ČLANARINA - RATA KAO POSTOTAK NA NETO PLAĆU, BEZ KONTROLE SALDA", "vjerovnik": "SPH SREDIŠNJICA ČLANARINA", "iznos": "6.98", "ostatakSalda": null, "brojRata": null }
+  ],
+
+  "notes": [
+    "NOT A PHOTO OF PAPER — this is a scrolling screenshot of a phone browser displaying the PDF. The Android status bar (17:10, battery 15%), the Chrome URL bar showing 'chrome-native://pdf/link', a '1/2' page pill, and the system navigation bar are all inside the image. A robust extractor must ignore all of it. The two payslip pages appear stacked vertically inside one image, so this is one Page by our model even though the underlying document has two.",
+    "OCCLUDED CRITICAL FIELD. A floating round edit button (pencil) sits over the right-hand amount column at section 13, hiding IZNOS ZA ISPLATU in both places it is printed. iznosZaIsplatu is therefore recorded as null: it is genuinely not readable from this source file, and a perfect extractor should return null plus a missing_critical_field warning rather than invent a value. For reference the true value is 1801.77 (2033.32 - 231.55).",
+    "The same button clips the last obustava's amount, leaving only a trailing '98' visible. Recorded as 6.98, recovered two ways: 231.55 - 224.57 = 6.98, and neto 1995.22 x 0.35% = 6.98.",
+    "The other percentage obustava checks too: 1995.22 x 0.65% = 12.97.",
+    "Pay components sum to exactly 176 hours and 2930.02, matching the printed totals.",
+    "Same employer as A01 (MUP) but a different employee and a different set of pay components — A01 has 23, this has 21, with turnus-based rather than shift-based naming."
+  ]
+}

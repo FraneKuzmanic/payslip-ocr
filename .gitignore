@@ -1,0 +1,38 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Dependencies / build
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Bake-off caches: raw provider responses over real payslips (personal data)
+.bakeoff/
+
+# Vendored agent toolkit — ~200 static files, installed twice, never hand-edited.
+# Reproducible from skills-lock.json via the setup-matt-pocock-skills skill, so there is
+# nothing to gain from versioning it. Project-specific agent content is NOT ignored:
+# .agents/ROADMAP.md, .agents/plans/, .agents/history/ and .claude/commands/ stay tracked.
+.claude/skills/
+.claude/commands/
+.agents/skills/
+
+# REAL PERSONAL DATA — never commit.
+# 17 Croatian payslips carrying names, home addresses, OIBs, IBANs and salaries.
+payslip_examples/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Scratch
+.scratch/
+
+# Re-include this project's own docs. The monorepo root .gitignore lists the bare filenames
+# AGENTS.md and CONTEXT.md, which is unanchored and so catches them here too. CONTEXT.md is the
+# Croatian payroll glossary referenced by PRD.md, ROADMAP.md, prime.md and docs/agents/domain.md;
+# it has to survive a clone.
+!AGENTS.md
+!CONTEXT.md
