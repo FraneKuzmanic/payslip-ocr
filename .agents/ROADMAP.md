@@ -122,11 +122,15 @@ extracting nothing.
   equivalent, keeping the viewport/overlay/PDF modules untouched.
 - Reconcile the existing `.gitignore`, `package.json` and `.env.example` with the forked ones —
   the bake-off harness and its deps must survive the merge.
-- **Do not overwrite this project's `.claude/commands/prime.md`.** It already exists, adapted to
-  this PRD, this roadmap's section numbering and this project's conventions. receipt-ocr's copy
-  points at `CLAUDE.md`, `@receipt/*` and roadmap sections that do not exist here. Bring the other
-  commands across and adapt each the same way — `validate.md` in particular carries checks earned
-  from receipt-ocr incidents and must be reviewed rather than copied blind.
+- **Do not copy receipt-ocr's `.claude/commands/` over this project's.** A fresh command set is
+  already installed here (`commit`, `create-prd`, `create-rules`, `execute`, `init-project`,
+  `plan-feature`, `prime`), and `prime.md` in particular has been adapted to this PRD, this
+  roadmap's section numbering and this project's conventions. receipt-ocr's copies point at
+  `CLAUDE.md`, `@receipt/*` and roadmap sections that do not exist here.
+- **`validate.md` is the one worth taking**, and only after review: receipt-ocr's is ~941 lines of
+  checks earned from real incidents, many of them receipt-specific. Port the phases that still
+  apply rather than copying it. Note `npm run validate` (typecheck → lint → format → test) is a
+  package script and comes across with the fork regardless.
 - Merge the existing `AGENTS.md` with receipt-ocr's `CLAUDE.md` guidance, keeping this project's
   issue-tracker/triage/domain sections.
 
@@ -141,6 +145,7 @@ extracting nothing.
 - [ ] `scripts/bakeoff/` still runs: `npm run score -- cu` reproduces 98.9% against the golden set.
 - [ ] `/prime` resolves every file and roadmap section it points at, and `.claude/commands/`
       contains no reference to `receipt`, `CLAUDE.md` or `@receipt/*`.
+- [ ] `npm run validate` exists as a package script and is green.
 
 ---
 
