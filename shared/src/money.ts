@@ -153,12 +153,13 @@ function normalizeSeparators(body: string): string | null {
   const before = body.slice(0, index);
   const after = body.slice(index + 1);
 
-  // "1.234" and "1,234" are genuinely ambiguous — 1234, or 1.234? Both resolve to 1234,
-  // because a thousands group is far more common on a payslip than a three-decimal value.
-  // This is a deliberate, lossy judgement call, and it will occasionally be wrong (a weight
-  // in kilograms is the realistic case).
+  // "1.234" and "1,234" are genuinely ambiguous — 1234, or 1.234? They are rejected rather
+  // than guessed. Payslip money always prints its cents, so this shape is more likely an OCR
+  // fault than a real value, and a `null` surfaces as a visible `unparseable_amount` warning
+  // where a guess would be invisible. Hours and coefficients, which do print three decimals,
+  // go through `parseQuantity` instead.
   if (after.length === 3 && before.length >= 1 && before.length <= 3) {
-    return stripGrouping(body, separator);
+    return null;
   }
 
   return splitAtDecimal(body, separator);

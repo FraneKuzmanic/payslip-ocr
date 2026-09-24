@@ -47,9 +47,18 @@ describe("parseAmount", () => {
     ["1.234.567,89", "1234567.89"],
     ["1,234,567.89", "1234567.89"],
 
-    // The documented ambiguity: one separator, exactly three digits after it.
-    ["1.234", "1234"],
-    ["1,234", "1234"],
+    // Ambiguous: one separator, exactly three digits after it — rejected, not guessed
+    // (Task 02 DoD).
+    ["1.234", null],
+    ["1,234", null],
+    ["12.345", null],
+    ["123.456", null],
+
+    // Four digits before the separator cannot be a thousands group, so it stays a decimal.
+    ["1234.567", "1234.567"],
+
+    // A real OCR misread: G01's netoPlaca as the provider returned it.
+    ["1.219.08", null],
 
     // One separator that cannot be a thousands group.
     ["1,5", "1.5"],
@@ -69,6 +78,13 @@ describe("parseAmount", () => {
   ])("parses %j as %j", (raw, expected) => {
     expect(parseAmount(raw)).toBe(expected);
   });
+
+  it.each(["1.234,56", "1234,56", "1 234,56", "1234.56"])(
+    "handles %j identically (Task 02 DoD)",
+    (raw) => {
+      expect(parseAmount(raw)).toBe("1234.56");
+    },
+  );
 
   it("never throws, whatever it is handed", () => {
     for (const raw of ["", ".", ",", "-", "()", "€", "--1", "1..2", ",50", "12,"]) {

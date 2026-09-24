@@ -117,6 +117,7 @@ intact; an unknown URL rendered the translated not-found page inside the layout;
    `claude-sonnet-5` + `ANTHROPIC_API_KEY`, and the privacy paragraph argues about Anthropic's lack
    of an EU region. The bake-off actually ran `gpt-4.1` via Azure OpenAI in Sweden Central.
 3. **`shared/src/quantity.ts`** is receipt-item-shaped. Task 02 decides.
+   **Resolved by Task 02:** kept as the parser for hours and coefficients, and re-documented.
 4. **Upload codes.** `unsupported_media_type` vs PRD §10.3's `unsupported_file_type`, and PRD's
    `session_full`. Task 03 reconciles.
 5. **No README.** PRD §6.7 lists one; receipt-ocr's was entirely receipt content, so it was not
@@ -170,6 +171,9 @@ omission in the record above: receipt-ocr's §8.4 "Manual browser checks" was fo
    money and datetime exports, `parseIssueTime` (shaped for receipts, since a payslip has no issue
    time), `EXTRACTION_FAILURE_REASONS`, `sourceRegionsResponseSchema`, or any of
    `providers/document-extraction/types.ts`. Task 02 decides what survives.
+   **Resolved by Task 02:** `parseIssueTime` was deleted, `parseIssueDate` became `parseDate`,
+   and the failure reasons moved to `session.ts`. The money exports and
+   `sourceRegionsResponseSchema` were kept for Tasks 06 and 08, which are their first users.
 10. **The app name differs by language.** `common.appName` is "Payslip OCR" in `en` and "Skener
     platnih lista" in `hr`.
 

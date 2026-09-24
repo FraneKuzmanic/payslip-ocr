@@ -8,25 +8,23 @@
  */
 export const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
-/** `HH:mm`, or `HH:mm:ss` when the source showed seconds. */
-export const ISO_TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
+/** A payslip period: `yyyy-mm`, month 01–12. */
+export const PERIOD_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 const WHITESPACE = /[\s\u00A0\u202F]/g;
 const ISO_DATE = /^(\d{4})-(\d{1,2})-(\d{1,2})$/;
 const DAY_FIRST_DATE = /^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/;
-// OCR sometimes reads the colon of a time as a dot or a comma.
-const TIME = /^(\d{1,2})[:.,](\d{2})(?:[:.,](\d{2}))?$/;
 
 const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
 /**
- * Normalizes an issue date into `yyyy-mm-dd`. Day-first is assumed for separator-delimited
- * dates, which is the Croatian and wider European convention (PRD §7.7).
+ * Normalizes a payslip date, such as the payment date, into `yyyy-mm-dd`. Day-first is assumed
+ * for separator-delimited dates, which is the Croatian and wider European convention (PRD §7.7).
  *
  * Returns `null` for anything unreadable or for a date that does not exist — a wrong date is
  * worse than a missing one, because the user cannot see that it needs correcting.
  */
-export function parseIssueDate(raw: string | null | undefined): string | null {
+export function parseDate(raw: string | null | undefined): string | null {
   if (raw === null || raw === undefined) return null;
 
   // Croatian dates are written with a trailing full stop: "17.08.2026."
@@ -57,30 +55,85 @@ export function parseIssueDate(raw: string | null | undefined): string | null {
   return `${String(year).padStart(4, "0")}-${pad2(month)}-${pad2(day)}`;
 }
 
+// Index = month − 1. A payslip prints the month either nominative ("svibanj 2025.") or
+// genitive ("razdoblje svibnja 2025."); `studeni` has two genitives.
+const MONTH_NAMES: readonly (readonly string[])[] = [
+  ["siječanj", "siječnja"],
+  ["veljača", "veljače"],
+  ["ožujak", "ožujka"],
+  ["travanj", "travnja"],
+  ["svibanj", "svibnja"],
+  ["lipanj", "lipnja"],
+  ["srpanj", "srpnja"],
+  ["kolovoz", "kolovoza"],
+  ["rujan", "rujna"],
+  ["listopad", "listopada"],
+  ["studeni", "studenoga", "studenog"],
+  ["prosinac", "prosinca"],
+];
+
+const MONTH_BY_NAME = new Map(
+  MONTH_NAMES.flatMap((names, index) => names.map((name) => [name, index + 1] as const)),
+);
+
+// Longest first, so "studenoga" wins over "studenog" and "studeni".
+const MONTH = [...MONTH_BY_NAME.keys()].toSorted((a, b) => b.length - a.length).join("|");
+
+const GODINA_MJESEC = new RegExp(`godina\\s*(\\d{4})\\.?,?\\s*mjesec\\s*(\\d{1,2}|${MONTH})`);
+const NAMED_MONTH = new RegExp(`(${MONTH})\\.?\\s*(\\d{4})`);
+const SPAN_DATE = String.raw`\d{1,2}\.\s?\d{1,2}\.\s?\d{2,4}\.?|\d{1,2}/\d{1,2}/\d{2,4}`;
+const DATE_SPAN = new RegExp(`(?:od\\s*)?(${SPAN_DATE})\\s*(?:do|-|–)\\s*(${SPAN_DATE})`);
+const MONTH_SLASH_YEAR = /^(\d{1,2})[./](\d{4})\.?$/;
+
 /**
- * Normalizes an issue time into `HH:mm`, or `HH:mm:ss` when the source showed seconds.
+ * Normalizes a printed payslip period into `yyyy-mm`.
  *
- * The precision of the source is preserved: padding `14:30` out to `14:30:00` would invent
- * a second that the document never stated (PRD §7.7).
+ * The obračun form prescribes content, not layout (*Pravilnik* NN 68/2023), so the golden set's
+ * seven layouts print the period five ways: `svibanj 2025.`, `GODINA 2025, MJESEC 6`,
+ * `GODINA 2025, MJESEC SVIBANJ`, a date span `1.05.2025 do 31.05.2025`, or already `2025-06`.
+ * The provider returns the printed text with its surrounding label, so the rules below search
+ * rather than match whole strings.
+ *
+ * Ported from the bake-off scorer's `asPeriod`, but it rejects where that guessed: a span whose
+ * two dates fall in different months, and a lone date — which could as well be the payment date
+ * or the period's end — both return `null`.
  */
-export function parseIssueTime(raw: string | null | undefined): string | null {
+export function parsePeriod(raw: string | null | undefined): string | null {
   if (raw === null || raw === undefined) return null;
+  const text = raw
+    .replace(/[\s  ]+/g, " ")
+    .trim()
+    .toLowerCase();
+  if (text === "") return null;
 
-  const match = TIME.exec(raw.replace(WHITESPACE, ""));
-  if (match === null) return null;
+  if (PERIOD_PATTERN.test(text)) return text;
 
-  const [, rawHour, rawMinute, rawSecond] = match;
-  if (rawHour === undefined || rawMinute === undefined) return null;
+  const godinaMjesec = GODINA_MJESEC.exec(text);
+  if (godinaMjesec !== null) return toPeriod(godinaMjesec[1], godinaMjesec[2]);
 
-  const hour = Number(rawHour);
-  const minute = Number(rawMinute);
-  if (hour > 23 || minute > 59) return null;
+  const named = NAMED_MONTH.exec(text);
+  if (named !== null) return toPeriod(named[2], named[1]);
 
-  if (rawSecond === undefined) return `${pad2(hour)}:${pad2(minute)}`;
+  const span = DATE_SPAN.exec(text);
+  if (span !== null) {
+    const from = parseDate(span[1]);
+    const to = parseDate(span[2]);
+    if (from === null || to === null) return null;
+    return from.slice(0, 7) === to.slice(0, 7) ? from.slice(0, 7) : null;
+  }
 
-  const second = Number(rawSecond);
-  if (second > 59) return null;
-  return `${pad2(hour)}:${pad2(minute)}:${pad2(second)}`;
+  const monthSlashYear = MONTH_SLASH_YEAR.exec(text);
+  if (monthSlashYear !== null) return toPeriod(monthSlashYear[2], monthSlashYear[1]);
+
+  return null;
+}
+
+/** `month` is a number or a Croatian month name; anything outside 1–12 is not a period. */
+function toPeriod(year: string | undefined, month: string | undefined): string | null {
+  if (year === undefined || month === undefined) return null;
+  const value = MONTH_BY_NAME.get(month) ?? Number(month);
+  if (!Number.isInteger(value) || value < 1 || value > 12) return null;
+  return `${year}-${pad2(value)}`;
 }
 
 /**

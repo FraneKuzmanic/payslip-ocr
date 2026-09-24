@@ -1,13 +1,13 @@
-import type { ExtractionFailureReason, SourceContentType } from "@payslip/shared";
+import type {
+  CanonicalPayslipFields,
+  ExtractionFailureReason,
+  FieldMetadata,
+  SourceContentType,
+} from "@payslip/shared";
 
 export interface ExtractionInput {
   readonly bytes: Buffer;
   readonly contentType: SourceContentType;
-}
-
-export interface ExtractionFieldMetadata {
-  readonly confidence: number | null;
-  readonly source: "model" | "text" | "inferred";
 }
 
 export interface ExtractionMetadata {
@@ -19,13 +19,13 @@ export interface ExtractionMetadata {
   readonly uploadMs?: number;
   readonly analyzeMs?: number;
   readonly documentConfidence: number | null;
-  readonly fields: Record<string, ExtractionFieldMetadata>;
+  /** Keyed by canonical dotted path (`netoPlaca`, `payComponents.2.iznos`). */
+  readonly fields: Record<string, FieldMetadata>;
   readonly unreadableFields: string[];
 }
 
 export interface ProviderExtractionResult {
-  /** Placeholder until Task 02's canonical payslip fields replace it. */
-  readonly fields: Record<string, unknown>;
+  readonly fields: CanonicalPayslipFields;
   readonly metadata: ExtractionMetadata;
   /** Provider response retained verbatim for debugging. */
   readonly raw: unknown;

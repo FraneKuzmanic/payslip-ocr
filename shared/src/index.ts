@@ -12,7 +12,7 @@ export {
 
 export { parseQuantity } from "./quantity.js";
 
-export { ISO_DATE_PATTERN, ISO_TIME_PATTERN, parseIssueDate, parseIssueTime } from "./datetime.js";
+export { ISO_DATE_PATTERN, PERIOD_PATTERN, parseDate, parsePeriod } from "./datetime.js";
 
 export {
   SOURCE_CONTENT_TYPES,
@@ -24,15 +24,85 @@ export {
 } from "./upload.js";
 
 export {
-  apiErrorResponseSchema,
+  CRITICAL_FIELDS,
+  FIELD_SOURCES,
+  canonicalPayslipFieldsSchema,
+  fieldMetadataSchema,
+  neoporeziviPrimitakSchema,
+  obustavaSchema,
+  payComponentSchema,
+  payslipSchema,
+  type CanonicalPayslipFields,
+  type FieldMetadata,
+  type NeoporeziviPrimitak,
+  type Obustava,
+  type PayComponent,
+  type Payslip,
+} from "./payslip.js";
+
+export {
+  EDITABLE_PAYSLIP_STATUSES,
   EXTRACTION_FAILURE_REASONS,
+  PAYSLIP_STATUSES,
+  PAYSLIP_STATUS_TRANSITIONS,
+  RETRYABLE_FAILURE_REASONS,
+  canTransition,
   extractionFailureReasonSchema,
+  isRetryableFailure,
+  payslipStatusSchema,
+  sessionSchema,
+  type ExtractionFailureReason,
+  type PayslipStatus,
+  type Session,
+} from "./session.js";
+
+export {
+  WARNING_CODES,
+  payslipWarningSchema,
+  warningCodeSchema,
+  type PayslipWarning,
+  type WarningCode,
+} from "./warnings.js";
+
+export {
+  EXPORT_FORMATS,
+  EXPORT_SCHEMA_VERSION,
+  apiErrorResponseSchema,
+  confirmPayslipResponseSchema,
+  createPayslipResponseSchema,
+  createSessionResponseSchema,
+  exportedPayslipSchema,
+  exportFormatSchema,
+  jsonExportResponseSchema,
+  listPayslipsQuerySchema,
+  listPayslipsResponseSchema,
+  mergePayslipsRequestSchema,
+  mergePayslipsResponseSchema,
+  payslipDetailResponseSchema,
+  payslipSummarySchema,
+  retryPayslipResponseSchema,
+  sessionDetailResponseSchema,
   sourceDocumentResponseSchema,
   sourceRegionSchema,
   sourceRegionsResponseSchema,
+  updatePayslipRequestSchema,
   type ApiErrorResponse,
-  type ExtractionFailureReason,
+  type ConfirmPayslipResponse,
+  type CreatePayslipResponse,
+  type CreateSessionResponse,
+  type ExportedPayslip,
+  type ExportFormat,
+  type JsonExportResponse,
+  type ListPayslipsQuery,
+  type ListPayslipsResponse,
+  type MergePayslipsRequest,
+  type MergePayslipsResponse,
+  type PayslipDetailResponse,
+  type PayslipSummary,
+  type RetryPayslipResponse,
+  type SessionDetailResponse,
   type SourceDocumentResponse,
   type SourceRegion,
   type SourceRegionsResponse,
+  type UpdatePayslipRequest,
 } from "./api.js";

@@ -85,7 +85,7 @@ investigation and is recorded with its reasoning.
 | — | **Phase 2 bake-off** — engine chosen by measurement | ✅ complete → [`history/01`](./history/01-extraction-bakeoff.md) |
 | 01 | Fork, rename and strip | ✅ complete → [`history/01-fork`](./history/01-fork-rename-strip.md) |
 | 01b | Mirror, deploy and CI (pulled forward from 13) | ✅ complete → [`history/01b`](./history/01b-mirror-deploy-ci.md) |
-| 02 | Canonical payslip domain model & shared contracts | ⬜ not started |
+| 02 | Canonical payslip domain model & shared contracts | ✅ complete → [`history/02`](./history/02-canonical-payslip-model.md) |
 | 03 | Session & payslip persistence, upload API | ⬜ not started |
 | 04 | Content Understanding provider, mapper & scoring harness | ⬜ not started |
 | 05 | Extraction latency: partial results or two-pass | ⬜ not started |
@@ -202,11 +202,11 @@ a guard that stops provider vocabulary leaking in.
 
 **Definition of done**
 
-- [ ] A test fails the build if any Azure or Content Understanding identifier appears in `shared/`.
-- [ ] Round-trip tests: every golden-set fixture parses against the canonical schema unchanged.
-- [ ] `parseAmount` handles `1.234,56`, `1234,56`, `1 234,56` and `1234.56` identically, and
+- [x] A test fails the build if any Azure or Content Understanding identifier appears in `shared/`.
+- [x] Round-trip tests: every golden-set fixture parses against the canonical schema unchanged.
+- [x] `parseAmount` handles `1.234,56`, `1234,56`, `1 234,56` and `1234.56` identically, and
       rejects values it cannot normalise rather than guessing.
-- [ ] Croatian period and date parsing covers all seven layouts' printed forms, tested against
+- [x] Croatian period and date parsing covers all seven layouts' printed forms, tested against
       the strings the golden set documents.
 
 ---
@@ -271,6 +271,10 @@ something.
 - Retain the raw response verbatim for later read-time projection.
 - Background extraction orchestration: parallel, capped at 3 concurrent, per-payslip failure
   isolation, structured log line per finish carrying no document contents.
+- `ExtractionError.retryable` derives from `isRetryableFailure` (Task 02).
+- Parser assignment in the mapper: hours and coefficients via `parseQuantity`, money via
+  `parseAmount`, period via `parsePeriod`, dates via `parseDate`; `brojRata` stays text (Task 02
+  D1).
 - Move the bake-off scoring harness to `scripts/score-extraction.ts`, running against the real
   production mapper offline from recorded responses, honouring `unscorable` and **failing when
   any other expectation goes unscored**.
@@ -376,7 +380,8 @@ screen within a couple of seconds, with per-payslip progress.
   soon as the first payslip exists.
 - Per-payslip status surfaced while extraction runs; a failure is one bad item with a retry, not
   a dead batch.
-- Croatian and English copy for everything added.
+- Croatian and English copy for everything added, including hr/en copy for every
+  `PAYSLIP_STATUSES` value, guarded by a test mirroring `uploadErrors.test.ts` (Task 02 D8).
 
 **Not in this task:** the review form (09), the chip rail (10).
 
@@ -448,6 +453,8 @@ place on the page.
   failure. Low confidence and a specific warning share one appearance; never both at once.
 - Explicit save, never debounced. Confirm disabled while dirty, idempotent thereafter.
 - Skeleton state for the line-item sections while the second extraction pass is outstanding.
+- hr/en copy for every `WARNING_CODES` value, guarded by a test mirroring
+  `uploadErrors.test.ts` (Task 02 D8).
 
 **Not in this task:** navigation between payslips (10), export (12).
 
