@@ -6,7 +6,10 @@
 # Dependencies / build
 node_modules/
 dist/
+coverage/
+playwright-report/
 *.tsbuildinfo
+.DS_Store
 
 # Bake-off caches: raw provider responses over real payslips (personal data)
 .bakeoff/

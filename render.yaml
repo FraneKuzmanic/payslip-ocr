@@ -1,0 +1,45 @@
+# Service names and the two cross-origin URLs below are placeholders until Task 13 provisions
+# the services; Render appends a suffix to the real hostnames.
+services:
+  - type: web
+    name: payslip-ocr-api
+    env: node
+    plan: free
+    buildCommand: rm -rf node_modules package-lock.json && npm install --include=dev && npm run build
+    startCommand: node api/dist/index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: info
+      - key: WEB_ORIGIN
+        value: https://payslip-ocr-client.onrender.com
+      - key: MAX_UPLOAD_BYTES
+        value: "10485760"
+      - key: MAX_PDF_PAGES
+        value: "10"
+      # Secrets and per-project values: Render will prompt for these in the
+      # dashboard when the blueprint is created rather than storing them here.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: STORAGE_BUCKET
+        sync: false
+
+  - type: web
+    name: payslip-ocr-client
+    runtime: static
+    buildCommand: rm -rf node_modules package-lock.json && npm install --include=dev && npm run build
+    staticPublishPath: client/dist
+    envVars:
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: VITE_API_BASE_URL
+        value: https://payslip-ocr-api.onrender.com
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

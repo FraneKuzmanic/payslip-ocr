@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+@keyframes toast-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@theme {
+  --color-accent: #1d4ed8; /* blue-700 — ≈7:1 on white, AAA for normal text */
+  --color-accent-hover: #1e40af; /* blue-800 */
+  --color-accent-soft: #eff6ff; /* blue-50 — active nav background */
+  --color-accent-ring: #3b82f6; /* blue-500 — focus ring, visible on both */
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    /* Keeps form controls and scrollbars light; the app has no dark mode by design. */
+    color-scheme: light;
+    /* Paired with the drawer's scroll lock so a narrow desktop window does not shift. */
+    scrollbar-gutter: stable;
+  }
+
+  body {
+    margin: 0;
+    font-family:
+      system-ui,
+      -apple-system,
+      "Segoe UI",
+      Roboto,
+      sans-serif;
+  }
+
+  /* One policy for the whole app. `outline` is used rather than Tailwind's `ring` because it
+     follows border-radius, takes no part in layout, and is not clipped by `overflow: hidden`. */
+  :focus-visible {
+    outline: 2px solid var(--color-accent-ring);
+    outline-offset: 2px;
+  }
+
+  button:not(:disabled):not([aria-disabled="true"]),
+  label:has(> input[type="file"]),
+  select,
+  summary,
+  [role="button"] {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  button[aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+}

@@ -1,0 +1,1 @@
+-- No stable application seed data. Tests create isolated fixtures.

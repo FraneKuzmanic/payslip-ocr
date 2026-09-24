@@ -1,10 +1,38 @@
 {
-  "name": "@payslip/bakeoff",
+  "name": "payslip-ocr-poc",
+  "version": "0.0.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=24.0.0" },
-  "description": "Phase 2 extraction bake-off: Azure Content Understanding vs DI layout + LLM. Throwaway spike; the winning adapter is ported into api/ afterwards.",
+  "description": "Payslip OCR proof of concept: scan Croatian payslips into a reviewable, highlighted form. Also hosts the Phase 2 extraction bake-off harness (scripts/bakeoff).",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "workspaces": [
+    "client",
+    "api",
+    "shared"
+  ],
   "scripts": {
+    "prepare": "tsc --build shared",
+    "dev": "run-p dev:*",
+    "dev:api": "npm run dev --workspace @payslip/api",
+    "dev:client": "npm run dev --workspace @payslip/client",
+    "build": "tsc --build && npm run build --workspace @payslip/client",
+    "typecheck": "tsc --build",
+    "lint": "oxlint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:integration": "node --env-file-if-exists=.env scripts/run-supabase-integration-tests.mjs",
+    "test:integration:local": "node scripts/run-supabase-integration-tests.mjs --local",
+    "db:start": "npx --no-install supabase start",
+    "db:stop": "npx --no-install supabase stop",
+    "db:reset": "npx --no-install supabase db reset --local",
+    "db:lint": "npx --no-install supabase db lint --local --schema public --level warning --fail-on error",
+    "db:test": "npx --no-install supabase test db --local supabase/tests/database",
+    "db:types": "npx --no-install supabase gen types typescript --local --schema public > api/src/database.types.ts",
+    "db:provision-storage": "node --env-file-if-exists=.env scripts/provision-storage.mjs",
+    "validate": "npm run typecheck && npm run lint && npm run format:check && npm run test",
     "layout": "tsx scripts/bakeoff/run-layout.ts",
     "cu": "tsx scripts/bakeoff/run-cu.ts",
     "llm": "tsx scripts/bakeoff/run-llm.ts",
@@ -12,13 +40,18 @@
     "check:golden": "python scripts/check-golden-set.py"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.70.0",
-    "@azure-rest/ai-document-intelligence": "^1.1.0",
-    "dotenv": "^17.4.2"
+    "@azure-rest/ai-document-intelligence": "1.1.0",
+    "dotenv": "17.4.2"
   },
   "devDependencies": {
-    "tsx": "^4.23.12",
-    "typescript": "^5.9.3",
-    "@types/node": "^24.10.1"
+    "@types/node": "24.10.1",
+    "agent-browser": "0.34.0",
+    "npm-run-all2": "9.0.3",
+    "oxlint": "1.78.0",
+    "prettier": "3.9.6",
+    "supabase": "2.114.0",
+    "tsx": "4.23.12",
+    "typescript": "7.0.2",
+    "vitest": "4.1.11"
   }
 }

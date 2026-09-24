@@ -60,12 +60,14 @@ for (const e of samples) {
 
 console.log("  " + "-".repeat(76));
 const pct = total ? ((grounded / total) * 100).toFixed(1) : "0";
-console.log(`\n  GROUNDED ${grounded}/${total} (${pct}%)   ambiguous (>1 match on page): ${ambiguous}\n`);
+console.log(
+  `\n  GROUNDED ${grounded}/${total} (${pct}%)   ambiguous (>1 match on page): ${ambiguous}\n`,
+);
 
 if (failuresByField.size) {
   console.log("  Hardest fields to ground:");
   [...failuresByField.entries()]
-    .sort((a, b) => b[1] - a[1])
+    .toSorted((a, b) => b[1] - a[1])
     .forEach(([f, c]) => {
       const t = totalByField.get(f) ?? 0;
       const crit = CRITICAL_FIELDS.includes(f as never) ? " (CRITICAL)" : "";

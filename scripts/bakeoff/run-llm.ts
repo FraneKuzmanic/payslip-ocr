@@ -18,7 +18,10 @@ const force = process.argv.includes("--force");
 function toJsonSchema(def: FieldDef): Record<string, unknown> {
   if (def.type === "array" && def.items) {
     const props = Object.fromEntries(
-      Object.entries(def.items).map(([k, v]) => [k, { type: ["string", "null"], description: v.description }]),
+      Object.entries(def.items).map(([k, v]) => [
+        k,
+        { type: ["string", "null"], description: v.description },
+      ]),
     );
     return {
       type: "array",
@@ -49,7 +52,9 @@ const SYSTEM = `Ti si stručnjak za hrvatske obračune plaće. Iz teksta dokumen
 
 ${SHARED_RULES}`;
 
-async function extract(markdown: string): Promise<{ fields: Record<string, unknown>; usage: Record<string, number>; latencyMs: number }> {
+async function extract(
+  markdown: string,
+): Promise<{ fields: Record<string, unknown>; usage: Record<string, number>; latencyMs: number }> {
   const url = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=${apiVersion}`;
   const started = Date.now();
   const res = await fetch(url, {
@@ -98,7 +103,8 @@ for (const e of samples) {
     console.log(`  ${e.sample.padEnd(4)} SKIP — no layout cache`);
     continue;
   }
-  const markdown = (layout as { analyzeResult?: { content?: string } }).analyzeResult?.content ?? "";
+  const markdown =
+    (layout as { analyzeResult?: { content?: string } }).analyzeResult?.content ?? "";
 
   try {
     const { fields, usage, latencyMs } = await extract(markdown);
@@ -111,11 +117,8 @@ for (const e of samples) {
     outTok += usage["completion_tokens"] ?? 0;
     totalMs += latencyMs;
 
-    const filled = Object.entries(fields).filter(
-      ([, v]) => v !== null && !Array.isArray(v),
-    ).length;
-    const rows =
-      (fields["payComponents"] as unknown[] | null)?.length ?? 0;
+    const filled = Object.entries(fields).filter(([, v]) => v !== null && !Array.isArray(v)).length;
+    const rows = (fields["payComponents"] as unknown[] | null)?.length ?? 0;
     console.log(
       `  ${e.sample.padEnd(4)} ${fmtMs(latencyMs).padStart(7)}  ${String(filled).padStart(2)}/26 scalars  ` +
         `${String(rows).padStart(2)} components  grounded ${String(grounding.grounded).padStart(2)}  ` +

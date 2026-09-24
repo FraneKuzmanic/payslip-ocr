@@ -7,7 +7,7 @@
 | **Revision** | v1 |
 | **Product stage** | Proof of concept / technology demonstrator |
 | **Primary market** | Croatia (Croatian-language payslips, EUR) |
-| **Primary extraction platform** | Azure AI Content Understanding (custom analyzer), West Europe |
+| **Primary extraction platform** | Azure AI Content Understanding (custom analyzer), Sweden Central |
 | **Sibling project** | `prototypes/receipt-ocr` — this prototype is forked from it |
 
 **Scope note.** This PRD defines *what* the prototype does and *which* platform it is built on. It deliberately does **not** specify: the final Content Understanding field-schema wording, per-field confidence thresholds, the exact fallback logic between extraction providers, or the outcome of the provider bake-off. Those are owned by the extraction implementation tasks (Phase 2) and by [ADR-0001](./docs/adr/0001-payslip-extraction-architecture.md).
@@ -122,7 +122,7 @@ The downstream consumer of the exported data is **deliberately unspecified**. Th
 
 - ✅ Render free tier, from a committed `render.yaml` Blueprint (API web service + static client)
 - ✅ Hosted Supabase project
-- ✅ One Azure AI Foundry / Content Understanding resource in West Europe
+- ✅ One Azure AI Foundry / Content Understanding resource in Sweden Central (Content Understanding GA is not offered in every EU region; Sweden Central was measured working in Phase 2)
 
 ### 4.6 Core functionality — Out of Scope
 
@@ -246,10 +246,10 @@ As a developer, I want the raw provider response retained, so that region mappin
 └───────────┬──────────────────────────────┬──────────────────────┘
             │                              │
 ┌───────────▼──────────┐      ┌────────────▼─────────────────────┐
-│  Supabase            │      │  Azure AI (West Europe)          │
+│  Supabase            │      │  Azure AI                        │
 │  Postgres + RLS      │      │  Content Understanding analyzer  │
 │  Auth                │      │  Document Intelligence (layout)  │
-│  Private storage     │      │  Anthropic API (challenger only) │
+│  Private storage     │      │  Azure OpenAI gpt-4.1 (both)     │
 └──────────────────────┘      └──────────────────────────────────┘
 ```
 
@@ -599,10 +599,10 @@ prototypes/payslip-ocr/
 
 | Technology | Version / ID | Notes |
 | --- | --- | --- |
-| `@azure/ai-content-understanding` | 1.1.0 | **primary**; api-version `2025-11-01` (GA) |
+| Content Understanding REST API | `2025-11-01` (GA) | **primary**; called over `fetch`, no SDK |
 | Content Understanding analyzer | custom, `baseAnalyzerId: prebuilt-document` | Croatian field schema, `estimateFieldSourceAndConfidence: true` |
 | `@azure-rest/ai-document-intelligence` | 1.1.0 | challenger path; api-version `2024-11-30`, `prebuilt-layout` |
-| `@anthropic-ai/sdk` | current | challenger path only; `claude-sonnet-5` with structured outputs |
+| Azure OpenAI `gpt-4.1` | deployment on the same Foundry resource | CU's completion model, and the challenger's LLM (strict JSON schema, called over `fetch`) |
 
 ### Data platform
 
@@ -651,7 +651,8 @@ AZURE_CU_API_VERSION                      # 2025-11-01
 EXTRACTION_PROVIDER                       # content-understanding | layout-llm
 AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT      # challenger path only
 AZURE_DOCUMENT_INTELLIGENCE_KEY           # challenger path only
-ANTHROPIC_API_KEY                         # challenger path only
+AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_KEY   # challenger path only
+AZURE_OPENAI_DEPLOYMENT, AZURE_OPENAI_API_VERSION
 EXTRACTION_TIMEOUT_MS, EXTRACTION_CONCURRENCY
 MAX_UPLOAD_BYTES, MAX_PDF_PAGES, MAX_FILES_PER_UPLOAD
 SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, SUPABASE_SECRET_KEY, STORAGE_BUCKET
@@ -668,7 +669,7 @@ Content type is determined by **byte sniffing**, never the filename or the decla
 
 A Croatian payslip contains name, home address, OIB, IBAN, exact salary, and often union membership and loan balances. For this prototype: any processing region is acceptable and a third-party LLM is acceptable, per an explicit product decision recorded in Appendix C. Payslips and their sources **are persisted**, scoped to the uploading user by row-level security.
 
-Worth stating plainly for anyone reading this later: **this posture is appropriate for a demo and not for production.** Azure Content Understanding in West Europe keeps data at rest in-region and retains async outputs for at most 24 hours; the Anthropic first-party API has **no EU inference region** (`inference_geo` accepts only `us` and `global`), so the challenger path sends document text outside the EU. Productionising would require a DPIA, and if it demands EU-only processing the challenger path must move to Bedrock `eu-west-1` or be dropped.
+Worth stating plainly for anyone reading this later: **this posture is appropriate for a demo and not for production.** Content Understanding and `gpt-4.1` share one Azure AI Foundry resource in Sweden Central; Content Understanding keeps data at rest in-region and retains async outputs for at most 24 hours. The challenger's Document Intelligence call runs on a separate, older resource whose region has not been recorded. Deployment data-zone settings and Azure OpenAI abuse-monitoring retention have not been reviewed either. Productionising would require a DPIA regardless.
 
 ### 9.5 Security out of scope
 
@@ -809,7 +810,7 @@ API shape, so it belongs in Phase 3's design rather than a later optimisation pa
 - ✅ Golden set: ground truth for all 11 samples, spot-checked
 - ✅ Scoring harness, including the guard that fails when an expectation goes unscored
 - ✅ `ContentUnderstandingProvider` with the Croatian field schema
-- ✅ `LayoutPlusLlmProvider` — `prebuilt-layout` + `claude-sonnet-5` + string-match grounding
+- ✅ `LayoutPlusLlmProvider` — `prebuilt-layout` + Azure OpenAI `gpt-4.1` + string-match grounding
 - ✅ Run both; record results; confirm or overturn ADR-0001
 
 **Validation.** Both providers score against the same golden set; the winner meets §11.3 or the ADR is amended with what we learned. **This phase gates everything after it** — no UI is built on an engine that has not been measured.
@@ -965,7 +966,7 @@ Verified **18 September 2026**.
 | Content Understanding field source + confidence | `estimateFieldSourceAndConfidence` | https://learn.microsoft.com/azure/ai-services/content-understanding/concepts/analyzer-reference |
 | Croatian OCR + `hr-HR` value normalisation | supported | https://learn.microsoft.com/azure/ai-services/content-understanding/language-region-support |
 | Azure Document Intelligence API | v4.0 `2024-11-30` | https://learn.microsoft.com/azure/ai-services/document-intelligence/ |
-| Claude model id (challenger) | `claude-sonnet-5` | https://platform.claude.com/docs/ |
+| Completion model (CU and challenger) | Azure OpenAI `gpt-4.1` | see `.agents/history/01-extraction-bakeoff.md` |
 | Croatian payslip regulation | *Pravilnik* NN 68/2023, Art. 2, 3(1), 10(1) | https://narodne-novine.nn.hr/clanci/sluzbeni/2023_06_68_1118.html |
 | Prirez abolition | NN 114/23, from 1 Jan 2024 | https://narodne-novine.nn.hr/ |
 | Osobni odbitak 2025 | €600/month | https://porezna-uprava.gov.hr/hr/porezne-izmjene-2025/8231 |

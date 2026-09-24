@@ -1,0 +1,95 @@
+{
+  "common": {
+    "appName": "Skener platnih lista",
+    "retry": "Pokušaj ponovno",
+    "loading": "Učitavanje",
+    "dismiss": "Zatvori",
+    "language": "Jezik",
+    "navCapture": "Skeniranje",
+    "mainNav": "Glavna navigacija",
+    "accountMenu": "Korisnički izbornik",
+    "signedInAs": "Prijavljeni ste kao",
+    "noEmail": "Nema adrese e-pošte"
+  },
+  "home": {
+    "title": "Digitalizacija platnih lista",
+    "subtitle": "Fotografirajte ili priložite platne liste, provjerite očitane podatke i izvezite ih."
+  },
+  "review": {
+    "sourceTitle": "Izvorna platna lista",
+    "sourceAlt": "Izvorni dokument platne liste",
+    "openSource": "Otvorite u novoj kartici",
+    "highlightsUnavailablePdf": "Isticanje polja nije dostupno za ovu PDF platnu listu.",
+    "pdfPage": "Stranica {{current}} od {{total}}",
+    "pdfPreviousPage": "Prethodna stranica",
+    "pdfNextPage": "Sljedeća stranica",
+    "lowConfidence": "Ovu vrijednost dodatno provjerite.",
+    "zoomIn": "Približite",
+    "zoomOut": "Udaljite",
+    "zoomReset": "Prilagodite prikazu",
+    "zoomLevel": "Zumiranje {{percent}}%",
+    "inspectEdit": "Uredite ovo polje",
+    "inspectClose": "Zatvorite",
+    "inspectEmpty": "Ovdje nije očitana vrijednost.",
+    "inspectEdited": "Izmijenjeno",
+    "inspectPrompt": "Dodirnite istaknutu vrijednost na platnoj listi da vidite što je očitano.",
+    "fields": {
+      "sellerName": "Naziv prodavatelja",
+      "sellerAddress": "Adresa prodavatelja",
+      "sellerOib": "OIB prodavatelja",
+      "buyerName": "Naziv kupca",
+      "buyerAddress": "Adresa kupca",
+      "buyerOib": "OIB kupca",
+      "documentNumber": "Broj dokumenta",
+      "issueDate": "Datum izdavanja",
+      "issueTime": "Vrijeme izdavanja",
+      "subtotal": "Međuzbroj",
+      "total": "Ukupno",
+      "currency": "Valuta",
+      "paymentMethod": "Način plaćanja",
+      "jir": "JIR",
+      "zki": "ZKI",
+      "rate": "Stopa",
+      "taxableBase": "Porezna osnovica",
+      "vatAmount": "Iznos PDV-a",
+      "description": "Opis",
+      "quantity": "Količina",
+      "unitPrice": "Jedinična cijena"
+    },
+    "errors": {
+      "load": "Nije moguće učitati platnu listu. Pokušajte ponovno."
+    }
+  },
+  "auth": {
+    "signIn": "Prijava",
+    "signUp": "Registracija",
+    "signOut": "Odjava",
+    "email": "E-adresa",
+    "password": "Lozinka",
+    "submitting": "Pričekajte…",
+    "noAccount": "Nemate korisnički račun? Registrirajte se",
+    "haveAccount": "Već imate korisnički račun? Prijavite se",
+    "errors": {
+      "invalidCredentials": "Neispravna e-adresa ili lozinka.",
+      "emailExists": "Korisnički račun s ovom e-adresom već postoji.",
+      "weakPassword": "Lozinka je preslaba. Upotrijebite najmanje 6 znakova.",
+      "emailInvalid": "Ova e-adresa nije ispravna.",
+      "validationFailed": "Provjerite unesene podatke i pokušajte ponovno.",
+      "rateLimited": "Previše pokušaja. Pričekajte trenutak i pokušajte ponovno.",
+      "signupDisabled": "Registracija novih korisnika trenutačno nije moguća.",
+      "emailNotConfirmed": "Ova e-adresa još nije potvrđena.",
+      "generic": "Došlo je do pogreške. Pokušajte ponovno."
+    }
+  },
+  "errors": {
+    "notFound": "Tražena stranica ne postoji."
+  },
+  "upload": {
+    "file_required": "Priložite jednu sliku platne liste ili PDF.",
+    "file_too_large": "Datoteka je prevelika. Najveća dopuštena veličina je 10 MB.",
+    "unsupported_media_type": "Ova vrsta datoteke nije podržana. Upotrijebite JPEG, PNG, HEIC fotografiju ili PDF.",
+    "pdf_encrypted": "Ovaj je PDF zaštićen lozinkom i nije ga moguće pročitati. Spremite nezaštićenu kopiju i pokušajte ponovno.",
+    "pdf_too_many_pages": "Ovaj PDF ima previše stranica. Prenesite dokument s najviše 10 stranica.",
+    "pdf_unreadable": "Ovaj PDF nije moguće pročitati. Možda je oštećen. Pokušajte ga ponovno izvesti."
+  }
+}

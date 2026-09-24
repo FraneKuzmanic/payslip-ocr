@@ -6,7 +6,7 @@
  * explicitly and reported; anything else that cannot be scored is a loud failure, because a
  * harness that silently drops what it cannot measure reports the health of the corpus it kept.
  */
-import { loadExpected, readCache, SCALAR_FIELDS, CRITICAL_FIELDS, TABLE_FIELDS } from "./common.ts";
+import { loadExpected, readCache, SCALAR_FIELDS, CRITICAL_FIELDS } from "./common.ts";
 
 const engine = process.argv[2] ?? "llm";
 const isCu = engine.startsWith("cu");
@@ -36,7 +36,20 @@ const textKey = (s: string): string =>
     .replace(/[^a-z0-9]/gi, "")
     .toLowerCase();
 
-const MONTHS = ["siječanj","veljača","ožujak","travanj","svibanj","lipanj","srpanj","kolovoz","rujan","listopad","studeni","prosinac"];
+const MONTHS = [
+  "siječanj",
+  "veljača",
+  "ožujak",
+  "travanj",
+  "svibanj",
+  "lipanj",
+  "srpanj",
+  "kolovoz",
+  "rujan",
+  "listopad",
+  "studeni",
+  "prosinac",
+];
 
 /**
  * Canonicalise a printed date/period to the golden set's form.
@@ -49,7 +62,7 @@ const MONTHS = ["siječanj","veljača","ožujak","travanj","svibanj","lipanj","s
 function asDate(s: string): string | null {
   const t = s.trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
-  const dmy = /^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})\.?$/.exec(t);
+  const dmy = /^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})\.?$/.exec(t);
   if (dmy) {
     const [, d, m, y] = dmy;
     const yyyy = y!.length === 2 ? `20${y}` : y!;
@@ -66,14 +79,17 @@ function asPeriod(s: string): string | null {
   const god = /godina\s*(\d{4}).*?mjesec\s*(\d{1,2})/.exec(t);
   if (god) return `${god[1]}-${god[2]!.padStart(2, "0")}`;
   const godNamed = new RegExp(`godina\\s*(\\d{4}).*?mjesec\\s*(${MONTHS.join("|")})`).exec(t);
-  if (godNamed) return `${godNamed[1]}-${String(MONTHS.indexOf(godNamed[2]!) + 1).padStart(2, "0")}`;
+  if (godNamed)
+    return `${godNamed[1]}-${String(MONTHS.indexOf(godNamed[2]!) + 1).padStart(2, "0")}`;
   // "1.05.2025 do 31.05.2025" -> take the first date's year-month
-  const span = /(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})/.exec(t);
+  const span = /(\d{1,2})[./-](\d{1,2})[./-](\d{4})/.exec(t);
   if (span) return `${span[3]}-${span[2]!.padStart(2, "0")}`;
-  const slash = /^(\d{1,2})[.\/](\d{4})$/.exec(t);
+  const slash = /^(\d{1,2})[./](\d{4})$/.exec(t);
   if (slash) return `${slash[2]}-${slash[1]!.padStart(2, "0")}`;
   return null;
 }
+
+const cy = (v: string): string => (v === "€" ? "EUR" : v === "kn" ? "HRK" : v.toUpperCase());
 
 function matches(expected: unknown, actual: unknown, field?: string): boolean {
   const e = norm(expected);
@@ -92,7 +108,6 @@ function matches(expected: unknown, actual: unknown, field?: string): boolean {
     if (ed && ad) return ed === ad;
   }
   if (field === "currency") {
-    const cy = (v: string): string => (v === "€" ? "EUR" : v === "kn" ? "HRK" : v.toUpperCase());
     return cy(e) === cy(a);
   }
 
@@ -110,15 +125,21 @@ function extractedFields(sample: string): Record<string, unknown> | null {
 
   // Content Understanding: result.contents[].fields[name].value*
   const contents =
-    (raw["result"] as { contents?: { fields?: Record<string, Record<string, unknown>> }[] })?.contents ?? [];
+    (raw["result"] as { contents?: { fields?: Record<string, Record<string, unknown>> }[] })
+      ?.contents ?? [];
   const fields = contents[0]?.fields;
   if (!fields) return null;
   const out: Record<string, unknown> = {};
   for (const [name, f] of Object.entries(fields)) {
     if (f["valueArray"]) {
-      out[name] = (f["valueArray"] as { valueObject?: Record<string, Record<string, unknown>> }[]).map((row) =>
+      out[name] = (
+        f["valueArray"] as { valueObject?: Record<string, Record<string, unknown>> }[]
+      ).map((row) =>
         Object.fromEntries(
-          Object.entries(row.valueObject ?? {}).map(([k, v]) => [k, v["valueString"] ?? v["value"] ?? null]),
+          Object.entries(row.valueObject ?? {}).map(([k, v]) => [
+            k,
+            v["valueString"] ?? v["value"] ?? null,
+          ]),
         ),
       );
     } else {
@@ -149,7 +170,9 @@ for (const e of samples) {
     unscored++;
     continue;
   }
-  const skip = new Set((e["unscorable"] as { field: string }[] | undefined)?.map((u) => u.field) ?? []);
+  const skip = new Set(
+    (e["unscorable"] as { field: string }[] | undefined)?.map((u) => u.field) ?? [],
+  );
 
   let n = 0;
   let hit = 0;
@@ -216,7 +239,7 @@ if (unscored) console.log(`  !! ${unscored} sample(s) produced NO output and wer
 
 const worst = [...perField.entries()]
   .filter(([, v]) => v.hit < v.total)
-  .sort((a, b) => a[1].hit / a[1].total - b[1].hit / b[1].total);
+  .toSorted((a, b) => a[1].hit / a[1].total - b[1].hit / b[1].total);
 if (worst.length) {
   console.log(`\n  Fields the engine gets wrong most often:`);
   for (const [f, v] of worst.slice(0, 12)) {

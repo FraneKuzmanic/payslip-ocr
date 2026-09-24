@@ -61,7 +61,11 @@ const analyzerDefinition = {
   },
 };
 
-async function poll(opUrl: string, label: string, timeoutMs = 300_000): Promise<Record<string, unknown>> {
+async function poll(
+  opUrl: string,
+  label: string,
+  timeoutMs = 300_000,
+): Promise<Record<string, unknown>> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const r = await fetch(opUrl, { headers });
@@ -85,12 +89,16 @@ async function ensureAnalyzer(): Promise<void> {
   } else {
     const existing = await fetch(base, { headers });
     if (existing.ok) {
-      console.log(`  analyzer '${analyzerId}' already exists — reusing (pass --recreate to rebuild)`);
+      console.log(
+        `  analyzer '${analyzerId}' already exists — reusing (pass --recreate to rebuild)`,
+      );
       return;
     }
   }
 
-  console.log(`  creating analyzer '${analyzerId}' with ${Object.keys(PAYSLIP_FIELDS).length} fields...`);
+  console.log(
+    `  creating analyzer '${analyzerId}' with ${Object.keys(PAYSLIP_FIELDS).length} fields...`,
+  );
   const res = await fetch(base, {
     method: "PUT",
     headers: { ...headers, "Content-Type": "application/json" },
@@ -131,7 +139,8 @@ async function submitWithRetry(bytes: Buffer, contentType: string): Promise<stri
           signal: AbortSignal.timeout(SUBMIT_TIMEOUT_MS),
         },
       );
-      if (!res.ok) throw new Error(`analyze HTTP ${res.status}: ${(await res.text()).slice(0, 400)}`);
+      if (!res.ok)
+        throw new Error(`analyze HTTP ${res.status}: ${(await res.text()).slice(0, 400)}`);
       const opUrl = res.headers.get("operation-location");
       if (!opUrl) throw new Error("no operation-location header on analyze response");
       return opUrl;
@@ -140,10 +149,15 @@ async function submitWithRetry(bytes: Buffer, contentType: string): Promise<stri
       if (!(err instanceof DOMException && err.name === "TimeoutError")) throw err;
     }
   }
-  throw new Error(`submit stalled on all ${SUBMIT_TRIES} attempts: ${String(lastErr).slice(0, 200)}`);
+  throw new Error(
+    `submit stalled on all ${SUBMIT_TRIES} attempts: ${String(lastErr).slice(0, 200)}`,
+  );
 }
 
-async function analyse(bytes: Buffer, contentType: string): Promise<{ result: unknown; latencyMs: number }> {
+async function analyse(
+  bytes: Buffer,
+  contentType: string,
+): Promise<{ result: unknown; latencyMs: number }> {
   // `:analyze` takes JSON ({url: ...}) only; `:analyzeBinary` is the one that accepts raw
   // bytes, which is what we need for local files that must not be published anywhere.
   const started = Date.now();
@@ -169,8 +183,9 @@ for (const e of samples) {
   try {
     const { result, latencyMs } = await analyse(bytes, contentType);
     writeCache(cacheKind, e.sample, { latencyMs, apiVersion, analyzerId, ...(result as object) });
-    const contents = (result as { result?: { contents?: { fields?: Record<string, unknown> }[] } })
-      .result?.contents ?? [];
+    const contents =
+      (result as { result?: { contents?: { fields?: Record<string, unknown> }[] } }).result
+        ?.contents ?? [];
     const fields = contents[0]?.fields ?? {};
     const filled = Object.values(fields).filter(
       (f) => f && (f as { valueString?: unknown }).valueString != null,

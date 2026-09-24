@@ -37,7 +37,9 @@ export const PAYSLIP_FIELDS: Record<string, FieldDef> = {
       "Može biti ispisano 'PREZIME IME'. Zanemari broj u zagradama iza imena (matični broj radnika).",
   ),
   employeeAddress: s("Adresa radnika (ulica, broj, poštanski broj, grad)."),
-  employeeOib: s("OIB radnika — točno 11 znamenki, iz bloka radnika. Nije isti kao OIB poslodavca."),
+  employeeOib: s(
+    "OIB radnika — točno 11 znamenki, iz bloka radnika. Nije isti kao OIB poslodavca.",
+  ),
   employeeIban: s(
     "IBAN tekućeg računa radnika na koji se isplaćuje plaća. NE uzimaj IBAN primatelja poreza (redak 'Primatelj:') ni IBAN poslodavca.",
   ),
@@ -71,8 +73,12 @@ export const PAYSLIP_FIELDS: Record<string, FieldDef> = {
       "Labeli: '4. DOPRINOSI IZ PLAĆE (NA TERET ZAPOSLENIKA)', 'Ukupno doprinosi', 'UTVRĐIVANJE DOPRINOSA IZ OSNOVICE', " +
       "'IZDACI', 'Doprinosi iz plaća'. NE brkaj s 'doprinosi NA plaću', koji su na teret poslodavca.",
   ),
-  doprinosMioIStup: s("Doprinos za mirovinsko osiguranje I. STUP (generacijska solidarnost), stopa 15%."),
-  doprinosMioIiStup: s("Doprinos za mirovinsko osiguranje II. STUP (individualna kapitalizirana štednja), stopa 5%."),
+  doprinosMioIStup: s(
+    "Doprinos za mirovinsko osiguranje I. STUP (generacijska solidarnost), stopa 15%.",
+  ),
+  doprinosMioIiStup: s(
+    "Doprinos za mirovinsko osiguranje II. STUP (individualna kapitalizirana štednja), stopa 5%.",
+  ),
   dohodak: s(
     "DOHODAK = bruto plaća umanjena za doprinose iz plaće. Labeli: '5. DOHODAK (1. – 4.)', '8. DOHODAK', " +
       "'DOHODAK (VIII.1. - VIII.2.)', 'DOHODAK - Plaća umanjena za doprinose'. Nije isto što i neto plaća.",
@@ -145,7 +151,9 @@ export const PAYSLIP_FIELDS: Record<string, FieldDef> = {
       vjerovnik: s("Vjerovnik kojem se obustava doznačuje; null ako nije ispisan."),
       iznos: s("Iznos obustave u eurima."),
       ostatakSalda: s("Ostatak salda kredita; null ako nije ispisan."),
-      brojRata: s("Preostali broj rata, prepisan kako je ispisan (npr. '14' ili '10/120'); null ako nije ispisan."),
+      brojRata: s(
+        "Preostali broj rata, prepisan kako je ispisan (npr. '14' ili '10/120'); null ako nije ispisan.",
+      ),
     },
   },
   neoporeziviPrimici: {
@@ -153,7 +161,9 @@ export const PAYSLIP_FIELDS: Record<string, FieldDef> = {
     description:
       "Pojedinačni neoporezivi primici i naknade. Zbroj iznosa mora biti jednak ukupnom iznosu. Prazan niz ako ih nema.",
     items: {
-      naziv: s("Naziv neoporezivog primitka (npr. 'Trošak prehrane', 'Prijevoz', 'Naknada za topli obrok')."),
+      naziv: s(
+        "Naziv neoporezivog primitka (npr. 'Trošak prehrane', 'Prijevoz', 'Naknada za topli obrok').",
+      ),
       iznos: s("Iznos u eurima."),
     },
   },

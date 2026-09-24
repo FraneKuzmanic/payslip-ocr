@@ -80,6 +80,31 @@ Push back strongly when Im wrong. Actively challenge weak reasoning. If I push b
 
 Learn from your mistakes. Don't just patch bugs and forget. Turn failures into global rules that build institutional knowledge into the AI layer.
 
+## 7. Git remotes
+
+The monorepo has two remotes, and neither is this project's:
+
+- `origin` is Azure DevOps. Push to it only when explicitly asked.
+- `github` is **receipt-ocr's** mirror (`FraneKuzmanic/receipt-ocr`), and its `main` drives
+  receipt-ocr's live Render deploy. Payslip commits and
+  `git subtree push --prefix=prototypes/payslip-ocr` stay off it.
+
+Payslip's own mirror and deploy path are defined by ROADMAP Task 13. Until then, committing is
+local only.
+
+## 8. Conventions
+
+The gotchas no config file states:
+
+- Lint with **oxlint**. TypeScript 7 is the Go port with no JS compiler API, so
+  `typescript-eslint` cannot run.
+- Import routing from **`react-router`**; `react-router-dom` is not a dependency.
+- In `api/` and `shared/` (`nodenext`), relative imports carry a `.js` extension; `client/`
+  (`bundler`) imports without one.
+- Money and hours are **decimal strings**, with `big.js` for arithmetic, so cents survive.
+- Every user-facing string is an `en` + `hr` key pair; a guard test enforces the parity.
+- Confidence marks a value for attention and always leaves the value in place.
+
 ## Agent skills
 
 ### Issue tracker

@@ -1,0 +1,16 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": [],
+    "resolveJsonModule": true,
+    "noEmit": true,
+    "declaration": false,
+    "composite": false
+  },
+  "include": ["src"],
+  "references": [{ "path": "../shared" }]
+}

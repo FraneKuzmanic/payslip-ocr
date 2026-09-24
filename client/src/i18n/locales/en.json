@@ -1,0 +1,95 @@
+{
+  "common": {
+    "appName": "Payslip OCR",
+    "retry": "Try again",
+    "loading": "Loading",
+    "dismiss": "Dismiss",
+    "language": "Language",
+    "navCapture": "Scan",
+    "mainNav": "Main navigation",
+    "accountMenu": "User menu",
+    "signedInAs": "Signed in as",
+    "noEmail": "No email address"
+  },
+  "home": {
+    "title": "Payslip digitization",
+    "subtitle": "Photograph or upload your payslips, check the extracted data and export it."
+  },
+  "review": {
+    "sourceTitle": "Original payslip",
+    "sourceAlt": "Original payslip document",
+    "openSource": "Open in a new tab",
+    "highlightsUnavailablePdf": "Field highlighting is not available for this PDF payslip.",
+    "pdfPage": "Page {{current}} of {{total}}",
+    "pdfPreviousPage": "Previous page",
+    "pdfNextPage": "Next page",
+    "lowConfidence": "This value may need extra checking.",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "zoomReset": "Fit to view",
+    "zoomLevel": "Zoom {{percent}}%",
+    "inspectEdit": "Edit this field",
+    "inspectClose": "Close",
+    "inspectEmpty": "No value was read here.",
+    "inspectEdited": "Edited",
+    "inspectPrompt": "Tap a highlighted value on the payslip to see what was read.",
+    "fields": {
+      "sellerName": "Seller name",
+      "sellerAddress": "Seller address",
+      "sellerOib": "Seller OIB",
+      "buyerName": "Buyer name",
+      "buyerAddress": "Buyer address",
+      "buyerOib": "Buyer OIB",
+      "documentNumber": "Document number",
+      "issueDate": "Issue date",
+      "issueTime": "Issue time",
+      "subtotal": "Subtotal",
+      "total": "Total",
+      "currency": "Currency",
+      "paymentMethod": "Payment method",
+      "jir": "JIR",
+      "zki": "ZKI",
+      "rate": "Rate",
+      "taxableBase": "Taxable base",
+      "vatAmount": "VAT amount",
+      "description": "Description",
+      "quantity": "Quantity",
+      "unitPrice": "Unit price"
+    },
+    "errors": {
+      "load": "The payslip could not be loaded. Try again."
+    }
+  },
+  "auth": {
+    "signIn": "Sign in",
+    "signUp": "Create account",
+    "signOut": "Sign out",
+    "email": "Email address",
+    "password": "Password",
+    "submitting": "Please wait…",
+    "noAccount": "No account yet? Create one",
+    "haveAccount": "Already have an account? Sign in",
+    "errors": {
+      "invalidCredentials": "Incorrect email address or password.",
+      "emailExists": "An account with this email address already exists.",
+      "weakPassword": "This password is too weak. Use at least 6 characters.",
+      "emailInvalid": "This email address is not valid.",
+      "validationFailed": "Check the details you entered and try again.",
+      "rateLimited": "Too many attempts. Wait a moment and try again.",
+      "signupDisabled": "New registrations are currently disabled.",
+      "emailNotConfirmed": "This email address has not been confirmed yet.",
+      "generic": "Something went wrong. Please try again."
+    }
+  },
+  "errors": {
+    "notFound": "The page you are looking for does not exist."
+  },
+  "upload": {
+    "file_required": "Attach one payslip image or PDF.",
+    "file_too_large": "This file is too large. The maximum size is 10 MB.",
+    "unsupported_media_type": "This file type is not supported. Use a JPEG, PNG, HEIC photo or a PDF.",
+    "pdf_encrypted": "This PDF is password-protected and cannot be read. Save an unprotected copy and try again.",
+    "pdf_too_many_pages": "This PDF has too many pages. Upload a document of up to 10 pages.",
+    "pdf_unreadable": "This PDF could not be read. It may be damaged. Try exporting it again."
+  }
+}

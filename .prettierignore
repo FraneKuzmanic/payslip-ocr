@@ -1,0 +1,18 @@
+node_modules
+dist
+coverage
+*.tsbuildinfo
+api/src/database.types.ts
+supabase/.temp
+supabase/.branches
+
+# Reviewed golden-set ground truth: hand-grouped, and a formatting diff would read as a fixture change.
+.agents/fixtures/
+# Tool-managed.
+skills-lock.json
+# Per-developer Claude Code permissions, git-ignored globally rather than by this repo.
+.claude/settings.local.json
+
+# Authored prose (PRD, CLAUDE.md, roadmap, plans, history) is owned by humans.
+# Prettier reflows markdown tables, so keep it away from documentation entirely.
+*.md

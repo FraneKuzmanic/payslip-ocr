@@ -29,8 +29,18 @@ export interface Region {
 }
 
 export const CROATIAN_MONTHS = [
-  "siječanj", "veljača", "ožujak", "travanj", "svibanj", "lipanj",
-  "srpanj", "kolovoz", "rujan", "listopad", "studeni", "prosinac",
+  "siječanj",
+  "veljača",
+  "ožujak",
+  "travanj",
+  "svibanj",
+  "lipanj",
+  "srpanj",
+  "kolovoz",
+  "rujan",
+  "listopad",
+  "studeni",
+  "prosinac",
 ];
 
 /**
@@ -116,6 +126,8 @@ function key(s: string): string {
     .toLowerCase();
 }
 
+const clamp = (v: number): number => Math.min(1, Math.max(0, v));
+
 function envelope(words: LayoutWord[], page: LayoutPage): { x: number; y: number }[] {
   const xs: number[] = [];
   const ys: number[] = [];
@@ -125,7 +137,6 @@ function envelope(words: LayoutWord[], page: LayoutPage): { x: number; y: number
       ys.push(w.polygon[i + 1]!);
     }
   }
-  const clamp = (v: number): number => Math.min(1, Math.max(0, v));
   const x0 = clamp(Math.min(...xs) / page.width);
   const x1 = clamp(Math.max(...xs) / page.width);
   const y0 = clamp(Math.min(...ys) / page.height);
@@ -170,7 +181,11 @@ export function groundValue(
       if (acc.length > 200) break;
       if (targets.includes(acc)) {
         const run = words.slice(i, i + n + 1);
-        out.push({ page: page.pageNumber, corners: envelope(run, page), matchedText: run.map((r) => r.content).join(" ") });
+        out.push({
+          page: page.pageNumber,
+          corners: envelope(run, page),
+          matchedText: run.map((r) => r.content).join(" "),
+        });
         break;
       }
     }

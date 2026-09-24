@@ -56,7 +56,13 @@ for (const e of samples) {
   const result = (await poller.pollUntilDone()).body as {
     analyzeResult?: {
       content?: string;
-      pages?: { pageNumber: number; width: number; height: number; unit: string; words?: unknown[] }[];
+      pages?: {
+        pageNumber: number;
+        width: number;
+        height: number;
+        unit: string;
+        words?: unknown[];
+      }[];
       tables?: unknown[];
     };
   };
@@ -66,7 +72,12 @@ for (const e of samples) {
   const pages = ar?.pages ?? [];
   const words = pages.reduce((n, p) => n + (p.words?.length ?? 0), 0);
 
-  writeCache("layout", e.sample, { latencyMs, apiVersion: API_VERSION, modelId: MODEL_ID, ...result });
+  writeCache("layout", e.sample, {
+    latencyMs,
+    apiVersion: API_VERSION,
+    modelId: MODEL_ID,
+    ...result,
+  });
   analysed++;
 
   console.log(

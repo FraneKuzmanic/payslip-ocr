@@ -1,7 +1,7 @@
 # Spec — Two-pass extraction (latency)
 
 **Status:** proposed, not implemented
-**Owner:** Phase 3 (review screen), because it changes the API shape
+**Owner:** ROADMAP Task 05, because it changes the API shape
 **Evidence:** `.agents/history/01-extraction-bakeoff.md`
 
 ## Problem

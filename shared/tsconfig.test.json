@@ -1,0 +1,15 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    // The build config keeps `types: []` so the shipped package stays browser-safe. Tests
+    // run in Node and the provider-independence guard reads shared/src from disk, so node
+    // types are needed here and only here.
+    "types": ["node"],
+    "noEmit": true,
+    "declaration": false,
+    "composite": false
+  },
+  "include": ["src/**/*"]
+}

@@ -51,8 +51,6 @@ export const CRITICAL_FIELDS: ScalarField[] = [
   "iznosZaIsplatu",
 ];
 
-export const TABLE_FIELDS = ["payComponents", "obustave", "neoporeziviPrimici"] as const;
-
 export interface Expected {
   sample: string;
   sourceFile: string;
@@ -67,7 +65,7 @@ export interface Expected {
 export function loadExpected(): Expected[] {
   return readdirSync(EXPECTED_DIR)
     .filter((f) => f.endsWith(".json"))
-    .sort()
+    .toSorted()
     .map((f) => JSON.parse(readFileSync(join(EXPECTED_DIR, f), "utf8")) as Expected);
 }
 

@@ -83,7 +83,7 @@ investigation and is recorded with its reasoning.
 | — | Discovery: PRD, CONTEXT, ADR-0001 | ✅ complete |
 | — | Golden set: 11 fixtures, verifier, README | ✅ complete |
 | — | **Phase 2 bake-off** — engine chosen by measurement | ✅ complete → [`history/01`](./history/01-extraction-bakeoff.md) |
-| 01 | Fork, rename and strip | ⬜ not started |
+| 01 | Fork, rename and strip | ✅ complete → [`history/01-fork`](./history/01-fork-rename-strip.md) |
 | 02 | Canonical payslip domain model & shared contracts | ⬜ not started |
 | 03 | Session & payslip persistence, upload API | ⬜ not started |
 | 04 | Content Understanding provider, mapper & scoring harness | ⬜ not started |
@@ -166,7 +166,7 @@ a guard that stops provider vocabulary leaking in.
 - Port `money.ts` (big.js, `Big.strict = true`) and `datetime.ts`; extend the latter with the
   Croatian month names and `DD.MM.YYYY` / two-digit-year forms, lifted from
   `scripts/bakeoff/ground.ts` and `score.ts` rather than rewritten.
-- `shared/src/warnings.ts` — the eight warning codes from PRD §7.9 as a closed taxonomy.
+- `shared/src/warnings.ts` — the nine warning codes from PRD §7.9 as a closed taxonomy.
 - `shared/src/api.ts` — every request and response DTO, requests `.strict()`.
 - Per-field metadata type `{confidence, source}` and the `SourceRegion` wire shape.
 
@@ -302,7 +302,7 @@ check first.
 
 **Scope**
 
-- The eight rules from PRD §7.9: `missing_critical_field` over the seven critical fields,
+- The nine rules from PRD §7.9: `missing_critical_field` over the seven critical fields,
   `unparseable_amount`, `unparseable_date`, `oib_checksum_failed`, and the four payroll identities
   (`dohodak`, `porezna_osnovica`, `neto`, `isplata`) plus `pay_components_sum_mismatch`.
 - **Absolute tolerance of 0.01, never relative** — doc-guard's identities were correct but
