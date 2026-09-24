@@ -1,4 +1,5 @@
-import { PDFDocument } from "pdf-lib";
+import { createHash, randomBytes } from "node:crypto";
+import { PDFDocument, PDFHexString } from "pdf-lib";
 import { describe, expect, it } from "vitest";
 import { HttpError } from "../middleware/error-handler.js";
 import { validateSourceFile } from "./source-file.js";
@@ -47,12 +48,26 @@ describe("validateSourceFile", () => {
     );
   });
 
-  it("rejects an encrypted PDF", async () => {
+  it("rejects a PDF that needs a password to open", async () => {
+    await expectHttpError(
+      validateSourceFile(file(await encryptedPdf({ openWithoutPassword: false }))),
+      422,
+      "pdf_encrypted",
+    );
+  });
+
+  it("accepts a permissions-only encrypted PDF, which opens without a password", async () => {
+    await expect(
+      validateSourceFile(file(await encryptedPdf({ openWithoutPassword: true }))),
+    ).resolves.toMatchObject({ contentType: "application/pdf", pageCount: 1 });
+  });
+
+  it("rejects a PDF whose encryption entry is broken as unreadable", async () => {
     const bytes = Buffer.from(
       (await pdf(1)).toString("latin1").replace(/trailer\s*\n?<</, "trailer\n<< /Encrypt 1 0 R "),
       "latin1",
     );
-    await expectHttpError(validateSourceFile(file(bytes)), 422, "pdf_encrypted");
+    await expectHttpError(validateSourceFile(file(bytes)), 422, "pdf_unreadable");
   });
 
   it("rejects a PDF over the configured page limit", async () => {
@@ -104,6 +119,64 @@ async function pdf(pageCount: number): Promise<Buffer> {
   const document = await PDFDocument.create();
   for (let page = 0; page < pageCount; page += 1) document.addPage();
   return Buffer.from(await document.save({ useObjectStreams: false }));
+}
+
+/** The 32-byte password padding of the PDF standard security handler (ISO 32000-1 §7.6.3.3). */
+const PASSWORD_PADDING = Buffer.from(
+  "28BF4E5E4E758A4164004E56FFFA01082E2E00B6D0683E802F0CA9FE6453697A",
+  "hex",
+);
+
+/**
+ * A one-page PDF under the standard security handler, revision 2. With `openWithoutPassword` its
+ * `/U` is the one an empty user password produces (algorithms 2 and 4), which is what a
+ * permissions-only PDF such as golden-set B01 carries; otherwise `/U` matches no empty password.
+ */
+async function encryptedPdf({ openWithoutPassword }: { openWithoutPassword: boolean }) {
+  const document = await PDFDocument.create();
+  document.addPage();
+  const owner = randomBytes(32);
+  const id = randomBytes(16);
+  const permissions = -4;
+  const permissionBytes = Buffer.alloc(4);
+  permissionBytes.writeInt32LE(permissions);
+  const key = createHash("md5")
+    .update(Buffer.concat([PASSWORD_PADDING, owner, permissionBytes, id]))
+    .digest()
+    .subarray(0, 5);
+  const user = openWithoutPassword ? rc4(key, PASSWORD_PADDING) : randomBytes(32);
+
+  const context = document.context;
+  context.trailerInfo.Encrypt = context.register(
+    context.obj({
+      Filter: "Standard",
+      V: 1,
+      R: 2,
+      Length: 40,
+      P: permissions,
+      O: PDFHexString.of(owner.toString("hex")),
+      U: PDFHexString.of(user.toString("hex")),
+    }),
+  );
+  const fileId = PDFHexString.of(id.toString("hex"));
+  context.trailerInfo.ID = context.obj([fileId, fileId]);
+  return Buffer.from(await document.save({ useObjectStreams: false }));
+}
+
+function rc4(key: Buffer, data: Buffer): Buffer {
+  const state = Array.from({ length: 256 }, (_, index) => index);
+  for (let i = 0, j = 0; i < 256; i++) {
+    j = (j + state[i]! + key[i % key.length]!) % 256;
+    [state[i], state[j]] = [state[j]!, state[i]!];
+  }
+  const out = Buffer.alloc(data.length);
+  for (let n = 0, i = 0, j = 0; n < data.length; n++) {
+    i = (i + 1) % 256;
+    j = (j + state[i]!) % 256;
+    [state[i], state[j]] = [state[j]!, state[i]!];
+    out[n] = data[n]! ^ state[(state[i]! + state[j]!) % 256]!;
+  }
+  return out;
 }
 
 async function expectHttpError(

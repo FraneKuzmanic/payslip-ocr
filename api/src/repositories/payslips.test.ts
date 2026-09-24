@@ -72,6 +72,12 @@ describe("mapPayslipRow", () => {
     );
   });
 
+  it("maps a row read without raw_provider_result", () => {
+    const { raw_provider_result: _raw, ...row } = payslipRow();
+
+    expect(mapPayslipRow(row).id).toBe(PAYSLIP_ID);
+  });
+
   it("reads money from canonical_data, never from the generated numeric column", () => {
     const payslip = mapPayslipRow(
       payslipRow({ canonical_data: { netoPlaca: "2298.970" }, neto_placa: 2298.97 }),
@@ -110,6 +116,46 @@ describe("PayslipRepository.create", () => {
     await expect(rejection).rejects.toMatchObject({ code: "query_failed" });
   });
 });
+
+describe("PayslipRepository.findDetailState", () => {
+  it.each([
+    ["null metadata", null, []],
+    [
+      "metadata listing unreadable paths",
+      { unreadableFields: ["brutoPlaca"], latencyMs: 1 },
+      ["brutoPlaca"],
+    ],
+  ])("reads unreadableFields from %s", async (_name, metadata, expected) => {
+    const repository = new PayslipRepository(
+      singleRow(payslipRow({ extraction_metadata: metadata })),
+      USER_ID,
+    );
+
+    expect((await repository.findDetailState(PAYSLIP_ID))?.unreadableFields).toEqual(expected);
+  });
+
+  it("rejects malformed extraction metadata as invalid_data", async () => {
+    const repository = new PayslipRepository(
+      singleRow(payslipRow({ extraction_metadata: { unreadableFields: "brutoPlaca" } })),
+      USER_ID,
+    );
+
+    await expect(repository.findDetailState(PAYSLIP_ID)).rejects.toMatchObject({
+      code: "invalid_data",
+    });
+  });
+});
+
+/** The `from().select().eq().eq().is().maybeSingle()` chain `findDetailState` uses. */
+function singleRow(row: PayslipRow): SupabaseClient<Database> {
+  const chain = {
+    select: () => chain,
+    eq: () => chain,
+    is: () => chain,
+    maybeSingle: () => Promise.resolve({ data: row, error: null }),
+  };
+  return { from: () => chain } as unknown as SupabaseClient<Database>;
+}
 
 /** The minimal `from().insert().select().single()` chain `create` uses, resolving to an error. */
 function failingInsert(error: { code: string; message: string }): SupabaseClient<Database> {

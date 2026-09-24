@@ -5,6 +5,13 @@ import { resolve } from "node:path";
 // writing to a disposable local database while actually writing to the real project is exactly the
 // failure this split exists to prevent, so the resolved host is always printed before any test runs.
 const useLocal = process.argv.includes("--local");
+// The paid golden run (Task 04 D17): hosted only, because it calls the real extraction service.
+const extraction = process.argv.includes("--extraction");
+
+if (extraction && useLocal) {
+  console.error("The extraction golden run is hosted only; it cannot run with --local.");
+  process.exit(1);
+}
 
 const supabaseEntry = resolve("node_modules", "supabase", "dist", "supabase.js");
 const vitestEntry = resolve("node_modules", "vitest", "vitest.mjs");
@@ -13,7 +20,9 @@ const target = useLocal ? resolveLocalTarget() : resolveHostedTarget();
 
 console.log(`\nSupabase integration tests → ${target.label}: ${hostOf(target.env.SUPABASE_URL)}\n`);
 
-const integrationFiles = ["src/auth/auth.integration.ts", "src/routes/payslips.integration.ts"];
+const integrationFiles = extraction
+  ? ["src/routes/extraction.integration.ts"]
+  : ["src/auth/auth.integration.ts", "src/routes/payslips.integration.ts"];
 
 for (const file of integrationFiles) {
   const test = spawnSync(

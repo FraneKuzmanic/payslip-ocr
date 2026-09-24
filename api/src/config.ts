@@ -20,6 +20,12 @@ export interface Config {
   readonly STORAGE_BUCKET: string;
   readonly MAX_UPLOAD_BYTES: number;
   readonly MAX_PDF_PAGES: number;
+  readonly AZURE_CONTENT_UNDERSTANDING_ENDPOINT: string;
+  readonly AZURE_CONTENT_UNDERSTANDING_KEY: string;
+  readonly AZURE_CU_ANALYZER_ID: string;
+  readonly AZURE_CU_API_VERSION: string;
+  readonly EXTRACTION_TIMEOUT_MS: number;
+  readonly EXTRACTION_CONCURRENCY: number;
 }
 
 const problems: string[] = [];
@@ -84,6 +90,28 @@ const parsed: Config = {
   STORAGE_BUCKET: readRequired("STORAGE_BUCKET", process.env["STORAGE_BUCKET"]),
   MAX_UPLOAD_BYTES: readCount("MAX_UPLOAD_BYTES", process.env["MAX_UPLOAD_BYTES"], 10485760),
   MAX_PDF_PAGES: readCount("MAX_PDF_PAGES", process.env["MAX_PDF_PAGES"], 10),
+  // Required, like Supabase: an API that boots and then fails every extraction is harder to
+  // diagnose than one that refuses to start.
+  AZURE_CONTENT_UNDERSTANDING_ENDPOINT: readRequired(
+    "AZURE_CONTENT_UNDERSTANDING_ENDPOINT",
+    process.env["AZURE_CONTENT_UNDERSTANDING_ENDPOINT"],
+  ).replace(/\/$/, ""),
+  AZURE_CONTENT_UNDERSTANDING_KEY: readRequired(
+    "AZURE_CONTENT_UNDERSTANDING_KEY",
+    process.env["AZURE_CONTENT_UNDERSTANDING_KEY"],
+  ),
+  AZURE_CU_ANALYZER_ID: readRequired("AZURE_CU_ANALYZER_ID", process.env["AZURE_CU_ANALYZER_ID"]),
+  AZURE_CU_API_VERSION: readRequired("AZURE_CU_API_VERSION", process.env["AZURE_CU_API_VERSION"]),
+  EXTRACTION_TIMEOUT_MS: readCount(
+    "EXTRACTION_TIMEOUT_MS",
+    process.env["EXTRACTION_TIMEOUT_MS"],
+    120000,
+  ),
+  EXTRACTION_CONCURRENCY: readCount(
+    "EXTRACTION_CONCURRENCY",
+    process.env["EXTRACTION_CONCURRENCY"],
+    3,
+  ),
 };
 
 if (problems.length > 0) {

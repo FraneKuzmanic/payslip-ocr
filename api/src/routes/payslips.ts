@@ -9,6 +9,7 @@ import {
 import { HttpError } from "../middleware/error-handler.js";
 import { authenticated } from "../middleware/require-auth.js";
 import { PayslipRepository } from "../repositories/payslips.js";
+import { STALE_EXTRACTION_MS } from "../services/payslip-extraction.js";
 import {
   SOURCE_URL_TTL_SECONDS,
   createSourceSignedUrl,
@@ -27,7 +28,9 @@ export function createPayslipsRouter(): Router {
       const query = listPayslipsQuerySchema.safeParse(req.query);
       if (!query.success) throw new HttpError(400, "invalid_request");
 
-      const page = await new PayslipRepository(auth.client, auth.userId).listPage(query.data);
+      const repository = new PayslipRepository(auth.client, auth.userId);
+      await repository.failStaleExtractions(new Date(Date.now() - STALE_EXTRACTION_MS));
+      const page = await repository.listPage(query.data);
       const body: ListPayslipsResponse = {
         ...page,
         page: query.data.page,
@@ -71,14 +74,16 @@ export function createPayslipsRouter(): Router {
       const id = idSchema.safeParse(req.params["id"]);
       if (!id.success) throw new HttpError(400, "invalid_request");
 
-      const state = await new PayslipRepository(auth.client, auth.userId).findDetailState(id.data);
+      const repository = new PayslipRepository(auth.client, auth.userId);
+      await repository.failStaleExtractions(new Date(Date.now() - STALE_EXTRACTION_MS));
+      const state = await repository.findDetailState(id.data);
       if (state === null) throw new HttpError(404, "not_found");
 
       const body: PayslipDetailResponse = {
         ...state.payslip,
-        // Projections over `extraction_metadata`, which Task 04 populates.
+        // Task 06 owns the confidence threshold (Task 04 D6).
         lowConfidenceFields: [],
-        unreadableFields: [],
+        unreadableFields: state.unreadableFields,
         editedFields: state.editedFields,
         failureReason: state.failureReason,
       };

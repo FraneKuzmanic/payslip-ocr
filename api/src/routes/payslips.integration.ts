@@ -1,5 +1,5 @@
-import { randomUUID } from "node:crypto";
-import { PDFDocument } from "pdf-lib";
+import { randomBytes, randomUUID } from "node:crypto";
+import { PDFDocument, PDFHexString } from "pdf-lib";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
@@ -38,7 +38,9 @@ const userA = createServerClient(requiredEnv("SUPABASE_PUBLISHABLE_KEY"));
 const userB = createServerClient(requiredEnv("SUPABASE_PUBLISHABLE_KEY"));
 
 // The real authenticator, against real ES256 tokens. Stubbing it here would prove nothing.
-const app = createApp();
+// Extraction is a no-op: this suite asserts `processing` and must never call the provider, which
+// `npm run test:extraction` exercises instead.
+const app = createApp({ extraction: { enqueue: () => Promise.resolve() } });
 
 // Pushed immediately after each 201, so a failed assertion still cleans up.
 const sourcePaths: string[] = [];
@@ -367,12 +369,28 @@ async function pdf(pageCount: number): Promise<Buffer> {
   return Buffer.from(await document.save({ useObjectStreams: false }));
 }
 
-/** pdf-lib cannot encrypt, so an `/Encrypt` entry is written into the trailer instead. */
+/**
+ * A PDF that needs a password to open: a standard-security-handler `/Encrypt` whose `/U` matches
+ * no empty user password. pdf-lib cannot encrypt, but a reader asks for a password all the same.
+ */
 async function encryptedPdf(): Promise<Buffer> {
-  return Buffer.from(
-    (await pdf(1)).toString("latin1").replace(/trailer\s*\n?<</, "trailer\n<< /Encrypt 1 0 R "),
-    "latin1",
+  const document = await PDFDocument.create();
+  document.addPage();
+  const context = document.context;
+  context.trailerInfo.Encrypt = context.register(
+    context.obj({
+      Filter: "Standard",
+      V: 1,
+      R: 2,
+      Length: 40,
+      P: -4,
+      O: PDFHexString.of(randomBytes(32).toString("hex")),
+      U: PDFHexString.of(randomBytes(32).toString("hex")),
+    }),
   );
+  const fileId = PDFHexString.of(randomBytes(16).toString("hex"));
+  context.trailerInfo.ID = context.obj([fileId, fileId]);
+  return Buffer.from(await document.save({ useObjectStreams: false }));
 }
 
 async function createAndSignIn(

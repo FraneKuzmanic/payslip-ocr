@@ -6,19 +6,35 @@ import {
   payslipSchema,
   payslipWarningSchema,
   sourceContentTypeSchema,
+  type CanonicalPayslipFields,
   type ExtractionFailureReason,
   type Payslip,
   type PayslipStatus,
   type SourceContentType,
 } from "@payslip/shared";
-import type { Database } from "../database.types.js";
+import type { Database, Json } from "../database.types.js";
 
 type PayslipRow = Database["public"]["Tables"]["payslips"]["Row"];
 type PayslipUpdate = Database["public"]["Tables"]["payslips"]["Update"];
 
+/** Every column a read needs. `raw_provider_result` is 0.2–1 MB per row and is never read here. */
+type PayslipReadRow = Omit<PayslipRow, "raw_provider_result">;
+
+/**
+ * Every `payslips` column except `raw_provider_result` (Task 04 D11): a session poll of ten
+ * payslips would otherwise move up to ~10 MB. Only a source-region projection reads the raw column.
+ */
+const PAYSLIP_COLUMNS =
+  "id, session_id, user_id, status, failure_reason, canonical_data, extraction_metadata, warnings, edited_fields, original_filename, content_type, page_count, merged_from, confirmed_at, created_at, updated_at, deleted_at, employee_name, employer_name, period, neto_placa, iznos_za_isplatu";
+
 const uuidSchema = z.uuid();
 const warningsSchema = z.array(payslipWarningSchema);
 const failureReasonSchema = extractionFailureReasonSchema.nullable();
+/** The one projection over `extraction_metadata` read so far; the rest is Task 06's. */
+const extractionMetadataSchema = z
+  .object({ unreadableFields: z.array(z.string()) })
+  .loose()
+  .nullable();
 
 export interface CreatePayslipInput {
   readonly id: string;
@@ -41,6 +57,14 @@ export interface PayslipState {
 
 export interface PayslipDetailState extends PayslipState {
   readonly editedFields: string[];
+  readonly unreadableFields: string[];
+}
+
+/** A successful extraction, written back in one update. */
+export interface CompletedExtraction {
+  readonly fields: CanonicalPayslipFields;
+  readonly metadata: Json;
+  readonly raw: Json;
 }
 
 export interface PayslipSourceMetadata {
@@ -106,7 +130,7 @@ export class PayslipRepository {
   async findDetailState(id: string): Promise<PayslipDetailState | null> {
     const { data, error } = await this.#client
       .from("payslips")
-      .select("*")
+      .select(PAYSLIP_COLUMNS)
       .eq("id", uuidSchema.parse(id))
       .eq("user_id", this.#userId)
       .is("deleted_at", null)
@@ -114,14 +138,21 @@ export class PayslipRepository {
 
     if (error) throw new PayslipRepositoryError("query_failed", error);
     if (data === null) return null;
-    return { ...mapPayslipState(data), editedFields: data.edited_fields };
+
+    const metadata = extractionMetadataSchema.safeParse(data.extraction_metadata);
+    if (!metadata.success) throw new PayslipRepositoryError("invalid_data", metadata.error);
+    return {
+      ...mapPayslipState(data),
+      editedFields: data.edited_fields,
+      unreadableFields: metadata.data?.unreadableFields ?? [],
+    };
   }
 
   /** Upload order, which Task 11's merge dialog relies on. */
   async listBySession(sessionId: string): Promise<PayslipState[]> {
     const { data, error } = await this.#client
       .from("payslips")
-      .select("*")
+      .select(PAYSLIP_COLUMNS)
       .eq("session_id", uuidSchema.parse(sessionId))
       .eq("user_id", this.#userId)
       .is("deleted_at", null)
@@ -157,7 +188,7 @@ export class PayslipRepository {
     const filtered = () => {
       const query = this.#client
         .from("payslips")
-        .select("*", { count: "exact" })
+        .select(PAYSLIP_COLUMNS, { count: "exact" })
         .eq("user_id", this.#userId)
         .is("deleted_at", null);
       return (options.status === undefined ? query : query.eq("status", options.status)).order(
@@ -190,7 +221,7 @@ export class PayslipRepository {
       .eq("id", uuidSchema.parse(id))
       .eq("user_id", this.#userId)
       .is("deleted_at", null)
-      .select("*")
+      .select(PAYSLIP_COLUMNS)
       .maybeSingle();
 
     if (error) throw new PayslipRepositoryError("query_failed", error);
@@ -200,13 +231,71 @@ export class PayslipRepository {
   async softDelete(id: string): Promise<Payslip | null> {
     return this.update(id, { deletedAt: new Date().toISOString() });
   }
+
+  /**
+   * The extraction writes (Task 04 D15). Each applies only to a live payslip still in
+   * `processing`, so a payslip deleted or reaped while its analysis ran is never resurrected.
+   * `false` means the write was discarded for that reason.
+   */
+  async completeExtraction(id: string, result: CompletedExtraction): Promise<boolean> {
+    return this.#updateProcessing(id, {
+      status: "review",
+      canonical_data: result.fields,
+      extraction_metadata: result.metadata,
+      raw_provider_result: result.raw,
+      failure_reason: null,
+    });
+  }
+
+  async failExtraction(id: string, reason: ExtractionFailureReason): Promise<boolean> {
+    return this.#updateProcessing(id, { status: "failed", failure_reason: reason });
+  }
+
+  /**
+   * Fails this user's `processing` payslips last touched before `cutoff` (Task 04 D3). The queue is
+   * in memory, so a redeploy strands whatever was in flight; `provider_unavailable` is retryable.
+   * Returns how many were failed.
+   */
+  async failStaleExtractions(cutoff: Date): Promise<number> {
+    const { data, error } = await this.#client
+      .from("payslips")
+      .update({
+        status: "failed",
+        failure_reason: "provider_unavailable",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", this.#userId)
+      .eq("status", "processing")
+      .is("deleted_at", null)
+      .lt("updated_at", cutoff.toISOString())
+      .select("id");
+
+    if (error) throw new PayslipRepositoryError("query_failed", error);
+    return data.length;
+  }
+
+  async #updateProcessing(id: string, update: PayslipUpdate): Promise<boolean> {
+    const { data, error } = await this.#client
+      .from("payslips")
+      .update({ ...update, updated_at: new Date().toISOString() })
+      .eq("id", uuidSchema.parse(id))
+      .eq("user_id", this.#userId)
+      .eq("status", "processing")
+      .is("deleted_at", null)
+      // Never select the raw column back.
+      .select("id")
+      .maybeSingle();
+
+    if (error) throw new PayslipRepositoryError("query_failed", error);
+    return data !== null;
+  }
 }
 
 /**
  * Canonical values come from `canonical_data` only. The generated `numeric` columns exist for
  * list and export queries and are never read back here.
  */
-export function mapPayslipRow(row: PayslipRow): Payslip {
+export function mapPayslipRow(row: PayslipReadRow): Payslip {
   try {
     return payslipSchema.parse({
       ...canonicalPayslipFieldsSchema.parse(row.canonical_data),
@@ -228,7 +317,7 @@ export function mapPayslipRow(row: PayslipRow): Payslip {
   }
 }
 
-function mapPayslipState(row: PayslipRow): PayslipState {
+function mapPayslipState(row: PayslipReadRow): PayslipState {
   const payslip = mapPayslipRow(row);
   const failureReason = failureReasonSchema.safeParse(row.failure_reason);
   if (!failureReason.success) throw new PayslipRepositoryError("invalid_data", failureReason.error);

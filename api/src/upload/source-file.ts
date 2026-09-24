@@ -42,13 +42,37 @@ export async function validateSourceFile(
 async function validatePdf(bytes: Buffer): Promise<number> {
   try {
     const document = await PDFDocument.load(bytes, { ignoreEncryption: true });
-    if (document.isEncrypted) throw new HttpError(422, "pdf_encrypted");
+    if (document.isEncrypted && (await requiresPassword(bytes))) {
+      throw new HttpError(422, "pdf_encrypted");
+    }
     const pageCount = document.getPageCount();
     if (pageCount > config.MAX_PDF_PAGES) throw new HttpError(422, "pdf_too_many_pages");
     return pageCount;
   } catch (error) {
     if (error instanceof HttpError) throw error;
     throw new HttpError(422, "pdf_unreadable");
+  }
+}
+
+/**
+ * `pdf_encrypted` means "cannot be opened without a password". A permissions-only PDF carries an
+ * `/Encrypt` entry too, but it opens with no password in every reader and in the extraction
+ * service, and payroll software emits them (golden-set B01). pdf-lib cannot decrypt, so pdf.js,
+ * the reader the client renders with, answers the question. Anything else it cannot open throws,
+ * and the caller reports it as `pdf_unreadable`.
+ */
+async function requiresPassword(bytes: Buffer): Promise<boolean> {
+  const { getDocument, PasswordException } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  // A copy: pdf.js takes ownership of the buffer it is given.
+  const task = getDocument({ data: new Uint8Array(bytes), verbosity: 0 });
+  try {
+    await task.promise;
+    return false;
+  } catch (error) {
+    if (error instanceof PasswordException) return true;
+    throw error;
+  } finally {
+    await task.destroy();
   }
 }
 

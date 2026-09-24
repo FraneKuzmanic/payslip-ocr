@@ -1,13 +1,16 @@
-import type {
-  CanonicalPayslipFields,
-  ExtractionFailureReason,
-  FieldMetadata,
-  SourceContentType,
+import {
+  isRetryableFailure,
+  type CanonicalPayslipFields,
+  type ExtractionFailureReason,
+  type FieldMetadata,
+  type SourceContentType,
 } from "@payslip/shared";
 
 export interface ExtractionInput {
   readonly bytes: Buffer;
   readonly contentType: SourceContentType;
+  /** The whole-analysis budget; aborting it ends the extraction as `provider_unavailable`. */
+  readonly signal: AbortSignal;
 }
 
 export interface ExtractionMetadata {
@@ -22,6 +25,8 @@ export interface ExtractionMetadata {
   /** Keyed by canonical dotted path (`netoPlaca`, `payComponents.2.iznos`). */
   readonly fields: Record<string, FieldMetadata>;
   readonly unreadableFields: string[];
+  /** Submits made before one was accepted; above 1 a duplicate analysis may have been billed. */
+  readonly submitAttempts?: number;
 }
 
 export interface ProviderExtractionResult {
@@ -35,11 +40,12 @@ export class ExtractionError extends Error {
   readonly retryable: boolean;
   readonly reason: ExtractionFailureReason;
 
-  constructor(reason: ExtractionFailureReason, retryable: boolean, cause?: unknown) {
+  constructor(reason: ExtractionFailureReason, cause?: unknown) {
     super(reason, cause === undefined ? undefined : { cause });
     this.name = "ExtractionError";
     this.reason = reason;
-    this.retryable = retryable;
+    // Derived, never passed: retryability is a function of the reason (PRD §7.4).
+    this.retryable = isRetryableFailure(reason);
   }
 }
 

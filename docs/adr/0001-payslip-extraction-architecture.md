@@ -21,10 +21,13 @@ evidence: .agents/history/01-extraction-bakeoff.md
 > payload size, and it survives forcing IPv4. A 5 s submit budget with resubmit brings the mean to
 > 15.1 s, against the challenger's 13.9 s, removing it as a differentiator. A residual risk stays
 > open: 15.1 s still exceeds the ≤10 s target. See the linked record.
+>
+> **Corrected 2026-09-24 (Task 04):** the body said West Europe twice. The resource has always been
+> in Sweden Central (PRD §4.5, history/01). This is a factual correction, not a change of decision.
 
 # Schema-driven extraction via Azure Content Understanding, validated by a bake-off
 
-Croatian payslips have no prebuilt model on any platform, and no fixed layout to build a template against, so we extract them by **handing a Croatian field schema to Azure AI Content Understanding** (custom analyzer, api-version `2025-11-01`, West Europe) and letting it return values, per-field bounding quads and confidence zero-shot. Because nobody — including Microsoft — publishes accuracy figures for this on dense non-English financial tables, the decision is **provisional until measured**: a second provider is implemented behind the same interface and both are scored against the golden set in Phase 2 before any UI is built on either.
+Croatian payslips have no prebuilt model on any platform, and no fixed layout to build a template against, so we extract them by **handing a Croatian field schema to Azure AI Content Understanding** (custom analyzer, api-version `2025-11-01`, Sweden Central) and letting it return values, per-field bounding quads and confidence zero-shot. Because nobody — including Microsoft — publishes accuracy figures for this on dense non-English financial tables, the decision is **provisional until measured**: a second provider is implemented behind the same interface and both are scored against the golden set in Phase 2 before any UI is built on either.
 
 ## Why there is no template to match
 
@@ -36,7 +39,7 @@ Any approach requiring per-layout work is therefore an unbounded treadmill, and 
 
 ## Considered options
 
-**Azure Content Understanding custom analyzer — chosen.** Zero-shot against a declared field schema, so a new employer costs nothing. `estimateFieldSourceAndConfidence: true` returns page, bounding quad and confidence **per field, including nested table rows**, which is the single hardest requirement to satisfy and the reason the geometry layer needs no code of our own. Croatian OCR (`hr`) plus `hr-HR` field-value normalisation handles the `1.234,56` decimal convention natively. West Europe region. Roughly $0.015 per page. It also keeps the Azure resource pattern the sibling `receipt-ocr` prototype already uses.
+**Azure Content Understanding custom analyzer — chosen.** Zero-shot against a declared field schema, so a new employer costs nothing. `estimateFieldSourceAndConfidence: true` returns page, bounding quad and confidence **per field, including nested table rows**, which is the single hardest requirement to satisfy and the reason the geometry layer needs no code of our own. Croatian OCR (`hr`) plus `hr-HR` field-value normalisation handles the `1.234,56` decimal convention natively. Sweden Central region. Roughly $0.015 per page. It also keeps the Azure resource pattern the sibling `receipt-ocr` prototype already uses.
 
 **DI `prebuilt-layout` + an LLM + our own grounding — implemented as the challenger.** Layout supplies words and polygons, an LLM reads the markdown and emits the schema, and each value is re-grounded by matching it back to OCR tokens. More code and roughly twice the cost, but it has one property the primary lacks: a value that *fails* to ground is a free hallucination signal. It exists to answer whether Content Understanding is actually good enough, and to be the fallback if it is not.
 

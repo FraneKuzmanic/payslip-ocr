@@ -37,7 +37,10 @@
     "cu": "tsx scripts/bakeoff/run-cu.ts",
     "llm": "tsx scripts/bakeoff/run-llm.ts",
     "score": "tsx scripts/bakeoff/score.ts",
-    "check:golden": "python scripts/check-golden-set.py"
+    "check:golden": "python scripts/check-golden-set.py",
+    "provision:analyzer": "tsx scripts/provision-analyzer.ts",
+    "score:extraction": "tsx scripts/score-extraction.ts",
+    "test:extraction": "node --env-file-if-exists=.env scripts/run-supabase-integration-tests.mjs --extraction"
   },
   "dependencies": {
     "@azure-rest/ai-document-intelligence": "1.1.0",

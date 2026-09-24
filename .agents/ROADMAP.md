@@ -87,7 +87,7 @@ investigation and is recorded with its reasoning.
 | 01b | Mirror, deploy and CI (pulled forward from 13) | ✅ complete → [`history/01b`](./history/01b-mirror-deploy-ci.md) |
 | 02 | Canonical payslip domain model & shared contracts | ✅ complete → [`history/02`](./history/02-canonical-payslip-model.md) |
 | 03 | Session & payslip persistence, upload API | ✅ complete → [`history/03`](./history/03-session-payslip-persistence-upload.md) |
-| 04 | Content Understanding provider, mapper & scoring harness | ⬜ not started |
+| 04 | Content Understanding provider, mapper & scoring harness | ✅ complete → [`history/04`](./history/04-content-understanding-provider.md) |
 | 05 | Extraction latency: partial results or two-pass | ⬜ not started |
 | 06 | Warnings & validation engine | ⬜ not started |
 | 07 | Capture & multi-upload UI | ⬜ not started |
@@ -280,18 +280,26 @@ something.
 - Move the bake-off scoring harness to `scripts/score-extraction.ts`, running against the real
   production mapper offline from recorded responses, honouring `unscorable` and **failing when
   any other expectation goes unscored**.
+- Render receives the Content Understanding configuration (Task 04 D1).
+- Stale `processing` rows fail lazily on read, so an extraction lost to a redeploy is retryable
+  (Task 04 D3).
+- Added during execution: `pdf_encrypted` means "needs a password to open". A permissions-only
+  PDF (golden-set B01) is accepted. This corrects Task 03, whose check refused any `/Encrypt`.
+- Added during execution: the 5 s submit budget runs from the moment the body has been sent, not
+  from the start of the request. On a slow uplink the old budget aborted every attempt for B02.
 
 **Not in this task:** warnings (06), regions (08), latency work (05).
 
 **Definition of done**
 
-- [ ] All 11 golden-set payslips extract end to end through the real API.
-- [ ] `npm run score:extraction` reports **≥95% scalar fields** and **≥85% line-item cells**,
+- [x] All 11 golden-set payslips extract end to end through the real API.
+- [x] `npm run score:extraction` reports **≥95% scalar fields** and **≥85% line-item cells**,
       and reports the run-to-run figure alongside so a single run is not mistaken for a ranking.
-- [ ] Removing a fixture's ground truth makes the harness fail, not skip.
-- [ ] A payslip that fails extraction leaves its siblings unaffected and records a retryable or
+- [x] Removing a fixture's ground truth makes the harness fail, not skip.
+- [x] A payslip that fails extraction leaves its siblings unaffected and records a retryable or
       non-retryable reason.
-- [ ] Provider vocabulary appears in one module only, enforced by the Task 02 guard test.
+- [x] Provider vocabulary appears in one module only, enforced by the Task 02 guard (`shared`) and
+      the Task 04 guard (`api`).
 
 ---
 
@@ -303,6 +311,12 @@ something.
 
 **Scope**
 
+- **Start from the Task 04 finding** (history/04, "Latency on the product path"): with three
+  analyses in flight, each one's service-side time roughly triples (A01 66 s against 22 s alone),
+  because they share one `gpt-4.1` deployment's generation throughput. Measure a single-document
+  baseline on the product path, and check the deployment's TPM capacity in the portal, before
+  choosing a design. `latencyMs` also excludes the time a payslip waits in the queue, which the
+  user does wait through.
 - **First**, answer the open question in [`specs/two-pass-extraction.md`](./specs/two-pass-extraction.md):
   can a single CU analyzer return partial results or stream? If yes, this task collapses to
   consuming them and the rest of the scope is dropped.
@@ -348,6 +362,8 @@ check first.
 - OIB checksum: ISO 7064 MOD 11,10, applied to both employer and employee.
 - Low-confidence projection: a provider-neutral `lowConfidenceFields` list, plus `ungroundable`
   as its own signal. Confidence **never suppresses a value**.
+- Compute grounding over the retained raw response (`pages[].words`); Task 04 stores per-field
+  `{confidence, source}` and leaves both projections to this task (Task 04 D6).
 - Recompute on every PATCH.
 
 **Not in this task:** rendering warnings (09).
@@ -457,6 +473,8 @@ place on the page.
 - Skeleton state for the line-item sections while the second extraction pass is outstanding.
 - hr/en copy for every `WARNING_CODES` value, guarded by a test mirroring
   `uploadErrors.test.ts` (Task 02 D8).
+- Decide server-side writes against the direct-write gap: `authenticated` can update its own
+  `status` and `canonical_data` directly through PostgREST (Task 03 open item 4, Task 04 D2).
 
 **Not in this task:** navigation between payslips (10), export (12).
 
@@ -572,10 +590,10 @@ the software keyboard open.
 
 **Scope**
 
-- The mirror, the Render Blueprint and CI already exist (Task 01b). What remains is the Azure
-  Content Understanding configuration for the hosted environment, including analyzer
-  provisioning against the production resource. Render asks for `sync: false` variables only when
-  a Blueprint is **created**, so a secret added to `render.yaml` later must also be set by hand in
+- The mirror, the Render Blueprint, CI and the Content Understanding configuration already exist
+  (Tasks 01b and 04). There is one Foundry resource, so local and hosted share the analyzer and
+  `npm run provision:analyzer` checks it. Render asks for `sync: false` variables only when a
+  Blueprint is **created**, so a secret added to `render.yaml` later must also be set by hand in
   the Render dashboard.
 - End-to-end journeys against the hosted stack, including the multi-payslip session.
 
@@ -609,9 +627,12 @@ each is run separately and its result recorded in the owning task's history file
 
 | Risk | Status | Where it bites |
 | --- | --- | --- |
-| **Residual latency** — 15.1 s mean single-pass against a ≤10 s target | Open, mitigated by submit-retry | Task 05 is the fix; re-measure on a provisioned deployment |
+| **Residual latency** — 15.1 s mean single-pass against a ≤10 s target. On the product path with three analyses in flight: **p50 20.5 s, p90 45.7 s, max 66.3 s** (Task 04, 2026-09-24) | Open, mitigated by submit-retry | Task 05 is the fix; concurrent analyses share one deployment's throughput, so measure a single-document baseline first |
 | **Submit stall** — intermittent ~29 s server-side stall on `:analyzeBinary` | Mitigated, not fixed | Worth an Azure support ticket; the retry costs a duplicate analysis |
 | **Small corpus** — 11 payslips, 7 layouts, no more available | Accepted | Every accuracy figure describes these seven vendors and no eighth |
 | **Hand-written rule creep** — a Croatian parser growing beneath a generic model | Watch | A growing count of deterministic post-processing rules is the signal to revisit the engine, not progress |
 | **Phone layout has no prior art** — every document-AI review UI found is desktop-only | Open | Task 10; first thing to put in front of a real user |
 | **Inherited gaps** — no password reset, unverified emails, Render cold starts | Accepted | Documented, not fixed. CI exists since Task 01b |
+| **Direct-write gap** — a signed-in user can update their own payslip's `status` or `canonical_data` through PostgREST, bypassing the API | Open | Task 09, where confirm and PATCH land: server-side writes plus `revoke update` |
+| **In-memory extraction queue** — upload bytes wait in process memory; a redeploy drops in-flight work | Accepted for a demo | Lost jobs fail on the next read after 15 min and are retryable (Task 04 D3). Worst case 10 × 10 MB per session on a 512 MB instance; Task 07's downscale shrinks images |
+| **Background writes use the upload's token** — a token near expiry at upload can fail the completion write | Accepted | The row is failed by the stale reaper and is retryable. Task 07: refresh the session before an upload batch |

@@ -12,13 +12,14 @@ import { HttpError } from "../middleware/error-handler.js";
 import { authenticated } from "../middleware/require-auth.js";
 import { PayslipRepository, PayslipRepositoryError } from "../repositories/payslips.js";
 import { SessionRepository } from "../repositories/sessions.js";
+import { STALE_EXTRACTION_MS, type ExtractionRunner } from "../services/payslip-extraction.js";
 import { removeSource, sourceObjectPath, uploadSource } from "../storage/payslip-sources.js";
 import { sourceFileUpload } from "../upload/multipart.js";
 import { validateSourceFile } from "../upload/source-file.js";
 
 const idSchema = z.uuid();
 
-export function createSessionsRouter(): Router {
+export function createSessionsRouter(extraction: ExtractionRunner): Router {
   const router = Router();
 
   /** PRD §10.2. */
@@ -54,9 +55,10 @@ export function createSessionsRouter(): Router {
       const path = sourceObjectPath(auth.userId, payslipId);
       await uploadSource(auth.client, path, file.bytes, file.contentType);
 
+      const repository = new PayslipRepository(auth.client, auth.userId);
       let payslip: Payslip;
       try {
-        payslip = await new PayslipRepository(auth.client, auth.userId).create({
+        payslip = await repository.create({
           id: payslipId,
           sessionId: session.id,
           originalFilename: file.originalFilename,
@@ -80,7 +82,14 @@ export function createSessionsRouter(): Router {
         throw error;
       }
 
-      // Extraction starts here in Task 04; until then the payslip stays in `processing`.
+      // PRD §7.3: the upload starts extraction immediately and returns 201 without waiting. Only
+      // after the insert succeeded, so a refused upload never reaches the provider.
+      void extraction.enqueue({
+        payslipId: payslip.id,
+        repository,
+        bytes: file.bytes,
+        contentType: file.contentType,
+      });
       const body: CreatePayslipResponse = {
         id: payslip.id,
         sessionId: payslip.sessionId,
@@ -98,12 +107,14 @@ export function createSessionsRouter(): Router {
       const id = idSchema.safeParse(req.params["id"]);
       if (!id.success) throw new HttpError(400, "invalid_request");
 
+      const repository = new PayslipRepository(auth.client, auth.userId);
+      // A client polls this route, so it is where an extraction lost to a redeploy surfaces (D3).
+      await repository.failStaleExtractions(new Date(Date.now() - STALE_EXTRACTION_MS));
+
       const session = await new SessionRepository(auth.client, auth.userId).findById(id.data);
       if (session === null) throw new HttpError(404, "not_found");
 
-      const payslips = await new PayslipRepository(auth.client, auth.userId).listBySession(
-        session.id,
-      );
+      const payslips = await repository.listBySession(session.id);
       const body: SessionDetailResponse = {
         id: session.id,
         createdAt: session.createdAt,
