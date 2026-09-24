@@ -82,15 +82,20 @@ Learn from your mistakes. Don't just patch bugs and forget. Turn failures into g
 
 ## 7. Git remotes
 
-The monorepo has two remotes, and neither is this project's:
+The monorepo has three remotes. Only one of them is this project's:
 
+- `payslip-github` is **this project's** mirror: `FraneKuzmanic/payslip-ocr`, a **private**
+  repository that must stay private, because `.agents/fixtures/` holds real personal data. It
+  contains only the `prototypes/payslip-ocr` subtree, rooted at the repository root. Its URL is
+  `git@github-FraneKuzmanic:FraneKuzmanic/payslip-ocr.git`. The `github-FraneKuzmanic` host alias
+  in `~/.ssh/config` pins the personal key; plain `git@github.com:` has no key configured and would
+  fail, and the student account `FraneKuzmanicFER` must never be used.
+  Push from the monorepo root with
+  `git subtree push --prefix=prototypes/payslip-ocr payslip-github main`. A plain `git push`
+  cannot update it, because its history is a subtree split.
 - `origin` is Azure DevOps. Push to it only when explicitly asked.
 - `github` is **receipt-ocr's** mirror (`FraneKuzmanic/receipt-ocr`), and its `main` drives
-  receipt-ocr's live Render deploy. Payslip commits and
-  `git subtree push --prefix=prototypes/payslip-ocr` stay off it.
-
-Payslip's own mirror and deploy path are defined by ROADMAP Task 13. Until then, committing is
-local only.
+  receipt-ocr's live Render deploy. Payslip commits never go to it.
 
 ## 8. Conventions
 
