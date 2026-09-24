@@ -91,6 +91,7 @@ eighth, and there are no more samples available.
 ## Open questions for the product owner
 
 Five judgement calls are recorded in the fixtures' own `notes`. They are listed in full in the
-session hand-off; the two that would change a score are **E01's `employerName`** (recorded `null`;
-the only candidate is sidebar software branding) and **G01's `period`** (recorded `"2025-06"`,
-inferred from a date range in the naknade table rather than read from the off-screen section V).
+session hand-off; the two that would change a score were **E01's `employerName`** (the only
+candidate is sidebar software branding) and **G01's `period`** (inferable only from a date range in
+the naknade table, since section V is off-screen). Both were settled to `null` during the bake-off
+(`.agents/history/01-extraction-bakeoff.md`).
