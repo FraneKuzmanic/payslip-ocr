@@ -93,6 +93,8 @@ The monorepo has three remotes. Only one of them is this project's:
   Push from the monorepo root with
   `git subtree push --prefix=prototypes/payslip-ocr payslip-github main`. A plain `git push`
   cannot update it, because its history is a subtree split.
+  Its `main` drives the live Render deploy (`payslip-ocr-api`, `payslip-ocr-client`), but only
+  after the GitHub Actions CI workflow passes (`autoDeployTrigger: checksPass` in `render.yaml`).
 - `origin` is Azure DevOps. Push to it only when explicitly asked.
 - `github` is **receipt-ocr's** mirror (`FraneKuzmanic/receipt-ocr`), and its `main` drives
   receipt-ocr's live Render deploy. Payslip commits never go to it.

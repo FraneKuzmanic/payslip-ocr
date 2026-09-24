@@ -84,6 +84,7 @@ investigation and is recorded with its reasoning.
 | — | Golden set: 11 fixtures, verifier, README | ✅ complete |
 | — | **Phase 2 bake-off** — engine chosen by measurement | ✅ complete → [`history/01`](./history/01-extraction-bakeoff.md) |
 | 01 | Fork, rename and strip | ✅ complete → [`history/01-fork`](./history/01-fork-rename-strip.md) |
+| 01b | Mirror, deploy and CI (pulled forward from 13) | ✅ complete → [`history/01b`](./history/01b-mirror-deploy-ci.md) |
 | 02 | Canonical payslip domain model & shared contracts | ⬜ not started |
 | 03 | Session & payslip persistence, upload API | ⬜ not started |
 | 04 | Content Understanding provider, mapper & scoring harness | ⬜ not started |
@@ -146,6 +147,33 @@ extracting nothing.
 - [ ] `/prime` resolves every file and roadmap section it points at, and `.claude/commands/`
       contains no reference to `receipt`, `CLAUDE.md` or `@receipt/*`.
 - [ ] `npm run validate` exists as a package script and is green.
+
+---
+
+### Task 01b — Mirror, deploy and CI
+
+**Goal:** Every later task lands on a private GitHub mirror, is checked by CI, and deploys to
+Render automatically once CI passes. Pulled forward from Task 13 on 2026-09-24 so that
+deployment problems surface on a stub app rather than at the end.
+
+**Depends on:** 01.
+
+**Scope**
+
+- The private mirror `FraneKuzmanic/payslip-ocr`, and the subtree push path (AGENTS.md §7).
+- `render.yaml`: API web service (Frankfurt) plus static client, `npm ci` against the committed
+  lockfile, `autoDeployTrigger: checksPass`, and a health check.
+- `.github/workflows/ci.yml`: `npm ci`, lint, typecheck, format, test and build on Linux.
+
+**Not in this task:** Azure configuration on Render (Task 04 adds it), preview environments,
+rollback.
+
+**Definition of done**
+
+- [x] The mirror is private and holds only the payslip subtree, with no personal data in its history.
+- [x] Both services deploy from the Blueprint; `/api/health` answers and CORS admits the client.
+- [x] Sign-up, sign-in and the language switch work on the deployed client.
+- [x] CI runs on every push to `main`, and Render deploys only after it passes.
 
 ---
 
@@ -533,14 +561,14 @@ the software keyboard open.
 
 **Scope**
 
-- `render.yaml` adapted: API web service plus static client, non-secret config in the file,
-  secrets `sync: false`.
-- Azure Content Understanding and Supabase configuration for the hosted environment, including
-  analyzer provisioning against the production resource.
-- The GitHub mirror and subtree push path, documented.
+- The mirror, the Render Blueprint and CI already exist (Task 01b). What remains is the Azure
+  Content Understanding configuration for the hosted environment, including analyzer
+  provisioning against the production resource. Render asks for `sync: false` variables only when
+  a Blueprint is **created**, so a secret added to `render.yaml` later must also be set by hand in
+  the Render dashboard.
 - End-to-end journeys against the hosted stack, including the multi-payslip session.
 
-**Not in this task:** CI, preview environments, rollback — explicitly out of scope per PRD §9.5.
+**Not in this task:** preview environments, rollback.
 
 **Definition of done**
 
@@ -575,4 +603,4 @@ each is run separately and its result recorded in the owning task's history file
 | **Small corpus** — 11 payslips, 7 layouts, no more available | Accepted | Every accuracy figure describes these seven vendors and no eighth |
 | **Hand-written rule creep** — a Croatian parser growing beneath a generic model | Watch | A growing count of deterministic post-processing rules is the signal to revisit the engine, not progress |
 | **Phone layout has no prior art** — every document-AI review UI found is desktop-only | Open | Task 10; first thing to put in front of a real user |
-| **Inherited gaps** — no password reset, unverified emails, no CI, Render cold starts | Accepted | Documented, not fixed |
+| **Inherited gaps** — no password reset, unverified emails, Render cold starts | Accepted | Documented, not fixed. CI exists since Task 01b |

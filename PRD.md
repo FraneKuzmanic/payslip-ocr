@@ -871,7 +871,7 @@ API shape, so it belongs in Phase 3's design rather than a later optimisation pa
 | 6 | **The phone layout has no prior art.** Every document-AI review UI found — Rossum, Affinda, Docsumo, Reducto — is desktop-only | Medium | The layout is synthesised from scanner apps, expense apps and desktop IDP tools; it is the first thing to put in front of a real user |
 | 7 | **Multi-page payslips break assumptions.** Sections continue across the page break; Azure DI custom neural explicitly cannot read values split across pages | Medium | Extraction runs per payslip with all pages in one call, never per page; A01 is in the golden set specifically to cover this |
 | 8 | **Privacy posture is demo-grade.** The challenger path sends payslip text outside the EU; there is no retention policy | Medium — blocks any move beyond demonstration | Recorded explicitly in §9.4 as a product decision with its consequences named; a DPIA is a precondition of productionising |
-| 9 | **Inherited gaps from the fork** — no password reset, unverified emails, no CI, Render cold starts | Low for a demo | Documented as known gaps rather than silently carried; warm the service before demos |
+| 9 | **Inherited gaps from the fork** — no password reset, unverified emails, Render cold starts | Low for a demo | Documented as known gaps rather than silently carried; warm the service before demos. CI was added in ROADMAP Task 01b |
 | 10 | **Merge is hard to discover.** It only matters when someone photographs a two-page payslip as two files | Low | Automatic suggestion on a loosened key, plus an always-available manual action; both paths tested |
 
 ---
