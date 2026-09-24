@@ -83,9 +83,12 @@ independently.
    `VITE_API_BASE_URL` is compiled out. The first route that calls the API (Task 03 or 07) must be
    checked on the deployed client, not only locally. receipt-ocr once had a wrong base URL that
    the SPA rewrite silently answered with `200` HTML (commit `345a99d`).
-2. **The first CI result was not read by the agent.** The mirror is private and `gh` had just been
-   installed (`~/tools/gh/bin/gh.exe`, 2.101.0, checksum verified) but was not signed in. Signing
-   in as FraneKuzmanic lets later sessions read CI runs directly.
+2. **Resolved: CI results are readable.** `gh` (`~/tools/gh/bin/gh.exe`, 2.101.0, checksum
+   verified) is signed in as FraneKuzmanic. Both CI runs passed. Run `35974274970` did `npm ci`
+   from the new lockfile on Linux, ran all 28 test files, and passed the format check and the build
+   in 54 s. `gh run list -R FraneKuzmanic/payslip-ocr` shows later runs. GitHub has announced that
+   `ubuntu-latest` moves to Ubuntu 26 from 2026-10-19; nothing here is expected to depend on the
+   distribution.
 3. **Render's `sync: false` is prompted only when a Blueprint is created.** When Task 04 adds the
    Azure variables to `render.yaml`, they must also be entered by hand in the Render dashboard.
    Task 13's scope now says so.
