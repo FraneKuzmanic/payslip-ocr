@@ -1,12 +1,26 @@
-# Service names and the two cross-origin URLs below are placeholders until Task 13 provisions
-# the services; Render appends a suffix to the real hostnames.
+# The two cross-origin URLs below (WEB_ORIGIN, VITE_API_BASE_URL) are the names requested here;
+# Render may append a suffix to the real hostnames, in which case they are corrected after the
+# services are created.
+#
+# Builds use `npm ci` against the committed lockfile, so production installs exactly what CI
+# tested. The lockfile must record every platform's optional native binaries (for example
+# `@tailwindcss/oxide-linux-x64-gnu`); npm drops the other platforms' entries when it rewrites the
+# lockfile from an existing Windows node_modules (npm/cli#4828). If a Linux build reports a missing
+# native binding, regenerate the lockfile from the manifests alone, without node_modules, rather
+# than deleting it at build time.
+#
+# `autoDeployTrigger: checksPass` deploys a commit only after its GitHub checks (the CI workflow in
+# .github/workflows/ci.yml) have passed.
 services:
   - type: web
     name: payslip-ocr-api
-    env: node
+    runtime: node
     plan: free
-    buildCommand: rm -rf node_modules package-lock.json && npm install --include=dev && npm run build
+    region: frankfurt
+    autoDeployTrigger: checksPass
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: node api/dist/index.js
+    healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production
@@ -30,7 +44,8 @@ services:
   - type: web
     name: payslip-ocr-client
     runtime: static
-    buildCommand: rm -rf node_modules package-lock.json && npm install --include=dev && npm run build
+    autoDeployTrigger: checksPass
+    buildCommand: npm ci --include=dev && npm run build
     staticPublishPath: client/dist
     envVars:
       - key: VITE_SUPABASE_URL

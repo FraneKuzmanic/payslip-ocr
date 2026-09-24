@@ -1,0 +1,39 @@
+# Runs in the payslip-github mirror, where this directory is the repository root. Render deploys a
+# commit only after this workflow passes (`autoDeployTrigger: checksPass` in render.yaml).
+#
+# Not covered here, by design: the golden-set check and bake-off score need git-ignored personal
+# data, and the hosted Supabase integration test needs secrets. Both stay in /validate.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # Same install as Render, from the committed lockfile.
+      - run: npm ci
+
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run format:check
+      - run: npm test
+      - run: npm run build
