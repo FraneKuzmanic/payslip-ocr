@@ -58,15 +58,15 @@ describe("the /api/sessions and /api/payslips prefixes without a token", () => {
 });
 
 describe("the protected prefixes with a valid token", () => {
-  it("passes authentication and falls through to 404, because nothing is routed yet", async () => {
-    // Stands in for a real Supabase client; nothing is routed, so nothing ever calls it.
+  it("passes authentication and reaches the router, which answers 404 for an unknown path", async () => {
+    // Stands in for a real Supabase client; no route matches the path, so nothing ever calls it.
     const client = {} as SupabaseClient<Database>;
     const acceptingAuthenticator: Authenticator = {
       authenticate: () => Promise.resolve({ userId: randomUUID(), client }),
     };
 
     const response = await request(createApp({ authenticator: acceptingAuthenticator }))
-      .get(`/api/payslips/${randomUUID()}`)
+      .get(`/api/sessions/${randomUUID()}/not-a-route`)
       .set("Authorization", "Bearer a-token-the-stub-accepts");
 
     expect(response.status).toBe(404);

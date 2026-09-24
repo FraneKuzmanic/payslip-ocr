@@ -27,6 +27,14 @@ describe("validateSourceFile", () => {
     });
   });
 
+  it("reports a PDF's page count, measured from the bytes", async () => {
+    await expect(validateSourceFile(file(await pdf(3)))).resolves.toMatchObject({ pageCount: 3 });
+  });
+
+  it.each([JPEG, PNG])("reports one page for an image", async (bytes) => {
+    await expect(validateSourceFile(file(bytes))).resolves.toMatchObject({ pageCount: 1 });
+  });
+
   it.each([
     [Buffer.from("MZ executable"), "payslip.jpg", "image/jpeg"],
     [Buffer.from("plain text"), "payslip.txt", "text/plain"],

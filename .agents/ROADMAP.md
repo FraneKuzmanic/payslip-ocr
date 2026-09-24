@@ -86,7 +86,7 @@ investigation and is recorded with its reasoning.
 | 01 | Fork, rename and strip | ✅ complete → [`history/01-fork`](./history/01-fork-rename-strip.md) |
 | 01b | Mirror, deploy and CI (pulled forward from 13) | ✅ complete → [`history/01b`](./history/01b-mirror-deploy-ci.md) |
 | 02 | Canonical payslip domain model & shared contracts | ✅ complete → [`history/02`](./history/02-canonical-payslip-model.md) |
-| 03 | Session & payslip persistence, upload API | ⬜ not started |
+| 03 | Session & payslip persistence, upload API | ✅ complete → [`history/03`](./history/03-session-payslip-persistence-upload.md) |
 | 04 | Content Understanding provider, mapper & scoring harness | ⬜ not started |
 | 05 | Extraction latency: partial results or two-pass | ⬜ not started |
 | 06 | Warnings & validation engine | ⬜ not started |
@@ -238,13 +238,15 @@ with their source documents stored privately.
 
 **Definition of done**
 
-- [ ] Migration applies cleanly to an empty database and is idempotent.
-- [ ] Integration tests against the hosted Supabase project cover insert, read, list, soft delete,
+- [x] Migration applies cleanly to an empty database (transactional dry run) and is recorded
+      once in the migration history (Task 03 D6).
+- [x] Integration tests against the hosted Supabase project cover insert, read, list, soft delete,
       and that a soft-deleted payslip is excluded from list queries.
-- [ ] A second user cannot read, patch or delete the first user's session or payslip, and receives
-      404 in every case.
-- [ ] Uploading eleven files to one session is rejected; ten succeeds.
-- [ ] An encrypted PDF, an 11-page PDF and a `.txt` renamed to `.pdf` are each rejected with the
+- [x] A second user cannot read or delete the first user's session or payslip, and receives 404 in
+      every case; cross-user **update** is refused at the repository layer that Task 09's PATCH
+      will use (Task 03 D4).
+- [x] Uploading eleven files to one session is rejected; ten succeeds.
+- [x] An encrypted PDF, an 11-page PDF and a `.txt` renamed to `.pdf` are each rejected with the
       documented error code.
 
 ---
@@ -519,6 +521,8 @@ the software keyboard open.
   failed to read the key at all, which is precisely the case the suggestion cannot cover.
 - `POST /api/sessions/:id/merge`: build a combined PDF from the constituent sources with
   `pdf-lib` (already a dependency), create a new payslip, re-extract, soft-delete the originals.
+  **Soft-delete the originals before inserting the merged payslip**: the ten-payslip cap counts
+  live payslips only, so in a full session the insert would otherwise be refused (Task 03 D3).
 - Merge confirmation shows both documents in upload order with a swap control.
 
 **Not in this task:** page reordering beyond that swap.

@@ -90,6 +90,7 @@
     "unsupported_media_type": "Ova vrsta datoteke nije podržana. Upotrijebite JPEG, PNG, HEIC fotografiju ili PDF.",
     "pdf_encrypted": "Ovaj je PDF zaštićen lozinkom i nije ga moguće pročitati. Spremite nezaštićenu kopiju i pokušajte ponovno.",
     "pdf_too_many_pages": "Ovaj PDF ima previše stranica. Prenesite dokument s najviše 10 stranica.",
-    "pdf_unreadable": "Ovaj PDF nije moguće pročitati. Možda je oštećen. Pokušajte ga ponovno izvesti."
+    "pdf_unreadable": "Ovaj PDF nije moguće pročitati. Možda je oštećen. Pokušajte ga ponovno izvesti.",
+    "session_full": "Ova sesija već sadrži 10 platnih lista. Započnite novu sesiju za dodatne."
   }
 }

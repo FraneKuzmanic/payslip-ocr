@@ -41,5 +41,6 @@ export async function createSourceSignedUrl(
 }
 
 export async function removeSource(client: SupabaseClient<Database>, path: string): Promise<void> {
-  await client.storage.from(config.STORAGE_BUCKET).remove([path]);
+  const { error } = await client.storage.from(config.STORAGE_BUCKET).remove([path]);
+  if (error) throw new Error("Could not remove payslip source.");
 }

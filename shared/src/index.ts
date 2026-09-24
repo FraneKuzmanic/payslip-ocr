@@ -15,6 +15,7 @@ export { parseQuantity } from "./quantity.js";
 export { ISO_DATE_PATTERN, PERIOD_PATTERN, parseDate, parsePeriod } from "./datetime.js";
 
 export {
+  MAX_PAYSLIPS_PER_SESSION,
   SOURCE_CONTENT_TYPES,
   UPLOAD_ERROR_CODES,
   sourceContentTypeSchema,

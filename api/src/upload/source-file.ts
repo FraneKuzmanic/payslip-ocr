@@ -10,6 +10,8 @@ export interface SourceFile {
   readonly contentType: SourceContentType;
   readonly originalFilename: string;
   readonly byteSize: number;
+  /** Measured from the bytes: a PDF's page count, 1 for an image. */
+  readonly pageCount: number;
 }
 
 export async function validateSourceFile(
@@ -26,23 +28,24 @@ export async function validateSourceFile(
   }
 
   const contentType = detected.mime as SourceContentType;
-  if (contentType === "application/pdf") await validatePdf(file.buffer);
+  const pageCount = contentType === "application/pdf" ? await validatePdf(file.buffer) : 1;
 
   return {
     bytes: file.buffer,
     contentType,
     originalFilename: normalizeFilename(file.originalname),
     byteSize: file.size,
+    pageCount,
   };
 }
 
-async function validatePdf(bytes: Buffer): Promise<void> {
+async function validatePdf(bytes: Buffer): Promise<number> {
   try {
     const document = await PDFDocument.load(bytes, { ignoreEncryption: true });
     if (document.isEncrypted) throw new HttpError(422, "pdf_encrypted");
-    if (document.getPageCount() > config.MAX_PDF_PAGES) {
-      throw new HttpError(422, "pdf_too_many_pages");
-    }
+    const pageCount = document.getPageCount();
+    if (pageCount > config.MAX_PDF_PAGES) throw new HttpError(422, "pdf_too_many_pages");
+    return pageCount;
   } catch (error) {
     if (error instanceof HttpError) throw error;
     throw new HttpError(422, "pdf_unreadable");

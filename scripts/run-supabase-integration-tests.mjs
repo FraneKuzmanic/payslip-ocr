@@ -13,7 +13,7 @@ const target = useLocal ? resolveLocalTarget() : resolveHostedTarget();
 
 console.log(`\nSupabase integration tests → ${target.label}: ${hostOf(target.env.SUPABASE_URL)}\n`);
 
-const integrationFiles = ["src/auth/auth.integration.ts"];
+const integrationFiles = ["src/auth/auth.integration.ts", "src/routes/payslips.integration.ts"];
 
 for (const file of integrationFiles) {
   const test = spawnSync(

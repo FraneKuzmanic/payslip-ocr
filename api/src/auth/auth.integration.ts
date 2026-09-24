@@ -49,7 +49,7 @@ describe("the /api/payslips prefix against the hosted project", () => {
     expect(response.status).toBe(401);
   });
 
-  it("accepts a real ES256 token and falls through to 404, because nothing is routed yet", async () => {
+  it("accepts a real ES256 token and answers 404 for a payslip that does not exist", async () => {
     const response = await request(app)
       .get(`/api/payslips/${randomUUID()}`)
       .set("Authorization", `Bearer ${tokenA}`);

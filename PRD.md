@@ -654,10 +654,12 @@ AZURE_DOCUMENT_INTELLIGENCE_KEY           # challenger path only
 AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_KEY   # challenger path only
 AZURE_OPENAI_DEPLOYMENT, AZURE_OPENAI_API_VERSION
 EXTRACTION_TIMEOUT_MS, EXTRACTION_CONCURRENCY
-MAX_UPLOAD_BYTES, MAX_PDF_PAGES, MAX_FILES_PER_UPLOAD
+MAX_UPLOAD_BYTES, MAX_PDF_PAGES
 SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, SUPABASE_SECRET_KEY, STORAGE_BUCKET
 VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VITE_API_BASE_URL
 ```
+
+The ten-payslip cap is not an environment variable. It is `MAX_PAYSLIPS_PER_SESSION` in `shared/`, enforced atomically by a database trigger, because a value enforced in SQL cannot be configured from Node.
 
 **Rules.** Only `VITE_`-prefixed variables may reach the browser bundle; the publishable key is allow-listed by name and any other secret-shaped `VITE_` name is rejected by a validation check. No extraction credential is ever exposed to the client.
 
@@ -687,7 +689,7 @@ All routes under `/api/sessions` and `/api/payslips` require `Authorization: Bea
 
 **10.3** `POST /api/sessions/:id/payslips`
 `multipart/form-data`, exactly one part `file`, zero text fields. Starts extraction immediately.
-→ `201 {id, sessionId, status, createdAt}` · `413 file_too_large` · `422 pdf_encrypted | pdf_too_many_pages | pdf_unreadable | unsupported_file_type` · `409 session_full`
+→ `201 {id, sessionId, status, createdAt}` · `413 file_too_large` · `415 unsupported_media_type` · `422 pdf_encrypted | pdf_too_many_pages | pdf_unreadable` · `409 session_full`
 
 **10.4** `GET /api/sessions/:id`
 → `200 {id, createdAt, payslips: [{id, status, period, employeeName, pageCount, failureReason, warningCount}]}`
@@ -920,7 +922,8 @@ users                    (Supabase auth)
         id, user_id, created_at, deleted_at
         └── payslips
               id, session_id, user_id
-              status, canonical_data jsonb, extraction_metadata jsonb,
+              status, failure_reason, canonical_data jsonb, extraction_metadata jsonb,
+              warnings jsonb,
               raw_provider_result jsonb, edited_fields text[],
               original_filename, content_type, page_count,
               merged_from uuid[], confirmed_at, created_at,

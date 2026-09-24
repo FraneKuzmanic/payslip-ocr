@@ -90,6 +90,7 @@
     "unsupported_media_type": "This file type is not supported. Use a JPEG, PNG, HEIC photo or a PDF.",
     "pdf_encrypted": "This PDF is password-protected and cannot be read. Save an unprotected copy and try again.",
     "pdf_too_many_pages": "This PDF has too many pages. Upload a document of up to 10 pages.",
-    "pdf_unreadable": "This PDF could not be read. It may be damaged. Try exporting it again."
+    "pdf_unreadable": "This PDF could not be read. It may be damaged. Try exporting it again.",
+    "session_full": "This session already holds 10 payslips. Start a new session to add more."
   }
 }
