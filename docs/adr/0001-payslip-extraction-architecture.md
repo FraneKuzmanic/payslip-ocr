@@ -22,6 +22,11 @@ evidence: .agents/history/01-extraction-bakeoff.md
 > 15.1 s, against the challenger's 13.9 s, removing it as a differentiator. A residual risk stays
 > open: 15.1 s still exceeds the ≤10 s target. See the linked record.
 >
+> **Clarified 2026-09-25:** the Consequences say both providers stay behind
+> `DocumentExtractionProvider`, selected by configuration. Only Content Understanding is in `api/`;
+> the challenger stays in `scripts/bakeoff/` as the measured fallback, because a selector with one
+> legal value is speculative configuration (ROADMAP Task 04 D13). The decision is unchanged.
+>
 > **Corrected 2026-09-24 (Task 04):** the body said West Europe twice. The resource has always been
 > in Sweden Central (PRD §4.5, history/01). This is a factual correction, not a change of decision.
 

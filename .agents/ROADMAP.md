@@ -139,14 +139,14 @@ extracting nothing.
 
 **Definition of done**
 
-- [ ] `npm install && npm run validate` passes: typecheck, lint, format check, unit tests.
-- [ ] `npm run dev` serves the client and API; sign-in works against the existing Supabase project.
-- [ ] No identifier containing `receipt` remains outside `.agents/`, `docs/` and git history —
+- [x] `npm install && npm run validate` passes: typecheck, lint, format check, unit tests.
+- [x] `npm run dev` serves the client and API; sign-in works against the existing Supabase project.
+- [x] No identifier containing `receipt` remains outside `.agents/`, `docs/` and git history —
       verified by grep.
-- [ ] `scripts/bakeoff/` still runs: `npm run score -- cu` reproduces 98.9% against the golden set.
-- [ ] `/prime` resolves every file and roadmap section it points at, and `.claude/commands/`
+- [x] `scripts/bakeoff/` still runs: `npm run score -- cu` reproduces 98.9% against the golden set.
+- [x] `/prime` resolves every file and roadmap section it points at, and `.claude/commands/`
       contains no reference to `receipt`, `CLAUDE.md` or `@receipt/*`.
-- [ ] `npm run validate` exists as a package script and is green.
+- [x] `npm run validate` exists as a package script and is green.
 
 ---
 
@@ -335,8 +335,9 @@ something.
 
 - [ ] p50 time to first usable form ≤10 s over the 11 samples, measured, not estimated.
       **Measured and missed: p50 12.2 s** (single-pass 20.7 s), one payslip at a time. The
-      service generated at ~70–100 tok/s on the day; accepted by the product owner on 2026-09-25
-      (option A), with further splitting of the scalars pass left open.
+      service generated at ~70–100 tok/s on the day; mean 13.3 s (11.8 s without B02's slow
+      uplink). Accepted **for now** by the product owner on 2026-09-25 (option A), who expects it
+      to be improved in a later phase (§5, "Residual latency").
 - [x] Scalar accuracy within the 0.5% noise band of the single-pass baseline. **Met by R2 (271);
       R3 is one field under D12's floor (268 against 269; single-pass 270–272).** Every R3 miss is a
       field that also flips between runs of one design (history/05). Accepted by the product owner
@@ -367,7 +368,9 @@ check first.
   odbitak equals dohodak, so the base is legitimately 0,00.
 - `pay_components_sum_mismatch` applies to **amounts only, not hours** — B02's leaf hours total
   266 against a printed 176 and that is not an error.
-- OIB checksum: ISO 7064 MOD 11,10, applied to both employer and employee.
+- OIB checksum: ISO 7064 MOD 11,10, applied to both employer and employee. The scoring harness
+  also reports the **OIB checksum pass rate on extracted OIBs**, which PRD §11.3 lists as
+  measured and nothing measures yet.
 - Low-confidence projection: a provider-neutral `lowConfidenceFields` list, plus `ungroundable`
   as its own signal. Confidence **never suppresses a value**.
 - Compute grounding over the retained raw response (`pages[].words`); Task 04 stores per-field
@@ -410,6 +413,10 @@ screen within a couple of seconds, with per-payslip progress.
   soon as the first payslip exists.
 - Per-payslip status surfaced while extraction runs; a failure is one bad item with a retry, not
   a dead batch.
+- **`POST /api/payslips/:id/retry` (PRD §10.8)**, which that retry needs and no earlier task built:
+  `202` for a `failed` payslip with a retryable reason, `409 retry_not_allowed` otherwise. It
+  re-runs both extraction passes, so it must reset `tables_status` to `pending` along with
+  `status = processing`: the tables pass writes only while pending (Task 05 review).
 - Croatian and English copy for everything added, including hr/en copy for every
   `PAYSLIP_STATUSES` and `TABLES_STATUSES` value, guarded by a test mirroring
   `uploadErrors.test.ts` (Task 02 D8, Task 05 D6).
@@ -616,6 +623,8 @@ the software keyboard open.
   Blueprint is **created**, so a secret added to `render.yaml` later must also be set by hand in
   the Render dashboard.
 - End-to-end journeys against the hosted stack, including the multi-payslip session.
+- The README PRD §6.7 lists, open since Task 01 (history/01 open item 5).
+- Measure PRD §11.4's "four payslips in parallel ≤25 s" as stated; Task 05 measured eleven at once.
 
 **Not in this task:** preview environments, rollback.
 
@@ -647,7 +656,8 @@ each is run separately and its result recorded in the owning task's history file
 
 | Risk | Status | Where it bites |
 | --- | --- | --- |
-| **Residual latency** — two-pass first form **p50 12.2 s, p90 15.1 s** against ≤10 s (Task 05). Single-pass on the same path p50 20.7 s. Concurrency is **not** the cause (single-pass A01 66.8 s alone against 66.3 s with three in flight); the service's generation rate is: ~70–100 tok/s on 2026-09-24/25 against up to 245 on 2026-09-20, with 500K TPM of quota unused | Open, accepted for now | A ~600-token scalars pass cannot beat 10 s at that rate. The lever left is splitting the scalars pass further, now that concurrent analyses cost nothing measurable; or re-measuring on a faster day |
+| **Residual latency** — two-pass first form **p50 12.2 s, mean 13.3 s, p90 15.1 s** against ≤10 s (Task 05). Complete form ≤25 s holds at the median (14.0 s) but not for A01, A04, B02 or E01. Single-pass on the same path p50 20.7 s. Concurrency is **not** the cause (single-pass A01 66.8 s alone against 66.3 s with three in flight); the service's generation rate is: ~70–100 tok/s on 2026-09-24/25 against up to 245 on 2026-09-20, with 500K TPM of quota unused | Open, accepted for now; **the product owner expects it improved in a later phase** | A ~600-token scalars pass cannot beat 10 s at that rate. The levers: split the scalars pass further (history/05 option B), now that concurrent analyses cost nothing measurable; re-measure on a faster day first. Needs its own plan and paid runs |
+| **Cost per page above target** — PRD §11.4 says ≈ $0.01–0.02. Measured: bake-off ~$0.021, single-pass R1 $0.026, two-pass $0.038–0.043 (Task 05). Most of the single-pass rise is input tokens that were not cached | Open, found in the Task 05 audit | Any further latency split (option B) adds another analysis per document and makes it worse; weigh the two together |
 | **Submit stall** — intermittent ~29 s server-side stall on `:analyzeBinary` | Mitigated, not fixed | Worth an Azure support ticket; the retry costs a duplicate analysis |
 | **Small corpus** — 11 payslips, 7 layouts, no more available | Accepted | Every accuracy figure describes these seven vendors and no eighth |
 | **Hand-written rule creep** — a Croatian parser growing beneath a generic model | Watch | A growing count of deterministic post-processing rules is the signal to revisit the engine, not progress |

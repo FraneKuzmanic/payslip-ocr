@@ -302,7 +302,7 @@ class ExtractionError extends Error {
 }
 ```
 
-Two implementations exist. `ContentUnderstandingProvider` is primary. `LayoutPlusLlmProvider` exists to answer one question — *is the primary actually good enough?* — and is selected by configuration, never at runtime per request. See [ADR-0001](./docs/adr/0001-payslip-extraction-architecture.md).
+`ContentUnderstandingProvider` is the one implementation in the API. The DI-layout + LLM challenger answered one question — *is the primary actually good enough?* — in the Phase 2 bake-off, and stays implemented as the measured fallback in `scripts/bakeoff/`, not behind this interface: a selector with one legal value would be speculative (ROADMAP Task 04 D13). Promoting it means porting it behind the interface. See [ADR-0001](./docs/adr/0001-payslip-extraction-architecture.md).
 
 ### 6.4 Canonical schema
 
@@ -660,7 +660,7 @@ AZURE_CONTENT_UNDERSTANDING_ENDPOINT      # required, server-only
 AZURE_CONTENT_UNDERSTANDING_KEY           # required, server-only
 AZURE_CU_ANALYZER_ID                      # e.g. hr-payslip
 AZURE_CU_API_VERSION                      # 2025-11-01
-EXTRACTION_PROVIDER                       # content-understanding | layout-llm
+EXTRACTION_TIMEOUT_MS, EXTRACTION_CONCURRENCY   # per pass; concurrent analyses
 AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT      # challenger path only
 AZURE_DOCUMENT_INTELLIGENCE_KEY           # challenger path only
 AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_KEY   # challenger path only
@@ -820,10 +820,13 @@ $0.045–0.051 two-pass (~1.5×).
 - ✅ Copy `receipt-ocr`, rename `@receipt/*` → `@payslip/*`, strip receipt extraction and schema
 - ✅ Canonical payslip schema in `shared/`, with the Azure-vocabulary guard test
 - ✅ Session and payslip tables, RLS policies, storage bucket
-- ✅ Upload accepting multiple files; session creation; history list
+- ✅ Upload API (one file per request, ten per session); session creation; history list API
 - ✅ Croatian and English locales for everything built so far
 
 **Validation.** Sign in, upload four files, see four payslips in `processing`, find them in history tomorrow. Full typecheck, lint, format and unit-test sweep green.
+
+> **Status, 2026-09-25:** this phase is complete at the API only. The capture and history screens
+> that the validation journey needs are ROADMAP Tasks 07 and 12.
 
 ### Phase 2 — Extraction and the bake-off
 
@@ -832,7 +835,7 @@ $0.045–0.051 two-pass (~1.5×).
 - ✅ Golden set: ground truth for all 11 samples, spot-checked
 - ✅ Scoring harness, including the guard that fails when an expectation goes unscored
 - ✅ `ContentUnderstandingProvider` with the Croatian field schema
-- ✅ `LayoutPlusLlmProvider` — `prebuilt-layout` + Azure OpenAI `gpt-4.1` + string-match grounding
+- ✅ `LayoutPlusLlmProvider` — `prebuilt-layout` + Azure OpenAI `gpt-4.1` + string-match grounding (bake-off harness in `scripts/bakeoff/`, not ported into `api/`)
 - ✅ Run both; record results; confirm or overturn ADR-0001
 
 **Validation.** Both providers score against the same golden set; the winner meets §11.3 or the ADR is amended with what we learned. **This phase gates everything after it** — no UI is built on an engine that has not been measured.

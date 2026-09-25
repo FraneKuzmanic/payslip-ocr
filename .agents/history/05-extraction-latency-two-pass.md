@@ -115,7 +115,8 @@ p50 20.7 s, p90 46.2 s, max 66.8 s. One submit attempt each.
 | F01 | 12.2 | 12.2 | 1.7 / 10.5 / 596 | 9.3 / 526 |
 | G01 | 14.0 | 14.0 | 2.5 / 11.6 / 632 | 9.2 / 367 |
 
-- **First form p50 12.2 s, p90 15.1 s, max 28.2 s: the ≤10 s gate is missed.** Per page, p50 is 10.1 s.
+- **First form p50 12.2 s, p90 15.1 s, max 28.2 s: the ≤10 s gate is missed.** Mean 13.3 s, or
+  11.8 s without B02, whose 16.3 s submit is this machine's uplink. Per page, p50 is 10.1 s.
   Server-side only (first form − submit), the median is 10.7 s, so the uplink is not the cause.
 - **Against R1:** p50 20.7 → 12.2 s, p90 46.2 → 15.1 s. The large documents gain most (A01
   66.8 → 15.1 s, A04 46.2 → 10.1 s). Small ones barely move, or lose (G01 12.3 → 14.0 s).
@@ -188,7 +189,10 @@ break the tie.
 | Two-pass | R2 | $0.49 | **$0.045** |
 | Two-pass | R3 | $0.56 | **$0.051** |
 
-~1.5× (the spec estimated 1.6×). Pages double (13 → 26), and input tokens roughly double. How much
+~1.5× (the spec estimated 1.6×). **Against PRD §11.4's ≈ $0.01–0.02 per page this is over target:**
+13 pages per golden run gives $0.026/page single-pass (R1) and $0.038–0.043 two-pass. The
+bake-off's ~$0.021 was already at the edge. Found in the post-commit audit and now carried in
+ROADMAP §5. Pages double (13 → 26), and input tokens roughly double. How much
 is cached varies by run (R3: 107,559 uncached against R2's 65,575), which is most of the R2/R3
 difference.
 
@@ -233,7 +237,8 @@ Not run: browser journeys. No UI changed, and Task 07 is the first client-to-API
 
 ## Open items for later tasks
 
-1. **Latency option B** (split the scalars pass further) is open, and is the one lever left. Re-measure
+1. **Latency option B** (split the scalars pass further) is open, and is the one lever left. The
+   product owner accepted 12.2 s for now and **expects latency improved in a later phase**. Re-measure
    on another day first: the 20 September rate would already put a scalars pass near 7 s.
 2. **Task 06:** warnings per pass, the sum check only when `ready`, grounding from the scalars body
    (ROADMAP amended).
