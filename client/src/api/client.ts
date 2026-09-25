@@ -3,15 +3,19 @@ import {
   apiErrorResponseSchema,
   createPayslipResponseSchema,
   createSessionResponseSchema,
+  payslipDetailResponseSchema,
   retryPayslipResponseSchema,
   sessionDetailResponseSchema,
   sourceDocumentResponseSchema,
+  sourceRegionsResponseSchema,
   type CreatePayslipResponse,
   type CreateSessionResponse,
   type HealthResponse,
+  type PayslipDetailResponse,
   type RetryPayslipResponse,
   type SessionDetailResponse,
   type SourceDocumentResponse,
+  type SourceRegionsResponse,
 } from "@payslip/shared";
 import { supabase } from "../lib/supabase";
 
@@ -137,6 +141,26 @@ export async function getSessionDetail(
 ): Promise<SessionDetailResponse> {
   const response = await request(`/api/sessions/${encodeURIComponent(id)}`, { signal });
   return await parseResponse(sessionDetailResponseSchema, response, "GET /api/sessions/:id");
+}
+
+export async function getPayslipDetail(
+  id: string,
+  signal?: AbortSignal,
+): Promise<PayslipDetailResponse> {
+  const response = await request(`/api/payslips/${encodeURIComponent(id)}`, { signal });
+  return await parseResponse(payslipDetailResponseSchema, response, "GET /api/payslips/:id");
+}
+
+export async function getPayslipRegions(
+  id: string,
+  signal?: AbortSignal,
+): Promise<SourceRegionsResponse> {
+  const response = await request(`/api/payslips/${encodeURIComponent(id)}/regions`, { signal });
+  return await parseResponse(
+    sourceRegionsResponseSchema,
+    response,
+    "GET /api/payslips/:id/regions",
+  );
 }
 
 export async function retryPayslip(id: string): Promise<RetryPayslipResponse> {

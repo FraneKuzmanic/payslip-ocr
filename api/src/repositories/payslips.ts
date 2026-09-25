@@ -205,6 +205,28 @@ export class PayslipRepository {
     return { contentType: contentType.data, originalFilename: data.original_filename };
   }
 
+  /**
+   * The retained pass bodies for a source-region projection (Task 08 D7): the only read of
+   * `raw_provider_result`. A payslip without a readable form projects nothing, so its bodies are
+   * withheld here rather than filtered by the caller.
+   */
+  async findRegionSource(id: string): Promise<{ rawProviderResult: unknown } | null> {
+    const { data, error } = await this.#client
+      .from("payslips")
+      .select("status, raw_provider_result")
+      .eq("id", uuidSchema.parse(id))
+      .eq("user_id", this.#userId)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (error) throw new PayslipRepositoryError("query_failed", error);
+    if (data === null) return null;
+
+    return {
+      rawProviderResult: WARNED_STATUSES.includes(data.status) ? data.raw_provider_result : null,
+    };
+  }
+
   /** PRD §10.12 — the authenticated user's non-deleted payslips, newest first. */
   async listPage(options: ListPayslipsOptions): Promise<PayslipPage> {
     const from = (options.page - 1) * options.limit;

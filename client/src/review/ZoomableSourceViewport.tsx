@@ -40,8 +40,16 @@ interface ZoomableSourceViewportProps {
   interaction: RegionInteraction;
   fieldValues: Record<string, string>;
   lowConfidenceFields: readonly string[];
+  ungroundableFields: readonly string[];
+  unreadableFields: readonly string[];
   editedFields: readonly string[];
-  onSelect: (field: string) => void;
+  /** Absent while there is no form to focus (Task 08 D2): regions still open the popover. */
+  onSelect?: (field: string) => void;
+  /**
+   * The page has outlines but its rendered ratio disagrees with the declared one, so they are
+   * withheld; a note says why (Task 08 D10).
+   */
+  outlinesWithheld?: boolean;
   /** The painted surface — an `<img>` or a `<canvas>` — given the measured viewport in CSS pixels. */
   children: (viewport: Viewport) => React.ReactNode;
   /** Optional row beneath the viewport, used by the PDF pager. */
@@ -65,8 +73,11 @@ export function ZoomableSourceViewport({
   interaction,
   fieldValues,
   lowConfidenceFields,
+  ungroundableFields,
+  unreadableFields,
   editedFields,
   onSelect,
+  outlinesWithheld = false,
   children,
   footer,
 }: ZoomableSourceViewportProps) {
@@ -162,7 +173,7 @@ export function ZoomableSourceViewport({
   function handleRegionClick(field: string) {
     if (suppressClick.current) return;
     if (interaction === "popover") setInspected(field);
-    else onSelect(field);
+    else onSelect?.(field);
   }
 
   const inspectedRegion = findRegion(regions, page, inspected);
@@ -283,18 +294,28 @@ export function ZoomableSourceViewport({
             field={inspected}
             value={fieldValues[inspected] ?? null}
             lowConfidence={lowConfidenceFields.includes(inspected)}
+            ungroundable={ungroundableFields.includes(inspected)}
+            unreadable={unreadableFields.includes(inspected)}
             edited={editedFields.includes(inspected)}
             top={popoverTop(inspectedRegion, view, viewport)}
-            onEdit={() => {
-              setInspected(null);
-              onSelect(inspected);
-            }}
+            onEdit={
+              onSelect === undefined
+                ? undefined
+                : () => {
+                    setInspected(null);
+                    onSelect(inspected);
+                  }
+            }
             onClose={() => setInspected(null)}
           />
         ) : null}
       </div>
 
       {footer}
+
+      {outlinesWithheld ? (
+        <p className="text-sm text-slate-600">{t("review.highlightsWithheld")}</p>
+      ) : null}
 
       {interaction === "popover" && overlaySafe ? (
         <p className="text-sm text-slate-600">{t("review.inspectPrompt")}</p>
@@ -336,7 +357,7 @@ function ZoomButton({
       disabled={disabled}
       aria-label={label}
       title={label}
-      className="inline-flex size-11 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 disabled:text-slate-300 disabled:hover:bg-white"
+      className="inline-flex size-12 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 disabled:text-slate-300 disabled:hover:bg-white"
     >
       {children}
     </button>

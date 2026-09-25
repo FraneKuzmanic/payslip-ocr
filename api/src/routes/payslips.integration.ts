@@ -12,10 +12,16 @@ import {
   retryPayslipResponseSchema,
   sessionDetailResponseSchema,
   sourceDocumentResponseSchema,
+  sourceRegionsResponseSchema,
 } from "@payslip/shared";
 import { createApp } from "../app.js";
 import { config } from "../config.js";
 import type { Database } from "../database.types.js";
+import {
+  regionsPassBody,
+  rows,
+  sourced,
+} from "../providers/document-extraction/content-understanding/regions.fixture.js";
 import { PayslipRepository } from "../repositories/payslips.js";
 import type { ExtractionJob } from "../services/payslip-extraction.js";
 import { SOURCE_URL_TTL_SECONDS, sourceObjectPath } from "../storage/payslip-sources.js";
@@ -275,6 +281,7 @@ describe("another user", () => {
         .attach("file", jpeg, { filename: "payslip.jpg", contentType: "image/jpeg" }),
       request(app).get(`/api/payslips/${jpegPayslipId}`),
       request(app).get(`/api/payslips/${jpegPayslipId}/source`),
+      request(app).get(`/api/payslips/${jpegPayslipId}/regions`),
       request(app).delete(`/api/payslips/${jpegPayslipId}`),
       request(app).post(`/api/payslips/${jpegPayslipId}/retry`),
     ];
@@ -672,6 +679,107 @@ describe("retry (Task 07 D8)", () => {
   });
 });
 
+describe("source regions (Task 08)", () => {
+  // Its own session: the earlier ones are near the cap of ten (Task 06 deviation 4).
+  let regionsSessionId = "";
+  let id = "";
+  const corners = [
+    { x: 0.25, y: 0.1 },
+    { x: 0.5, y: 0.1 },
+    { x: 0.5, y: 0.2 },
+    { x: 0.25, y: 0.2 },
+  ];
+
+  beforeAll(async () => {
+    const created = await request(app)
+      .post("/api/sessions")
+      .set("Authorization", `Bearer ${tokenA}`);
+    regionsSessionId = createSessionResponseSchema.parse(created.body).id;
+
+    const { data, error } = await userA
+      .from("payslips")
+      .insert({
+        session_id: regionsSessionId,
+        user_id: userAId,
+        original_filename: "regions.pdf",
+        content_type: "application/pdf",
+        page_count: 1,
+      })
+      .select("id")
+      .single();
+    if (error) throw new Error("Could not insert a processing payslip.");
+    id = data.id;
+  });
+
+  async function regions() {
+    const response = await getAsA(`/api/payslips/${id}/regions`);
+    expect(response.status).toBe(200);
+    return sourceRegionsResponseSchema.parse(response.body);
+  }
+
+  it("projects nothing while processing", async () => {
+    expect(await regions()).toEqual({ pages: [], regions: [] });
+  });
+
+  it("projects the scalars pass once it lands", async () => {
+    const landed = await new PayslipRepository(userA, userAId).completeExtractionPass(
+      id,
+      "scalars",
+      {
+        fields: { netoPlaca: "2298.97" },
+        metadata: { unreadableFields: [], queuedMs: 1 },
+        raw: regionsPassBody({ netoPlaca: sourced("2.298,97", "D(1,2,1,4,1,4,2,2,2)") }),
+      },
+    );
+    expect(landed).toBe(true);
+
+    expect(await regions()).toEqual({
+      pages: [{ page: 1, aspectRatio: 0.8 }],
+      regions: [{ fields: ["netoPlaca"], page: 1, corners, origin: "model" }],
+    });
+  });
+
+  it("adds the table cells once the tables pass lands (D7)", async () => {
+    const landed = await new PayslipRepository(userA, userAId).completeExtractionPass(
+      id,
+      "tables",
+      {
+        fields: {
+          payComponents: [{ naziv: null, sati: null, koeficijent: null, iznos: "1200.00" }],
+          obustave: [],
+          neoporeziviPrimici: [],
+        },
+        metadata: { unreadableFields: [], queuedMs: 1 },
+        raw: regionsPassBody({
+          payComponents: rows({ iznos: sourced("1.200,00", "D(1,2,3,4,3,4,4,2,4)") }),
+        }),
+      },
+    );
+    expect(landed).toBe(true);
+
+    expect((await regions()).regions.map((region) => region.fields)).toEqual([
+      ["netoPlaca"],
+      ["payComponents.0.iznos"],
+    ]);
+  });
+
+  it("projects nothing once the payslip has failed", async () => {
+    const { error } = await admin
+      .from("payslips")
+      .update({ status: "failed", failure_reason: "provider_unavailable" })
+      .eq("id", id);
+    if (error) throw new Error("Could not fail the payslip.");
+
+    expect(await regions()).toEqual({ pages: [], regions: [] });
+  });
+
+  it("answers 400 for a malformed id", async () => {
+    const response = await getAsA("/api/payslips/not-a-uuid/regions");
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({ error: { code: "invalid_request" } });
+  });
+});
+
 describe("soft delete", () => {
   it("removes the payslip from every list and read, and a second delete is 404", async () => {
     const deleted = await request(app)
@@ -687,6 +795,7 @@ describe("soft delete", () => {
     expect(detail.payslips.map((payslip) => payslip.id)).toEqual([pdfPayslipId]);
     expect((await getAsA(`/api/payslips/${jpegPayslipId}`)).status).toBe(404);
     expect((await getAsA(`/api/payslips/${jpegPayslipId}/source`)).status).toBe(404);
+    expect((await getAsA(`/api/payslips/${jpegPayslipId}/regions`)).status).toBe(404);
 
     const again = await request(app)
       .delete(`/api/payslips/${jpegPayslipId}`)

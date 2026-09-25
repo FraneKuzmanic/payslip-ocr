@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PayslipSummary, SessionDetailResponse } from "@payslip/shared";
 import { getSessionDetail, retryPayslip } from "../api/client";
@@ -22,6 +22,12 @@ vi.mock("../api/client", () => {
 
 let batchItems: readonly BatchItem[] = [];
 const dismiss = vi.fn();
+
+vi.mock("../review/PayslipPreview", () => ({
+  PayslipPreview: ({ payslipId, tablesStatus }: { payslipId: string; tablesStatus: string }) => (
+    <p data-testid="preview">{`${payslipId} ${tablesStatus}`}</p>
+  ),
+}));
 
 vi.mock("../upload/useUploadBatch", () => ({
   useUploadBatch: () => ({ startBatch: vi.fn(), itemsFor: () => batchItems, dismiss }),
@@ -52,11 +58,24 @@ function session(...payslips: PayslipSummary[]): SessionDetailResponse {
   return { id: SESSION_ID, createdAt: "2026-09-25T10:00:00.000Z", payslips };
 }
 
-function renderPage() {
+function LocationProbe() {
+  const location = useLocation();
+  return <p data-testid="location">{location.search}</p>;
+}
+
+function renderPage(search = "") {
   render(
-    <MemoryRouter initialEntries={[`/sessions/${SESSION_ID}`]}>
+    <MemoryRouter initialEntries={[`/sessions/${SESSION_ID}${search}`]}>
       <Routes>
-        <Route path="/sessions/:sessionId" element={<SessionPage />} />
+        <Route
+          path="/sessions/:sessionId"
+          element={
+            <>
+              <SessionPage />
+              <LocationProbe />
+            </>
+          }
+        />
       </Routes>
     </MemoryRouter>,
   );
@@ -314,5 +333,107 @@ describe("SessionPage", () => {
     await flush();
 
     expect(screen.getByRole("status")).toHaveTextContent("2 of 4 ready to review");
+  });
+});
+
+describe("SessionPage document preview (Task 08 D1)", () => {
+  const readable = () =>
+    session(
+      summary("ready", { status: "review", tablesStatus: "ready" }),
+      summary("busy"),
+      summary("broken", { status: "failed", failureReason: "unreadable_document" }),
+      summary("done", { status: "confirmed", tablesStatus: "ready" }),
+    );
+  const show = { name: "Show document" };
+
+  it("offers Show document only on payslips with a readable form", async () => {
+    mockedDetail.mockResolvedValue(readable());
+    renderPage();
+    await flush();
+
+    const [ready, busy, broken, done] = rows();
+    expect(within(ready!).getByRole("button", show)).toHaveAttribute("aria-expanded", "false");
+    expect(within(ready!).getByRole("button", show)).toHaveAttribute(
+      "aria-controls",
+      "payslip-preview",
+    );
+    expect(within(busy!).queryByRole("button", show)).not.toBeInTheDocument();
+    expect(within(broken!).queryByRole("button", show)).not.toBeInTheDocument();
+    expect(within(done!).getByRole("button", show)).toBeInTheDocument();
+    expect(screen.queryByTestId("preview")).not.toBeInTheDocument();
+  });
+
+  it("opens the preview through ?payslip=, focuses its heading, and closes it again", async () => {
+    mockedDetail.mockResolvedValue(readable());
+    renderPage();
+    await flush();
+
+    fireEvent.click(within(rows()[0]!).getByRole("button", show));
+    await flush();
+
+    expect(screen.getByTestId("location")).toHaveTextContent("?payslip=ready");
+    expect(screen.getByTestId("preview")).toHaveTextContent("ready ready");
+    const heading = screen.getByRole("heading", { name: "Payslip 1 · ready.jpg" });
+    expect(document.activeElement).toBe(heading);
+    const hide = within(rows()[0]!).getByRole("button", { name: "Hide document" });
+    expect(hide).toHaveAttribute("aria-expanded", "true");
+
+    fireEvent.click(hide);
+    await flush();
+
+    expect(screen.getByTestId("location")).toBeEmptyDOMElement();
+    expect(screen.queryByTestId("preview")).not.toBeInTheDocument();
+    expect(within(rows()[0]!).getByRole("button", show)).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("switches the preview to another payslip", async () => {
+    mockedDetail.mockResolvedValue(readable());
+    renderPage("?payslip=ready");
+    await flush();
+
+    fireEvent.click(within(rows()[3]!).getByRole("button", show));
+    await flush();
+
+    expect(screen.getByTestId("location")).toHaveTextContent("?payslip=done");
+    expect(screen.getByTestId("preview")).toHaveTextContent("done ready");
+    expect(within(rows()[0]!).getByRole("button", show)).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("opens a readable payslip named in the URL, without taking focus", async () => {
+    mockedDetail.mockResolvedValue(readable());
+    renderPage("?payslip=done");
+    await flush();
+
+    expect(screen.getByTestId("preview")).toHaveTextContent("done ready");
+    expect(screen.getByRole("heading", { name: "Payslip 4 · done.jpg" })).toBeInTheDocument();
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it.each(["busy", "broken", "unknown"])(
+    "ignores ?payslip=%s: no preview and no error",
+    async (id) => {
+      mockedDetail.mockResolvedValue(readable());
+      renderPage(`?payslip=${id}`);
+      await flush();
+
+      expect(screen.queryByTestId("preview")).not.toBeInTheDocument();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    },
+  );
+
+  it("passes the polled tables status through to the open preview", async () => {
+    mockedDetail.mockResolvedValue(
+      session(summary("ready", { status: "review", tablesStatus: "pending" })),
+    );
+    renderPage("?payslip=ready");
+    await flush();
+    expect(screen.getByTestId("preview")).toHaveTextContent("ready pending");
+
+    mockedDetail.mockResolvedValue(
+      session(summary("ready", { status: "review", tablesStatus: "ready" })),
+    );
+    await tick();
+
+    expect(screen.getByTestId("preview")).toHaveTextContent("ready ready");
   });
 });

@@ -276,6 +276,34 @@ describe("PayslipRepository.findDetailState", () => {
   });
 });
 
+describe("PayslipRepository.findRegionSource (Task 08 D7)", () => {
+  const raw = { scalars: { id: "op" } };
+
+  it.each(["review", "confirmed"] as const)("returns the retained bodies in %s", async (status) => {
+    const repository = new PayslipRepository(
+      singleRow(payslipRow({ status, raw_provider_result: raw })),
+      USER_ID,
+    );
+
+    expect(await repository.findRegionSource(PAYSLIP_ID)).toEqual({ rawProviderResult: raw });
+  });
+
+  it.each(["processing", "failed"] as const)("withholds the bodies in %s", async (status) => {
+    const repository = new PayslipRepository(
+      singleRow(payslipRow({ status, raw_provider_result: raw })),
+      USER_ID,
+    );
+
+    expect(await repository.findRegionSource(PAYSLIP_ID)).toEqual({ rawProviderResult: null });
+  });
+
+  it("returns null when the row is absent", async () => {
+    const repository = new PayslipRepository(singleRow(null), USER_ID);
+
+    expect(await repository.findRegionSource(PAYSLIP_ID)).toBeNull();
+  });
+});
+
 describe("PayslipRepository.beginRetry (Task 07 D8)", () => {
   it("resets to a fresh extraction, only from a live, owned, retryable failure", async () => {
     const { client, calls } = recordingUpdate(
@@ -316,7 +344,7 @@ describe("PayslipRepository.beginRetry (Task 07 D8)", () => {
 });
 
 /** The `from().select().eq().eq().is().maybeSingle()` chain `findDetailState` uses. */
-function singleRow(row: PayslipRow): SupabaseClient<Database> {
+function singleRow(row: PayslipRow | null): SupabaseClient<Database> {
   const chain = {
     select: () => chain,
     eq: () => chain,

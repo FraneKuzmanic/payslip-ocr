@@ -43,7 +43,7 @@ export function SourceOverlay({
               fillOpacity={active ? 0.15 : 0}
               stroke={colour}
               strokeWidth={active ? 2.5 : 1.25}
-              strokeOpacity={active ? 1 : 0.55}
+              strokeOpacity={1}
               strokeDasharray={edited ? EDITED_DASH : undefined}
               vectorEffect="non-scaling-stroke"
               className="cursor-pointer"

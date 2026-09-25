@@ -15,7 +15,7 @@ export function ErrorMessage({ message, onRetry }: ErrorMessageProps) {
         <button
           type="button"
           onClick={onRetry}
-          className="mt-3 min-h-11 rounded-lg bg-red-700 px-4 text-sm font-semibold text-white hover:bg-red-800"
+          className="mt-3 min-h-12 rounded-lg bg-red-700 px-4 text-sm font-semibold text-white hover:bg-red-800"
         >
           {t("common.retry")}
         </button>

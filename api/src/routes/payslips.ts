@@ -7,8 +7,10 @@ import {
   type PayslipDetailResponse,
   type RetryPayslipResponse,
   type SourceDocumentResponse,
+  type SourceRegionsResponse,
 } from "@payslip/shared";
 import { HttpError } from "../middleware/error-handler.js";
+import { projectSourceRegions } from "../providers/document-extraction/content-understanding/index.js";
 import { authenticated } from "../middleware/require-auth.js";
 import { PayslipRepository } from "../repositories/payslips.js";
 import { STALE_EXTRACTION_MS, type ExtractionRunner } from "../services/payslip-extraction.js";
@@ -60,6 +62,27 @@ export function createPayslipsRouter(extraction: ExtractionRunner): Router {
         originalFilename: source.originalFilename,
         expiresAt: new Date(Date.now() + SOURCE_URL_TTL_SECONDS * 1000).toISOString(),
       };
+      res.json(body);
+    }),
+  );
+
+  /**
+   * PRD §10.10. A read-time projection over the retained responses (Task 08): no geometry is
+   * stored, so it applies to every payslip already analysed. Empty for a payslip without a
+   * readable form (D7).
+   */
+  router.get(
+    "/:id/regions",
+    authenticated(async (req, res, auth) => {
+      const id = idSchema.safeParse(req.params["id"]);
+      if (!id.success) throw new HttpError(400, "invalid_request");
+
+      const source = await new PayslipRepository(auth.client, auth.userId).findRegionSource(
+        id.data,
+      );
+      if (source === null) throw new HttpError(404, "not_found");
+
+      const body: SourceRegionsResponse = projectSourceRegions(source.rawProviderResult);
       res.json(body);
     }),
   );

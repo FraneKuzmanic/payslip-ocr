@@ -34,30 +34,68 @@
     "inspectEdited": "Edited",
     "inspectPrompt": "Tap a highlighted value on the payslip to see what was read.",
     "fields": {
-      "sellerName": "Seller name",
-      "sellerAddress": "Seller address",
-      "sellerOib": "Seller OIB",
-      "buyerName": "Buyer name",
-      "buyerAddress": "Buyer address",
-      "buyerOib": "Buyer OIB",
-      "documentNumber": "Document number",
-      "issueDate": "Issue date",
-      "issueTime": "Issue time",
-      "subtotal": "Subtotal",
-      "total": "Total",
-      "currency": "Currency",
-      "paymentMethod": "Payment method",
-      "jir": "JIR",
-      "zki": "ZKI",
-      "rate": "Rate",
-      "taxableBase": "Taxable base",
-      "vatAmount": "VAT amount",
-      "description": "Description",
-      "quantity": "Quantity",
-      "unitPrice": "Unit price"
+      "employerName": "Employer name",
+      "employerAddress": "Employer address",
+      "employerOib": "Employer OIB",
+      "employerIban": "Employer IBAN",
+      "employeeName": "Employee name",
+      "employeeAddress": "Employee address",
+      "employeeOib": "Employee OIB",
+      "employeeIban": "Employee IBAN",
+      "period": "Pay period",
+      "paymentDate": "Payment date",
+      "ukupnoSati": "Total hours",
+      "brutoPlaca": "Gross pay",
+      "doprinosiIzPlace": "Contributions from pay",
+      "doprinosMioIStup": "Pension, pillar I",
+      "doprinosMioIiStup": "Pension, pillar II",
+      "dohodak": "Dohodak",
+      "osobniOdbitak": "Personal allowance",
+      "poreznaOsnovica": "Taxable base",
+      "porezNaDohodak": "Income tax",
+      "netoPlaca": "Net pay",
+      "neoporeziviPrimiciUkupno": "Non-taxable payments, total",
+      "obustaveUkupno": "Obustave, total",
+      "iznosZaIsplatu": "Amount paid out",
+      "doprinosiNaPlacu": "Contributions on pay (employer)",
+      "ukupanTrosakRada": "Total cost of work"
     },
+    "columns": {
+      "payComponents": {
+        "naziv": "Component",
+        "sati": "Hours",
+        "koeficijent": "Coefficient",
+        "iznos": "Amount"
+      },
+      "obustave": {
+        "naziv": "Description",
+        "vjerovnik": "Creditor",
+        "iznos": "Amount",
+        "ostatakSalda": "Remaining balance",
+        "brojRata": "Instalment"
+      },
+      "neoporeziviPrimici": {
+        "naziv": "Type",
+        "iznos": "Amount"
+      }
+    },
+    "sections": {
+      "employer": "Employer",
+      "employee": "Employee",
+      "period": "Period",
+      "reconciliation": "Pay calculation",
+      "payComponents": "Pay components",
+      "obustave": "Obustave",
+      "neoporeziviPrimici": "Non-taxable payments"
+    },
+    "cellLabel": "{{column}}, {{section}} row {{row}}",
+    "inspectUnreadable": "Text was found here, but it could not be read as a value.",
+    "ungroundable": "This value was not found in the page's text. Check it against the document.",
+    "highlightsWithheld": "Highlights are hidden because the page's orientation could not be confirmed.",
+    "imageUnavailable": "This browser cannot show this image. Open it in a new tab or view it on another device.",
     "errors": {
-      "load": "The payslip could not be loaded. Try again."
+      "load": "The payslip could not be loaded. Try again.",
+      "refresh": "The highlights could not be updated, so some may be missing. Try again."
     }
   },
   "auth": {
@@ -130,7 +168,9 @@
     "scanMore": "Scan more payslips",
     "notFound": "This session does not exist.",
     "loadError": "The session could not be loaded.",
-    "retryError": "The retry could not be started. Check your connection and try again."
+    "retryError": "The retry could not be started. Check your connection and try again.",
+    "showDocument": "Show document",
+    "hideDocument": "Hide document"
   },
   "payslipStatus": {
     "processing": "Reading the payslip",

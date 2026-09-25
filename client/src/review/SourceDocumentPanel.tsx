@@ -16,8 +16,12 @@ interface SourceDocumentPanelProps {
   interaction: RegionInteraction;
   fieldValues: Record<string, string>;
   lowConfidenceFields: readonly string[];
+  ungroundableFields: readonly string[];
+  unreadableFields: readonly string[];
   editedFields: readonly string[];
-  onSelect: (field: string) => void;
+  onSelect?: (field: string) => void;
+  /** False where the page already names the document in its own heading (Task 08). */
+  showTitle?: boolean;
 }
 
 export function SourceDocumentPanel({
@@ -27,8 +31,11 @@ export function SourceDocumentPanel({
   interaction,
   fieldValues,
   lowConfidenceFields,
+  ungroundableFields,
+  unreadableFields,
   editedFields,
   onSelect,
+  showTitle = true,
 }: SourceDocumentPanelProps) {
   const { t } = useTranslation();
   const [source, setSource] = useState<Awaited<ReturnType<typeof getPayslipSource>> | null>(null);
@@ -37,6 +44,9 @@ export function SourceDocumentPanel({
   const [retriedImage, setRetriedImage] = useState(false);
   // Set when pdf.js cannot render the document, which drops back to the browser's own viewer.
   const [pdfUnavailable, setPdfUnavailable] = useState(false);
+  // Set when the image still fails after one fresh URL: the browser cannot decode it (HEIC outside
+  // Safari, Task 07 D10), so the panel says so instead of showing a broken image.
+  const [imageUnavailable, setImageUnavailable] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -44,7 +54,6 @@ export function SourceDocumentPanel({
     try {
       const next = await getPayslipSource(payslipId);
       setSource(next);
-      setRetriedImage(false);
       setPdfUnavailable(false);
     } catch (error) {
       console.error("[review] could not load the source document", error);
@@ -54,7 +63,11 @@ export function SourceDocumentPanel({
     }
   }
 
+  // The one image retry is per payslip, not per load: resetting it on every load retried an
+  // undecodable image forever, fetching a new signed URL each time.
   useEffect(() => {
+    setRetriedImage(false);
+    setImageUnavailable(false);
     void load();
   }, [payslipId]);
 
@@ -67,7 +80,7 @@ export function SourceDocumentPanel({
 
   return (
     <section className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3">
-      <h2 className="font-semibold">{t("review.sourceTitle")}</h2>
+      {showTitle ? <h2 className="font-semibold">{t("review.sourceTitle")}</h2> : null}
       {isPdf && pdfUnavailable ? (
         <>
           <object
@@ -79,7 +92,7 @@ export function SourceDocumentPanel({
               href={source.url}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex min-h-11 items-center underline"
+              className="inline-flex min-h-12 items-center underline"
             >
               {t("review.openSource")}
             </a>
@@ -94,10 +107,14 @@ export function SourceDocumentPanel({
           interaction={interaction}
           fieldValues={fieldValues}
           lowConfidenceFields={lowConfidenceFields}
+          ungroundableFields={ungroundableFields}
+          unreadableFields={unreadableFields}
           editedFields={editedFields}
           onSelect={onSelect}
           onUnavailable={() => setPdfUnavailable(true)}
         />
+      ) : imageUnavailable ? (
+        <p className="text-sm text-slate-600">{t("review.imageUnavailable")}</p>
       ) : (
         <ImageSource
           url={source.url}
@@ -107,13 +124,19 @@ export function SourceDocumentPanel({
           interaction={interaction}
           fieldValues={fieldValues}
           lowConfidenceFields={lowConfidenceFields}
+          ungroundableFields={ungroundableFields}
+          unreadableFields={unreadableFields}
           editedFields={editedFields}
           onSelect={onSelect}
           onRetry={() => {
-            if (!retriedImage) {
-              setRetriedImage(true);
-              void load();
+            // The first failure may be an expired signed URL, so it gets one fresh one.
+            if (retriedImage) {
+              console.error("[review] the browser could not display the source image");
+              setImageUnavailable(true);
+              return;
             }
+            setRetriedImage(true);
+            void load();
           }}
           alt={t("review.sourceAlt")}
         />
@@ -123,7 +146,7 @@ export function SourceDocumentPanel({
           href={source.url}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex min-h-11 items-center underline"
+          className="inline-flex min-h-12 items-center underline"
         >
           {t("review.openSource")}
         </a>
@@ -140,8 +163,10 @@ interface ImageSourceProps {
   interaction: RegionInteraction;
   fieldValues: Record<string, string>;
   lowConfidenceFields: readonly string[];
+  ungroundableFields: readonly string[];
+  unreadableFields: readonly string[];
   editedFields: readonly string[];
-  onSelect: (field: string) => void;
+  onSelect?: (field: string) => void;
   onRetry: () => void;
   alt: string;
 }
@@ -154,24 +179,36 @@ function ImageSource({
   interaction,
   fieldValues,
   lowConfidenceFields,
+  ungroundableFields,
+  unreadableFields,
   editedFields,
   onSelect,
   onRetry,
   alt,
 }: ImageSourceProps) {
-  const [overlaySafe, setOverlaySafe] = useState(false);
+  // "pending" until the image has loaded, so the withheld note never flashes during load (D10).
+  const [ratio, setRatio] = useState<"pending" | "agrees" | "disagrees">("pending");
   const page = regions?.pages[0];
+
+  useEffect(() => {
+    setRatio("pending");
+  }, [url]);
 
   return (
     <ZoomableSourceViewport
       ratio={aspectRatio ?? 1}
-      overlaySafe={overlaySafe && page !== undefined}
+      overlaySafe={ratio === "agrees" && page !== undefined}
+      outlinesWithheld={
+        ratio === "disagrees" && (regions?.regions.some((region) => region.page === 1) ?? false)
+      }
       regions={regions?.regions ?? []}
       page={page?.page ?? 1}
       activeField={activeField}
       interaction={interaction}
       fieldValues={fieldValues}
       lowConfidenceFields={lowConfidenceFields}
+      ungroundableFields={ungroundableFields}
+      unreadableFields={unreadableFields}
       editedFields={editedFields}
       onSelect={onSelect}
     >
@@ -184,8 +221,10 @@ function ImageSource({
           onLoad={(event) => {
             const renderedRatio =
               event.currentTarget.naturalWidth / event.currentTarget.naturalHeight;
-            setOverlaySafe(
-              aspectRatio !== undefined && Math.abs(renderedRatio - aspectRatio) < 0.01,
+            setRatio(
+              aspectRatio !== undefined && Math.abs(renderedRatio - aspectRatio) < 0.01
+                ? "agrees"
+                : "disagrees",
             );
           }}
           onError={onRetry}

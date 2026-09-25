@@ -29,8 +29,10 @@ interface PdfSourceProps {
   interaction: RegionInteraction;
   fieldValues: Record<string, string>;
   lowConfidenceFields: readonly string[];
+  ungroundableFields: readonly string[];
+  unreadableFields: readonly string[];
   editedFields: readonly string[];
-  onSelect: (field: string) => void;
+  onSelect?: (field: string) => void;
   /** Called when the document cannot be rendered, so the panel can fall back to the native viewer. */
   onUnavailable: () => void;
 }
@@ -42,6 +44,8 @@ export function PdfSource({
   interaction,
   fieldValues,
   lowConfidenceFields,
+  ungroundableFields,
+  unreadableFields,
   editedFields,
   onSelect,
   onUnavailable,
@@ -147,8 +151,14 @@ export function PdfSource({
         interaction={interaction}
         fieldValues={fieldValues}
         lowConfidenceFields={lowConfidenceFields}
+        ungroundableFields={ungroundableFields}
+        unreadableFields={unreadableFields}
         editedFields={editedFields}
         onSelect={onSelect}
+        // Only reachable once the page is measured, so the note never shows while loading (D10).
+        outlinesWithheld={
+          !overlaySafe && (regions?.regions.some((region) => region.page === page) ?? false)
+        }
         footer={
           document.numPages > 1 ? (
             <Pager page={page} total={document.numPages} onChange={(next) => setPage(next)} />
@@ -252,7 +262,7 @@ function PagerButton({
       disabled={disabled}
       aria-label={label}
       title={label}
-      className="inline-flex size-11 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 disabled:text-slate-300 disabled:hover:bg-white"
+      className="inline-flex size-12 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 disabled:text-slate-300 disabled:hover:bg-white"
     >
       {children}
     </button>

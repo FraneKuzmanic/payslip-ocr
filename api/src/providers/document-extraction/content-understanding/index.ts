@@ -2,6 +2,9 @@ import { config } from "../../../config.js";
 import type { DocumentExtractionProvider } from "../types.js";
 import { ContentUnderstandingProvider } from "./provider.js";
 
+// The regions route's only entry into this module (Task 08).
+export { projectSourceRegions } from "./regions.js";
+
 /**
  * The application's extraction provider, built from `config`. Reading the configuration here
  * keeps every provider-specific setting name out of `app.ts` (Task 04 D4). No network call is

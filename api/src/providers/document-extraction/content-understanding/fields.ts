@@ -72,6 +72,13 @@ const TABLE_PARSERS: Record<TableKey, Record<string, Parser>> = {
   neoporeziviPrimici: { naziv: text, iznos: parseAmount },
 };
 
+/** The canonical scalars the mapper reads, in schema order (Task 08 D6). */
+export const SCALAR_FIELDS = Object.keys(SCALAR_PARSERS) as ScalarKey[];
+/** Each line-item table's columns (Task 08 D6). */
+export const TABLE_COLUMNS = Object.fromEntries(
+  Object.entries(TABLE_PARSERS).map(([table, columns]) => [table, Object.keys(columns)]),
+) as Record<TableKey, string[]>;
+
 // Narrow views of exactly what is read. `.loose()` keeps the rest of the body out of the way.
 const rawValueSchema = z
   .object({ valueString: z.string().optional(), confidence: z.number().optional() })

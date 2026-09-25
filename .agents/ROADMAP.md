@@ -91,7 +91,7 @@ investigation and is recorded with its reasoning.
 | 05 | Extraction latency: partial results or two-pass | ✅ complete, first-form target missed (p50 12.2 s) → [`history/05`](./history/05-extraction-latency-two-pass.md) |
 | 06 | Warnings & validation engine | ✅ complete → [`history/06`](./history/06-warnings-validation-engine.md) |
 | 07 | Capture & multi-upload UI | ✅ complete, reviewed and validated; M3 core journey passed, sub-steps pending → [`history/07`](./history/07-capture-multi-upload.md) |
-| 08 | Source regions & document preview with highlighting | ⬜ not started |
+| 08 | Source regions & document preview with highlighting | ✅ complete, reviewed and validated; M1 spot-check pending → [`history/08`](./history/08-source-regions-preview.md) |
 | 09 | Review form & two-way linking | ⬜ not started |
 | 10 | Session navigation & phone layout | ⬜ not started |
 | 11 | Merge payslips | ⬜ not started |
@@ -478,16 +478,33 @@ honestly not outlined at all.
 - `ungroundableFields` (Task 06) is a different thing from a region's `origin`: it says the
   printed value is not among the OCR words, not where an outline came from.
 
+- Added in planning (plan 08):
+  - the preview lives on the session page, selected by `?payslip=`, behind a Show document
+    disclosure (D1);
+  - a region click opens a read-only popover with no Edit button until Task 09 (D2);
+  - the seven PRD §7.7 sections and their colours, each ≥ 3:1 against white (D4);
+  - hr/en labels for every canonical path replace the receipt copy, guarded by a test (D9);
+  - withheld outlines carry a translated note (D10);
+  - the touched 44 px controls go to 48 px (D12).
+- Added in execution: an image the browser cannot decode (HEIC outside Safari) shows a translated
+  notice instead of a broken preview. The panel's single image retry had also been reset on every
+  load, which retried such an image forever.
+
 **Not in this task:** the form that links to regions (09), navigation (10).
 
 **Definition of done**
 
-- [ ] Regions return for all 11 samples, covering **100% of non-null scalar fields** — CU's
-      measured coverage.
-- [ ] Outlines land on the correct text on a native PDF, a clean scan, and an angled phone photo.
-- [ ] An EXIF-rotated image and a `/Rotate 90` PDF withhold outlines rather than misplacing them.
-- [ ] The PDF path degrades to `<object>` plus a translated notice if pdf.js fails, rather than
-      breaking the panel.
+- [x] Regions return for all 11 samples, covering **100% of non-null scalar fields** — CU's
+      measured coverage. Recordings test over `two-pass-sequential`, `two-pass-concurrent` and `cu`:
+      100% of non-null scalars and of every sourced path in each.
+- [x] Outlines land on the correct text on a native PDF, a clean scan, and an angled phone photo.
+      Journey 9.7 in review: A01, A03, A02's scan, B02 and G01, judged at 3× (history/08).
+- [x] An EXIF-rotated image and a `/Rotate 90` PDF show their outlines on the text, or withhold
+      them with a note; never misplaced. The 180° limit is documented. **Reworded (plan 08 D11).**
+      Measured: the service applies both EXIF 6 and `/Rotate 90`, so both are outlined correctly
+      (history/08), and journey 9.7 confirmed it in the browser.
+- [x] The PDF path degrades to `<object>` plus a translated notice if pdf.js fails, rather than
+      breaking the panel. Forced in journey 9.7 by blocking the PDF download.
 - [ ] **Visual spot-check of all 11 documents recorded** — see §4.
 
 ---
@@ -528,6 +545,9 @@ place on the page.
   `ungroundableFields`; positional table paths in `unreadableFields` after a row is added or
   removed (Task 06 D5); and how to render `period`/`paymentDate`, which sit below the 0.5
   confidence threshold on most payslips even when correct (history/06).
+- **Task 08 review hand-offs:** the region popover does not close on Escape and takes no focus, and
+  the outlines are `aria-hidden` and pointer-only; field → region linking is their keyboard path.
+  Decide both when the popover gains Edit (history/08 review, findings 7–8).
 
 **Not in this task:** navigation between payslips (10), export (12).
 
@@ -671,7 +691,7 @@ each is run separately and its result recorded in the owning task's history file
 
 | # | Step | Owning task | Record |
 | --- | --- | --- | --- |
-| M1 | Visual spot-check that outlines sit on their values, all 11 golden-set documents, image and PDF | 08 | Table in `history/08-*.md`: sample, verdict, notes |
+| M1 | Visual spot-check that outlines sit on their values, all 11 golden-set documents, image and PDF. The Task 08 review session uploads them and leaves them in place (plan 08 D13) | 08 | Table in `history/08-*.md`: sample, verdict, notes |
 | M2 | Real-iPhone keyboard behaviour — field focused, preview collapsed, value and source visible together; Safari `visualViewport` fallback | 10 | Device, iOS version, screenshots, verdict |
 | M3 | Real-phone capture journey — camera denial fallback, retake, rotation, one-handed reach on 44 px controls | 07 | Device, verdict per sub-step |
 | M4 | Golden-set ground truth spot-check after any fixture change | any | Confirmation in the history file |

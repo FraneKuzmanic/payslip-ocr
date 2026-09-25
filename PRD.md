@@ -502,7 +502,9 @@ Selected files collect in a **tray** before anything uploads (Task 07): each **S
 
 **Requirements.** A read-time projection converts provider polygons into **page-relative fractions** by dividing by that page's own dimensions, and returns them with each page's aspect ratio. This normalisation is what makes images and PDFs identical to the client and is carried over unchanged from receipt-ocr. Regions carry the canonical dotted field path (`netoPlaca`, `payComponents.2.iznos`), a page number, four corners and an origin.
 
-**Rules.** An outline is drawn **only** when the rendered aspect ratio agrees with the API's declared ratio within 0.01. A mismatch — EXIF rotation, an unexpected `/Rotate`, a pdf.js disagreement — withholds outlines rather than misplacing them. Colour follows the form's section legend. An edited field's outline is dashed.
+**Rules.** An outline is drawn **only** when the rendered aspect ratio agrees with the API's declared ratio within 0.01. A mismatch — EXIF rotation, an unexpected `/Rotate`, a pdf.js disagreement — withholds outlines rather than misplacing them, and a translated note says so. Colour follows the form's section legend. An edited field's outline is dashed.
+
+Since Task 08: a value printed across several lines has one outline per line. Every region's origin is `model`, the service's own source; a value without one has no outline, and there is no re-grounded fallback. An unreadable value (printed, but not normalisable) is still outlined. Content Understanding applies EXIF orientation and PDF `/Rotate` before reporting page sizes and quads (measured on an EXIF 6 photo and a `/Rotate 90` PDF), so both are outlined correctly. A 180° rotation cannot be detected by aspect ratio; it is correct as long as the service keeps applying the rotation. An image the browser cannot decode (HEIC outside Safari) shows a translated notice and the open-in-new-tab link instead of a broken preview.
 
 ### 7.6 Session navigation
 
@@ -726,7 +728,7 @@ A retry is a full reset to a fresh extraction: status `processing`, `tablesStatu
 
 **10.10** `GET /api/payslips/:id/regions`
 → `200 {pages: [{page, aspectRatio}], regions: [{fields: string[], page, corners: [{x,y}×4], origin}]}`
-Coordinates are page-relative fractions in `[0,1]`. Returns empty arrays when no raw response is retained.
+Coordinates are page-relative fractions in `[0,1]`. Returns empty arrays when no raw response is retained, and for any payslip not in `review` or `confirmed`. While `tablesStatus` is `pending`, the regions cover the scalars only (Task 08).
 
 **10.11** `POST /api/sessions/:id/merge`
 Body `{payslipIds: [string, string], order: [string, string]}`. Builds a combined PDF from the sources, creates a new Payslip, re-extracts, soft-deletes the originals.
@@ -857,6 +859,10 @@ $0.045–0.051 two-pass (~1.5×).
 - ✅ The phone keyboard layout: `interactive-widget=resizes-content` plus the `visualViewport` fallback
 
 **Validation.** Every golden-set document reviewed end to end in a real browser, including a real iPhone for the keyboard behaviour. Highlights verified visually on all 11.
+
+> **Status, 2026-09-25:** the region projection, the regions endpoint and the overlay with its
+> aspect-ratio guard landed in Task 08, shown from the session page. The form, linking and
+> navigation are Tasks 09 and 10.
 
 ### Phase 4 — Merge, export and polish
 

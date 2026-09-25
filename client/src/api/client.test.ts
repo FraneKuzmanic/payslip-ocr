@@ -3,6 +3,8 @@ import { supabase } from "../lib/supabase";
 import {
   ApiError,
   getHealth,
+  getPayslipDetail,
+  getPayslipRegions,
   getPayslipSource,
   getSessionDetail,
   retryPayslip,
@@ -100,6 +102,60 @@ describe("the API client", () => {
     await expect(getPayslipSource("payslip/id")).resolves.toEqual(source);
     expect(fetchMock).toHaveBeenCalledWith("/api/payslips/payslip%2Fid/source", expect.any(Object));
     expect(sentHeaders(fetchMock).get("Authorization")).toBe("Bearer token-abc");
+  });
+
+  it("parses a payslip's detail from its encoded path", async () => {
+    getSession.mockResolvedValue(sessionResult("token-abc"));
+    const detail = {
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      sessionId: "22222222-2222-4222-8222-222222222222",
+      userId: "33333333-3333-4333-8333-333333333333",
+      status: "review",
+      tablesStatus: "ready",
+      pageCount: 1,
+      currency: "EUR",
+      warnings: [],
+      createdAt: "2026-09-25T10:00:00.000Z",
+      updatedAt: "2026-09-25T10:00:00.000Z",
+      netoPlaca: "2298.97",
+      lowConfidenceFields: [],
+      unreadableFields: [],
+      ungroundableFields: [],
+      editedFields: [],
+    };
+    const fetchMock = respondWith(200, detail);
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getPayslipDetail("payslip/id")).resolves.toEqual(detail);
+    expect(fetchMock).toHaveBeenCalledWith("/api/payslips/payslip%2Fid", expect.any(Object));
+  });
+
+  it("parses a payslip's source regions from its encoded path", async () => {
+    getSession.mockResolvedValue(sessionResult("token-abc"));
+    const regions = {
+      pages: [{ page: 1, aspectRatio: 0.8 }],
+      regions: [
+        {
+          fields: ["netoPlaca"],
+          page: 1,
+          corners: [
+            { x: 0.25, y: 0.1 },
+            { x: 0.5, y: 0.1 },
+            { x: 0.5, y: 0.2 },
+            { x: 0.25, y: 0.2 },
+          ],
+          origin: "model",
+        },
+      ],
+    };
+    const fetchMock = respondWith(200, regions);
+    vi.stubGlobal("fetch", fetchMock);
+    const controller = new AbortController();
+
+    await expect(getPayslipRegions("payslip/id", controller.signal)).resolves.toEqual(regions);
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe("/api/payslips/payslip%2Fid/regions");
+    expect(init?.signal).toBe(controller.signal);
   });
 
   it("uploads one file as the single multipart part to the encoded session path", async () => {

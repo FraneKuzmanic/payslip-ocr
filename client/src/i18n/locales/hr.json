@@ -34,30 +34,68 @@
     "inspectEdited": "Izmijenjeno",
     "inspectPrompt": "Dodirnite istaknutu vrijednost na platnoj listi da vidite što je očitano.",
     "fields": {
-      "sellerName": "Naziv prodavatelja",
-      "sellerAddress": "Adresa prodavatelja",
-      "sellerOib": "OIB prodavatelja",
-      "buyerName": "Naziv kupca",
-      "buyerAddress": "Adresa kupca",
-      "buyerOib": "OIB kupca",
-      "documentNumber": "Broj dokumenta",
-      "issueDate": "Datum izdavanja",
-      "issueTime": "Vrijeme izdavanja",
-      "subtotal": "Međuzbroj",
-      "total": "Ukupno",
-      "currency": "Valuta",
-      "paymentMethod": "Način plaćanja",
-      "jir": "JIR",
-      "zki": "ZKI",
-      "rate": "Stopa",
-      "taxableBase": "Porezna osnovica",
-      "vatAmount": "Iznos PDV-a",
-      "description": "Opis",
-      "quantity": "Količina",
-      "unitPrice": "Jedinična cijena"
+      "employerName": "Naziv poslodavca",
+      "employerAddress": "Adresa poslodavca",
+      "employerOib": "OIB poslodavca",
+      "employerIban": "IBAN poslodavca",
+      "employeeName": "Ime i prezime radnika",
+      "employeeAddress": "Adresa radnika",
+      "employeeOib": "OIB radnika",
+      "employeeIban": "IBAN radnika",
+      "period": "Razdoblje obračuna",
+      "paymentDate": "Datum isplate",
+      "ukupnoSati": "Ukupno sati",
+      "brutoPlaca": "Bruto plaća",
+      "doprinosiIzPlace": "Doprinosi iz plaće",
+      "doprinosMioIStup": "MIO I. stup",
+      "doprinosMioIiStup": "MIO II. stup",
+      "dohodak": "Dohodak",
+      "osobniOdbitak": "Osobni odbitak",
+      "poreznaOsnovica": "Porezna osnovica",
+      "porezNaDohodak": "Porez na dohodak",
+      "netoPlaca": "Neto plaća",
+      "neoporeziviPrimiciUkupno": "Neoporezivi primici ukupno",
+      "obustaveUkupno": "Obustave ukupno",
+      "iznosZaIsplatu": "Iznos za isplatu",
+      "doprinosiNaPlacu": "Doprinosi na plaću",
+      "ukupanTrosakRada": "Ukupan trošak rada"
     },
+    "columns": {
+      "payComponents": {
+        "naziv": "Vrsta primitka",
+        "sati": "Sati",
+        "koeficijent": "Koeficijent",
+        "iznos": "Iznos"
+      },
+      "obustave": {
+        "naziv": "Opis",
+        "vjerovnik": "Vjerovnik",
+        "iznos": "Iznos",
+        "ostatakSalda": "Ostatak duga",
+        "brojRata": "Broj rate"
+      },
+      "neoporeziviPrimici": {
+        "naziv": "Vrsta",
+        "iznos": "Iznos"
+      }
+    },
+    "sections": {
+      "employer": "Poslodavac",
+      "employee": "Radnik",
+      "period": "Razdoblje",
+      "reconciliation": "Obračun",
+      "payComponents": "Primici",
+      "obustave": "Obustave",
+      "neoporeziviPrimici": "Neoporezivi primici"
+    },
+    "cellLabel": "{{column}}, {{section}}, red {{row}}",
+    "inspectUnreadable": "Ovdje je pronađen tekst, ali nije ga bilo moguće očitati kao vrijednost.",
+    "ungroundable": "Ova vrijednost nije pronađena u tekstu stranice. Provjerite je na dokumentu.",
+    "highlightsWithheld": "Oznake su skrivene jer nije bilo moguće potvrditi orijentaciju stranice.",
+    "imageUnavailable": "Ovaj preglednik ne može prikazati ovu sliku. Otvorite je u novoj kartici ili na drugom uređaju.",
     "errors": {
-      "load": "Nije moguće učitati platnu listu. Pokušajte ponovno."
+      "load": "Nije moguće učitati platnu listu. Pokušajte ponovno.",
+      "refresh": "Oznake nije bilo moguće osvježiti pa neke možda nedostaju. Pokušajte ponovno."
     }
   },
   "auth": {
@@ -132,7 +170,9 @@
     "scanMore": "Skeniraj još platnih lista",
     "notFound": "Ova sesija ne postoji.",
     "loadError": "Sesiju nije moguće učitati.",
-    "retryError": "Ponovni pokušaj nije pokrenut. Provjerite vezu i pokušajte ponovno."
+    "retryError": "Ponovni pokušaj nije pokrenut. Provjerite vezu i pokušajte ponovno.",
+    "showDocument": "Prikaži dokument",
+    "hideDocument": "Sakrij dokument"
   },
   "payslipStatus": {
     "processing": "Očitavanje u tijeku",

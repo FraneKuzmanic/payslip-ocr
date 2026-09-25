@@ -58,6 +58,20 @@ describe("SourceOverlay", () => {
     expect(outline).toHaveStyle({ pointerEvents: "all" });
   });
 
+  it("draws an inactive outline at full opacity, so its colour keeps its 3:1 contrast", () => {
+    // At the inherited 0.55 every section colour fell to 2.2–2.7:1 against white (Task 08 review).
+    const { container } = render(
+      <SourceOverlay
+        regions={regions}
+        page={1}
+        activeField={null}
+        editedFields={[]}
+        onSelect={vi.fn()}
+      />,
+    );
+    expect(container.querySelector("polygon")).toHaveAttribute("stroke-opacity", "1");
+  });
+
   it("dashes a region's outline once its value has been edited since extraction", () => {
     const { container, rerender } = render(
       <SourceOverlay
