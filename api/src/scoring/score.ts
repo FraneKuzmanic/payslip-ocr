@@ -1,9 +1,13 @@
 import {
   CRITICAL_FIELDS,
+  WARNING_CODES,
   amountsEqual,
   canonicalPayslipFieldsSchema,
   type CanonicalPayslipFields,
+  type PayslipWarning,
+  type WarningCode,
 } from "@payslip/shared";
+import { isValidOib } from "../validation/oib.js";
 
 /**
  * Extraction scoring against the golden set (PRD §7.12, Task 04 D5). Provider-neutral: it reads
@@ -72,6 +76,10 @@ export interface ScoringInput {
   readonly firstFormMs?: number | null;
   /** Two-pass sets only: enqueue to the later of the two passes recorded. */
   readonly completeMs?: number | null;
+  /** The product's warnings over this extraction (Task 06 D11). Absent counts as none. */
+  readonly warnings?: readonly PayslipWarning[];
+  readonly lowConfidenceFields?: readonly string[];
+  readonly ungroundableFields?: readonly string[];
 }
 
 /** Nearest-rank latency percentiles, in milliseconds. */
@@ -88,6 +96,7 @@ export interface SampleReport {
   /** `null` for a table declared unscorable. */
   readonly rows: Record<Table, { actual: number; expected: number } | null>;
   readonly wrong: string[];
+  readonly warningCodes: WarningCode[];
 }
 
 export interface SetReport {
@@ -106,6 +115,15 @@ export interface SetReport {
   readonly firstForm: Percentiles | null;
   readonly complete: Percentiles | null;
   readonly perSample: SampleReport[];
+  /** Extracted OIBs that pass their checksum, over every non-null OIB (PRD §11.3). */
+  readonly oib: Tally;
+  readonly warningsByCode: Record<WarningCode, number>;
+  /**
+   * `wrongFlagged`: wrong scalars carrying at least one attention signal (a warning on that
+   * field, low confidence, or ungroundable), over all wrong scalars. `flaggedScalars` is every
+   * flagged scalar path, right or wrong, so recall bought by flagging everything shows.
+   */
+  readonly attention: { readonly wrongFlagged: Tally; readonly flaggedScalars: number };
 }
 
 export class UnscoredExpectationError extends Error {
@@ -133,8 +151,16 @@ export function scoreSet(inputs: readonly ScoringInput[]): SetReport {
   const perField = new Map<string, Tally>();
   const skipped: SetReport["skipped"] = [];
   const perSample: SampleReport[] = [];
+  const oib = tally();
+  const warningsByCode = Object.fromEntries(WARNING_CODES.map((code) => [code, 0])) as Record<
+    WarningCode,
+    number
+  >;
+  const wrongFlagged = tally();
+  let flaggedScalars = 0;
 
-  for (const { sample, expected, actual } of inputs) {
+  for (const input of inputs) {
+    const { sample, expected, actual } = input;
     const unscorable = new Map(unscorableOf(expected).map((entry) => [entry.field, entry.reason]));
     for (const [field, reason] of unscorable) skipped.push({ sample, field, reason });
 
@@ -185,7 +211,29 @@ export function scoreSet(inputs: readonly ScoringInput[]): SetReport {
       });
     }
 
-    perSample.push({ sample, scalars: sampleScalars, critical: sampleCritical, rows, wrong });
+    for (const field of ["employerOib", "employeeOib"] as const) {
+      const value = actual[field];
+      if (value != null) count(oib, isValidOib(value));
+    }
+
+    const warnings = input.warnings ?? [];
+    for (const { code } of warnings) warningsByCode[code]++;
+    const flagged = new Set([
+      ...warnings.flatMap((warning) => (warning.field == null ? [] : [warning.field])),
+      ...(input.lowConfidenceFields ?? []),
+      ...(input.ungroundableFields ?? []),
+    ]);
+    flaggedScalars += SCALAR_FIELDS.filter((field) => flagged.has(field)).length;
+    for (const field of wrong) count(wrongFlagged, flagged.has(field));
+
+    perSample.push({
+      sample,
+      scalars: sampleScalars,
+      critical: sampleCritical,
+      rows,
+      wrong,
+      warningCodes: warnings.map((warning) => warning.code),
+    });
   }
 
   return {
@@ -200,6 +248,9 @@ export function scoreSet(inputs: readonly ScoringInput[]): SetReport {
     firstForm: percentiles(inputs.map((input) => input.firstFormMs ?? null)),
     complete: percentiles(inputs.map((input) => input.completeMs ?? null)),
     perSample,
+    oib,
+    warningsByCode,
+    attention: { wrongFlagged, flaggedScalars },
   };
 }
 

@@ -206,6 +206,7 @@ function logSuccess(
       submitAttempts: metadata.submitAttempts,
       extractedFieldCount: Object.keys(metadata.fields).length,
       unreadableCount: metadata.unreadableFields.length,
+      ungroundableCount: metadata.ungroundableFields.length,
     },
     outcome === "discarded" ? "extraction pass result discarded" : "extraction pass finished",
   );

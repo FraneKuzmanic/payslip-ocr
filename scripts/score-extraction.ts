@@ -23,6 +23,8 @@ import { CRITICAL_FIELDS } from "@payslip/shared";
 import { analyzerIdFor } from "../api/src/providers/document-extraction/content-understanding/analyzer.ts";
 import { mapAnalyzeResult } from "../api/src/providers/document-extraction/content-understanding/fields.ts";
 import type { ExtractionPass } from "../api/src/providers/document-extraction/types.ts";
+import { lowConfidenceFields } from "../api/src/validation/attention.ts";
+import { computeWarnings } from "../api/src/validation/warnings.ts";
 import {
   TABLES,
   UnscoredExpectationError,
@@ -137,12 +139,30 @@ function loadSet(set: string, kind: Kind): ScoringInput[] | null {
 }
 
 type Loaded = Omit<ScoringInput, "sample" | "expected">;
+type Mapped = NonNullable<ReturnType<typeof mapAnalyzeResult>>;
+
+/**
+ * The product's attention signals over mapped passes, scalars first, exactly as the repository
+ * projects them on read, with the tables taken as landed (Task 06 D11).
+ */
+function signals(passes: readonly Mapped[]) {
+  const fields = Object.assign({}, ...passes.map((pass) => pass.fields)) as Loaded["actual"];
+  const unreadableFields = passes.flatMap((pass) => pass.unreadableFields);
+  return {
+    actual: fields,
+    warnings: computeWarnings({ fields, unreadableFields, tablesStatus: "ready" }),
+    lowConfidenceFields: lowConfidenceFields(
+      passes.map((pass) => ({ fields: pass.fieldMetadata })),
+    ),
+    ungroundableFields: passes.flatMap((pass) => pass.ungroundableFields),
+  };
+}
 
 function singlePass(body: unknown): Loaded | null {
   const mapped = mapAnalyzeResult(body);
   if (mapped === null) return null;
   const latencyMs = (body as { latencyMs?: unknown }).latencyMs;
-  return { actual: mapped.fields, latencyMs: typeof latencyMs === "number" ? latencyMs : null };
+  return { ...signals([mapped]), latencyMs: typeof latencyMs === "number" ? latencyMs : null };
 }
 
 /** Each pass's body through the real mapper for that pass, merged as the database merges them. */
@@ -166,7 +186,7 @@ function twoPass(body: unknown): Loaded | null {
   const firstFormMs = done("scalars");
   const tablesMs = done("tables");
   return {
-    actual: { ...mappedScalars.fields, ...mappedTables.fields },
+    ...signals([mappedScalars, mappedTables]),
     latencyMs: null,
     firstFormMs,
     completeMs: firstFormMs === null || tablesMs === null ? null : Math.max(firstFormMs, tablesMs),
@@ -176,7 +196,7 @@ function twoPass(body: unknown): Loaded | null {
 function printSet(set: string, kind: Kind, report: SetReport): void {
   console.log(`  ── set '${set}' (${kind}) ${"─".repeat(Math.max(0, 50 - set.length))}`);
   console.log(
-    "  sample  scalars       critical  payComponents  obustave  neoporezivi  (rows: extracted/expected)",
+    "  sample  scalars       critical  payComponents  obustave  neoporezivi  (rows: extracted/expected)  warnings",
   );
   for (const sample of report.perSample) {
     const rows = TABLES.map((table) => {
@@ -187,7 +207,7 @@ function printSet(set: string, kind: Kind, report: SetReport): void {
     }).join("");
     console.log(
       `  ${sample.sample.padEnd(6)}  ${frac(sample.scalars).padEnd(6)} ${pct(sample.scalars).padStart(6)}  ` +
-        `${frac(sample.critical).padEnd(8)}  ${rows}`,
+        `${frac(sample.critical).padEnd(8)}  ${rows}${sample.warningCodes.join(" ") || "-"}`,
     );
   }
 
@@ -211,6 +231,17 @@ function printSet(set: string, kind: Kind, report: SetReport): void {
     );
   }
   console.log(`  BAKE-OFF COMPARABLE payComponents naziv+iznos  ${frac(report.bakeoffComparable)}`);
+  console.log(
+    `  OIB CHECKSUM    ${frac(report.oib)}  ${pct(report.oib)}   (extracted OIBs that pass)`,
+  );
+  const codes = Object.entries(report.warningsByCode).filter(([, n]) => n > 0);
+  console.log(
+    `  WARNINGS        ${codes.length === 0 ? "none" : codes.map(([code, n]) => `${code} ${n}`).join(", ")}`,
+  );
+  console.log(
+    `  ATTENTION       wrong scalars flagged ${frac(report.attention.wrongFlagged)}; ` +
+      `${report.attention.flaggedScalars} scalar(s) flagged in all (warning, low confidence or ungroundable)`,
+  );
 
   if (report.skipped.length > 0) {
     console.log(`  skipped as unscorable (${report.skipped.length}):`);

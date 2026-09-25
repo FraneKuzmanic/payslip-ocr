@@ -50,6 +50,7 @@ const succeeded = (markdown = "# OBRAČUN PLAĆE", fields: Record<string, unknow
             netoPlaca: { type: "string", valueString: "2.298,97", confidence: 0.9 },
             ...fields,
           },
+          pages: [{ pageNumber: 1, words: [{ content: "NETO" }, { content: "2.298,97" }] }],
         },
       ],
     },
@@ -112,6 +113,7 @@ describe("ContentUnderstandingProvider", () => {
       apiVersion: "2025-11-01",
       submitAttempts: 1,
       unreadableFields: [],
+      ungroundableFields: [],
       fields: { netoPlaca: { confidence: 0.9, source: "model" } },
     });
     expect(result.raw).toMatchObject({ status: "Succeeded" });

@@ -89,7 +89,7 @@ investigation and is recorded with its reasoning.
 | 03 | Session & payslip persistence, upload API | ✅ complete → [`history/03`](./history/03-session-payslip-persistence-upload.md) |
 | 04 | Content Understanding provider, mapper & scoring harness | ✅ complete → [`history/04`](./history/04-content-understanding-provider.md) |
 | 05 | Extraction latency: partial results or two-pass | ✅ complete, first-form target missed (p50 12.2 s) → [`history/05`](./history/05-extraction-latency-two-pass.md) |
-| 06 | Warnings & validation engine | ⬜ not started |
+| 06 | Warnings & validation engine | ✅ complete → [`history/06`](./history/06-warnings-validation-engine.md) |
 | 07 | Capture & multi-upload UI | ⬜ not started |
 | 08 | Source regions & document preview with highlighting | ⬜ not started |
 | 09 | Review form & two-way linking | ⬜ not started |
@@ -383,14 +383,24 @@ check first.
 
 **Not in this task:** rendering warnings (09).
 
+Built as a **read-time projection** (Task 06 D1): warnings are computed on every read and the
+`warnings` column is dropped, so per-pass and per-PATCH recomputation hold by construction.
+Grounding is computed when each pass is mapped and stored as `ungroundableFields` in that pass's
+metadata, against its own body's words (D8).
+
 **Definition of done**
 
-- [ ] Every golden-set payslip produces the expected warning set, including **zero** arithmetic
-      warnings on the ten that reconcile.
-- [ ] B01 raises no `porezna_osnovica_mismatch`; B02 raises no `pay_components_sum_mismatch`.
-- [ ] Injecting a one-cent error into each identity raises exactly that identity's warning.
-- [ ] A04's occluded `iznosZaIsplatu` raises `missing_critical_field` rather than being invented.
-- [ ] Warnings never block confirmation or export.
+- [x] Every golden-set payslip produces the expected warning set, including **zero** arithmetic
+      warnings on **all eleven** (G01's empty pay-components table reconciles vacuously, D2).
+      Gated in `api/src/validation/warnings.test.ts`.
+- [x] B01 raises no `porezna_osnovica_mismatch`; B02 raises no `pay_components_sum_mismatch`.
+- [x] Injecting a one-cent error into each identity raises exactly that identity's warning (five
+      injections on A02).
+- [x] A04's occluded `iznosZaIsplatu`: **reworded (D10)**, because the warnings engine cannot stop
+      the engine inventing a value. When it is null, `missing_critical_field` fires (fixture,
+      `production-sequential`). When it is invented, it is marked: `isplata_mismatch` fires in
+      `cu`, R2 and R3, and `production`'s invented `1801.77` is ungroundable at confidence 0.044.
+- [x] No status write consults warnings. Confirm and export gating are Tasks 09 and 12.
 
 ---
 
@@ -457,6 +467,8 @@ honestly not outlined at all.
 - **The aspect-ratio guard**: outlines are drawn only when the rendered ratio agrees with the
   API's declared ratio within 0.01. A mismatch withholds outlines rather than misplacing them.
 - Section colours matching the form legend; an edited field's outline dashed.
+- `ungroundableFields` (Task 06) is a different thing from a region's `origin`: it says the
+  printed value is not among the OCR words, not where an outline came from.
 
 **Not in this task:** the form that links to regions (09), navigation (10).
 
@@ -502,6 +514,12 @@ place on the page.
   `uploadErrors.test.ts` (Task 02 D8).
 - Decide server-side writes against the direct-write gap: `authenticated` can update its own
   `status` and `canonical_data` directly through PostgREST (Task 03 open item 4, Task 04 D2).
+- **Task 06 hand-offs:** warnings, `lowConfidenceFields` and `ungroundableFields` come from the
+  detail response and need no computation client-side; PATCH recomputes warnings for free
+  (computed on read). Decide: excluding edited fields from `lowConfidenceFields` and
+  `ungroundableFields`; positional table paths in `unreadableFields` after a row is added or
+  removed (Task 06 D5); and how to render `period`/`paymentDate`, which sit below the 0.5
+  confidence threshold on most payslips even when correct (history/06).
 
 **Not in this task:** navigation between payslips (10), export (12).
 

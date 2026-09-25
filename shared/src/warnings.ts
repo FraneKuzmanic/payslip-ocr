@@ -1,9 +1,10 @@
 import { z } from "zod";
 
 /**
- * The warning taxonomy — codes only. The *rules* that decide when a warning applies are
- * ROADMAP Task 06's; this module exists so the model, the API and the UI already agree on the
- * vocabulary. The nine codes are exactly PRD §7.9's, in its order.
+ * The warning taxonomy — codes only, so the model, the API and the UI agree on the vocabulary.
+ * The nine codes are exactly PRD §7.9's, in its order. The rules live in
+ * `api/src/validation/warnings.ts`, and warnings are computed on every read, never stored
+ * (Task 06 D1).
  *
  * Warnings never block confirmation or export (PRD §7.9). The client owns the copy, which is
  * added by the task that first renders a warning.

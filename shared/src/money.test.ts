@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   AMOUNT_PATTERN,
   addAmounts,
+  amountsAgreeToTheCent,
   amountsEqual,
   compareAmounts,
   formatAmount,
   isAmount,
   parseAmount,
+  subtractAmounts,
 } from "./money.js";
 
 const NBSP = "\u00A0";
@@ -131,6 +133,32 @@ describe("addAmounts", () => {
     // @ts-expect-error — the point of the test is that the runtime refuses a float even
     // when a caller has defeated the type system.
     expect(() => addAmounts(0.1, "0.2")).toThrow();
+  });
+});
+
+describe("subtractAmounts", () => {
+  it("subtracts at the wider scale, keeping trailing zeros", () => {
+    expect(subtractAmounts("100.50", "0.5")).toBe("100.00");
+    expect(subtractAmounts("2298.97", "459.79")).toBe("1839.18");
+  });
+
+  it("returns a negative result when b exceeds a", () => {
+    expect(subtractAmounts("600.00", "1839.18")).toBe("-1239.18");
+  });
+});
+
+describe("amountsAgreeToTheCent", () => {
+  it("agrees when values are equal regardless of scale", () => {
+    expect(amountsAgreeToTheCent("1.00", "1.0")).toBe(true);
+  });
+
+  it("treats a one-cent difference as a mismatch, in either direction", () => {
+    expect(amountsAgreeToTheCent("1.00", "1.01")).toBe(false);
+    expect(amountsAgreeToTheCent("1.00", "0.99")).toBe(false);
+  });
+
+  it("agrees on a sub-cent difference", () => {
+    expect(amountsAgreeToTheCent("1.00", "1.009")).toBe(true);
   });
 });
 

@@ -9,6 +9,7 @@ import {
   type FieldMetadata,
 } from "@payslip/shared";
 import type { ExtractionPass } from "../types.js";
+import { UNGROUNDABLE_BY_DESIGN, isGrounded, keyPages, surfaceForms } from "./grounding.js";
 
 /**
  * The only place Content Understanding's field names and value shapes meet the canonical model
@@ -92,6 +93,15 @@ const operationSchema = z
               .object({
                 markdown: z.string().optional(),
                 fields: z.record(z.string(), rawFieldSchema).optional(),
+                pages: z
+                  .array(
+                    z
+                      .object({
+                        words: z.array(z.object({ content: z.string() }).loose()).optional(),
+                      })
+                      .loose(),
+                  )
+                  .optional(),
               })
               .loose(),
           )
@@ -111,6 +121,11 @@ export interface MappedExtraction {
   readonly fields: Partial<CanonicalPayslipFields>;
   readonly fieldMetadata: Record<string, FieldMetadata>;
   readonly unreadableFields: string[];
+  /**
+   * Paths whose printed value is not among the page's OCR words: a likely invented value
+   * (ROADMAP locked decision 16). Independent of `unreadableFields`.
+   */
+  readonly ungroundableFields: string[];
   /** Whether the document's markdown carries any text at all. */
   readonly hasText: boolean;
 }
@@ -131,6 +146,12 @@ export function mapAnalyzeResult(
   const rawFields = content?.fields ?? {};
   const fieldMetadata: Record<string, FieldMetadata> = {};
   const unreadableFields: string[] = [];
+  const ungroundableFields: string[] = [];
+  // Each pass OCRs the whole document, so it is grounded against its own words (Task 06 D8).
+  // Real bodies always carry pages; one without them grounds nothing.
+  const pageKeys = keyPages(
+    (content?.pages ?? []).map((page) => (page.words ?? []).map((word) => word.content)),
+  );
 
   /**
    * A present, non-blank value the parser cannot normalise is unreadable: `null`, and listed, so
@@ -142,6 +163,11 @@ export function mapAnalyzeResult(
     fieldMetadata[path] = { confidence: raw?.confidence ?? null, source: "model" };
     const value = parse(printed);
     if (value === null) unreadableFields.push(path);
+    // An unreadable value is still grounded, by its printed text: the two signals are independent.
+    const forms = value === null ? [printed] : [printed, ...surfaceForms(value)];
+    if (!UNGROUNDABLE_BY_DESIGN.includes(path) && !isGrounded(forms, pageKeys)) {
+      ungroundableFields.push(path);
+    }
     return value;
   };
 
@@ -171,6 +197,7 @@ export function mapAnalyzeResult(
     fields: canonicalPayslipFieldsSchema.parse(fields),
     fieldMetadata,
     unreadableFields,
+    ungroundableFields,
     hasText: (content?.markdown ?? "").trim() !== "",
   };
 }

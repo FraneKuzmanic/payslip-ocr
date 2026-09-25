@@ -153,3 +153,9 @@ unreadable rather than stored as a guess, so that "we could not read this" stays
 A named, non-blocking observation about an extracted Payslip — a missing critical field, or an
 arithmetic identity that does not reconcile. Warnings draw the user's attention; they never
 prevent confirmation or export.
+
+**Attention signal**:
+A mark on an extracted value that asks the reviewer to check it — a Warning, low confidence, or an
+ungroundable value (its printed text is not among the page's OCR words). Attention signals mark;
+they never suppress a value or block a workflow.
+_Avoid_: Error, validation failure, flag

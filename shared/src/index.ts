@@ -3,11 +3,13 @@ export { HEALTH_PATH, type HealthResponse } from "./health.js";
 export {
   AMOUNT_PATTERN,
   addAmounts,
+  amountsAgreeToTheCent,
   amountsEqual,
   compareAmounts,
   formatAmount,
   isAmount,
   parseAmount,
+  subtractAmounts,
 } from "./money.js";
 
 export { parseQuantity } from "./quantity.js";

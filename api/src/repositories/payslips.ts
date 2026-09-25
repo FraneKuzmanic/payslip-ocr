@@ -4,8 +4,8 @@ import {
   canonicalPayslipFieldsSchema,
   extractionFailureReasonSchema,
   payslipSchema,
-  payslipWarningSchema,
   sourceContentTypeSchema,
+  tablesStatusSchema,
   type CanonicalPayslipFields,
   type ExtractionFailureReason,
   type Payslip,
@@ -14,6 +14,8 @@ import {
 } from "@payslip/shared";
 import type { Database, Json } from "../database.types.js";
 import type { ExtractionPass } from "../providers/document-extraction/types.js";
+import { lowConfidenceFields } from "../validation/attention.js";
+import { computeWarnings } from "../validation/warnings.js";
 
 type PayslipRow = Database["public"]["Tables"]["payslips"]["Row"];
 type PayslipUpdate = Database["public"]["Tables"]["payslips"]["Update"];
@@ -26,13 +28,25 @@ type PayslipReadRow = Omit<PayslipRow, "raw_provider_result">;
  * payslips would otherwise move up to ~10 MB. Only a source-region projection reads the raw column.
  */
 const PAYSLIP_COLUMNS =
-  "id, session_id, user_id, status, tables_status, failure_reason, canonical_data, extraction_metadata, warnings, edited_fields, original_filename, content_type, page_count, merged_from, confirmed_at, created_at, updated_at, deleted_at, employee_name, employer_name, period, neto_placa, iznos_za_isplatu";
+  "id, session_id, user_id, status, tables_status, failure_reason, canonical_data, extraction_metadata, edited_fields, original_filename, content_type, page_count, merged_from, confirmed_at, created_at, updated_at, deleted_at, employee_name, employer_name, period, neto_placa, iznos_za_isplatu";
 
 const uuidSchema = z.uuid();
-const warningsSchema = z.array(payslipWarningSchema);
+/** Statuses with a readable form, the only ones that carry warnings (Task 06 D2). */
+const WARNED_STATUSES: readonly string[] = ["review", "confirmed"];
 const failureReasonSchema = extractionFailureReasonSchema.nullable();
-/** One pass's metadata; `unreadableFields` is the one projection read so far, the rest is Task 06's. */
-const passMetadataSchema = z.object({ unreadableFields: z.array(z.string()) }).loose();
+/**
+ * The parts of one pass's metadata that reads project. `ungroundableFields` and `fields` default
+ * to empty, so metadata written before Task 06 still parses.
+ */
+const passMetadataSchema = z
+  .object({
+    unreadableFields: z.array(z.string()),
+    ungroundableFields: z.array(z.string()).default([]),
+    fields: z
+      .record(z.string(), z.object({ confidence: z.number().nullable() }).loose())
+      .default({}),
+  })
+  .loose();
 /** `{ scalars?, tables? }`: each extraction pass merges its own metadata (Task 05 D7). */
 const extractionMetadataSchema = z
   .object({ scalars: passMetadataSchema.optional(), tables: passMetadataSchema.optional() })
@@ -61,6 +75,8 @@ export interface PayslipState {
 export interface PayslipDetailState extends PayslipState {
   readonly editedFields: string[];
   readonly unreadableFields: string[];
+  readonly lowConfidenceFields: string[];
+  readonly ungroundableFields: string[];
 }
 
 /** One successful extraction pass, merged into the row in one statement. */
@@ -143,15 +159,13 @@ export class PayslipRepository {
     if (error) throw new PayslipRepositoryError("query_failed", error);
     if (data === null) return null;
 
-    const metadata = extractionMetadataSchema.safeParse(data.extraction_metadata);
-    if (!metadata.success) throw new PayslipRepositoryError("invalid_data", metadata.error);
+    const passes = readPassMetadata(data);
     return {
       ...mapPayslipState(data),
       editedFields: data.edited_fields,
-      unreadableFields: [
-        ...(metadata.data?.scalars?.unreadableFields ?? []),
-        ...(metadata.data?.tables?.unreadableFields ?? []),
-      ],
+      unreadableFields: passes.flatMap((pass) => pass.unreadableFields),
+      lowConfidenceFields: lowConfidenceFields(passes),
+      ungroundableFields: passes.flatMap((pass) => pass.ungroundableFields),
     };
   }
 
@@ -352,9 +366,11 @@ export class PayslipRepository {
  * list and export queries and are never read back here.
  */
 export function mapPayslipRow(row: PayslipReadRow): Payslip {
+  const passes = readPassMetadata(row);
   try {
+    const fields = canonicalPayslipFieldsSchema.parse(row.canonical_data);
     return payslipSchema.parse({
-      ...canonicalPayslipFieldsSchema.parse(row.canonical_data),
+      ...fields,
       id: row.id,
       sessionId: row.session_id,
       userId: row.user_id,
@@ -363,7 +379,15 @@ export function mapPayslipRow(row: PayslipReadRow): Payslip {
       pageCount: row.page_count,
       // Always EUR (ROADMAP locked decision 7), so there is no column for it.
       currency: "EUR",
-      warnings: warningsSchema.parse(row.warnings),
+      // Computed on every read, never stored (Task 06 D1). Only a form the user can work on gets
+      // warnings: tables landing before scalars would otherwise raise seven missing fields.
+      warnings: WARNED_STATUSES.includes(row.status)
+        ? computeWarnings({
+            fields,
+            unreadableFields: passes.flatMap((pass) => pass.unreadableFields),
+            tablesStatus: tablesStatusSchema.parse(row.tables_status),
+          })
+        : [],
       createdAt: normalizeTimestamp(row.created_at),
       updatedAt: normalizeTimestamp(row.updated_at),
       confirmedAt: normalizeNullableTimestamp(row.confirmed_at),
@@ -390,4 +414,15 @@ function normalizeTimestamp(value: string): string {
 
 function normalizeNullableTimestamp(value: string | null): string | null {
   return value === null ? null : normalizeTimestamp(value);
+}
+
+type PassMetadata = z.infer<typeof passMetadataSchema>;
+
+/** Each pass's parsed metadata, scalars first; a pass not yet recorded is absent. */
+function readPassMetadata(row: Pick<PayslipReadRow, "extraction_metadata">): PassMetadata[] {
+  const metadata = extractionMetadataSchema.safeParse(row.extraction_metadata);
+  if (!metadata.success) throw new PayslipRepositoryError("invalid_data", metadata.error);
+  return [metadata.data?.scalars, metadata.data?.tables].filter(
+    (pass): pass is PassMetadata => pass !== undefined,
+  );
 }

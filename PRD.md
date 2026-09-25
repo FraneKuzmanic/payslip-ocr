@@ -533,7 +533,7 @@ prototypes/payslip-ocr/
 
 **Purpose.** Direct the user's attention to the few fields likely to be wrong.
 
-**Requirements.** Computed on extraction and recomputed on every save. Codes and field paths only; all copy lives in the client locales.
+**Requirements.** Computed on every read, never stored (Task 06 D1): a pure function of the canonical fields, the status, `tablesStatus` and the unreadable paths, so each extraction pass and every save recompute them by construction. Only a payslip in `review` or `confirmed` carries warnings. Codes and field paths only; all copy lives in the client locales.
 
 | Code | Check |
 | --- | --- |
@@ -546,7 +546,9 @@ prototypes/payslip-ocr/
 | `isplata_mismatch` | `netoPlaca + neoporeziviPrimiciUkupno − obustaveUkupno ≠ iznosZaIsplatu` |
 | `pay_components_sum_mismatch` | `Σ payComponents.iznos ≠ brutoPlaca` |
 
-**Rules.** Arithmetic comparisons use an absolute tolerance of 0.01, not a relative one — doc-guard's identities were correct but compared to nine significant figures, which no OCR'd cent value survives. `poreznaOsnovica` floors at zero, because a payslip whose `osobni odbitak` exceeds `dohodak` legitimately prints `0,00`. **Warnings never block confirmation or export.**
+**Rules.** Arithmetic compares absolutely, never relatively: values must **agree to the cent**, so a difference of one cent or more is a mismatch — doc-guard's identities were correct but compared to nine significant figures, which no OCR'd cent value survives. `poreznaOsnovica` floors at zero, because a payslip whose `osobni odbitak` exceeds `dohodak` legitimately prints `0,00`. An identity with a null operand is skipped, except that `isplata_mismatch` takes a null `neoporeziviPrimiciUkupno` or `obustaveUkupno` as zero (an absent section contributes nothing). `pay_components_sum_mismatch` sums amounts only, never hours, and is checked only once `tablesStatus` is `ready` and at least one row has an amount. An unreadable field raises `unparseable_*` instead of `missing_critical_field` while its value is still null. **Warnings never block confirmation or export.**
+
+Two further attention signals ride with the warnings on the detail response: `lowConfidenceFields` (confidence below a global 0.5, measured in Task 06) and `ungroundableFields` (the printed value, or a printed form of its canonical value, is not among the page's OCR words). Like warnings, they mark a value and never suppress it.
 
 ### 7.10 History
 
@@ -564,7 +566,7 @@ prototypes/payslip-ocr/
 
 **Purpose.** Know whether extraction is getting better or worse.
 
-**Requirements.** An offline harness replaying **recorded provider responses** through the real production mapper, warning pipeline and normalisation — no network call — against committed ground truth. Reports per-critical-field match rates, per-field-instance totals, line-item accuracy, most-corrected fields, and recorded provider latency percentiles.
+**Requirements.** An offline harness replaying **recorded provider responses** through the real production mapper, warning pipeline and normalisation — no network call — against committed ground truth. Reports per-critical-field match rates, per-field-instance totals, line-item accuracy, most-corrected fields, recorded provider latency percentiles, and (Task 06) the warnings raised, the OIB checksum pass rate, and how many wrong values carry an attention signal.
 
 **Rules.** The harness **must fail loudly when a golden-set entry is not scored**. receipt-ocr learned this the hard way: eight defective receipts sat outside its corpus while it reported healthy numbers, because a fixture without ground truth was silently skipped.
 
@@ -707,7 +709,7 @@ All routes under `/api/sessions` and `/api/payslips` require `Authorization: Bea
 → `200 {id, createdAt, payslips: [{id, status, tablesStatus, period, employeeName, pageCount, failureReason, warningCount}]}`
 
 **10.5** `GET /api/payslips/:id`
-→ `200` canonical payslip (including `tablesStatus`) + `lowConfidenceFields`, `unreadableFields`, `warnings`, `editedFields`, `failureReason`
+→ `200` canonical payslip (including `tablesStatus`) + `lowConfidenceFields`, `unreadableFields`, `ungroundableFields`, `warnings`, `editedFields`, `failureReason`
 
 **10.6** `PATCH /api/payslips/:id`
 Body is the canonical field schema, partial and strict. Recomputes warnings. Never changes status.
@@ -768,7 +770,7 @@ Scored **per field instance**, not per document. The golden set is 11 payslips a
 | Core scalar fields, exact match after normalisation | **≥ 95%** |
 | Line-item rows (count and per-cell values) | **≥ 85%** |
 | Payslips needing no correction to any critical field | measured, not targeted |
-| OIB checksum pass rate on extracted OIBs | measured |
+| OIB checksum pass rate on extracted OIBs | measured by `npm run score:extraction` (100% in every recorded set, Task 06) |
 | Highlight correctness (outline sits on its value) | spot-checked visually on every golden-set document |
 
 Ground truth is built from the native-text PDFs and **spot-checked by the product owner** before it is trusted. Where a sample's own arithmetic contradicts the extracted value, the arithmetic wins and the ground truth is corrected — receipt-ocr found three ground-truth errors this way.
@@ -947,7 +949,7 @@ users                    (Supabase auth)
               id, session_id, user_id
               status, tables_status, failure_reason, canonical_data jsonb,
               extraction_metadata jsonb   -- { scalars?, tables? }, one entry per pass
-              warnings jsonb,
+              -- no warnings column: computed on read (Task 06 D1)
               raw_provider_result jsonb   -- { scalars?, tables? }, verbatim per pass
               edited_fields text[],
               original_filename, content_type, page_count,

@@ -22,6 +22,7 @@ const result: ProviderExtractionResult = {
     documentConfidence: null,
     fields: {},
     unreadableFields: [],
+    ungroundableFields: [],
   },
   raw: { status: "Succeeded" },
 };

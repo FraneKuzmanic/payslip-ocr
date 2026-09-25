@@ -105,8 +105,10 @@ describe("sessions and payslips against the hosted project", () => {
       pageCount: 1,
       currency: "EUR",
       status: "processing",
+      warnings: [],
       lowConfidenceFields: [],
       unreadableFields: [],
+      ungroundableFields: [],
       editedFields: [],
       failureReason: null,
     });
@@ -342,11 +344,11 @@ describe("extraction passes (Task 05 D7, D10)", () => {
   });
 
   /** A fresh `processing` row, inserted as user A: no source object is needed here. */
-  async function processingPayslip(): Promise<string> {
+  async function processingPayslip(inSession = passSessionId): Promise<string> {
     const { data, error } = await userA
       .from("payslips")
       .insert({
-        session_id: passSessionId,
+        session_id: inSession,
         user_id: userAId,
         original_filename: "pass.pdf",
         content_type: "application/pdf",
@@ -473,6 +475,85 @@ describe("extraction passes (Task 05 D7, D10)", () => {
     expect(await row(stale)).toMatchObject({ status: "review", tables_status: "failed" });
     expect(await row(fresh)).toMatchObject({ status: "review", tables_status: "pending" });
   });
+
+  describe("warnings and attention signals, computed on read (Task 06)", () => {
+    // Its own session: the one above is close to the ten-payslip cap.
+    let warningSessionId = "";
+    const complete = {
+      employerName: "Poslodavac d.o.o.",
+      employeeName: "Ana Horvat",
+      employeeOib: "00000000010",
+      period: "2025-03",
+      brutoPlaca: "1300.00",
+      netoPlaca: "1040.00",
+      iznosZaIsplatu: "1040.00",
+    };
+    const detailOf = async (id: string) =>
+      payslipDetailResponseSchema.parse((await getAsA(`/api/payslips/${id}`)).body);
+
+    beforeAll(async () => {
+      const created = await request(app)
+        .post("/api/sessions")
+        .set("Authorization", `Bearer ${tokenA}`);
+      warningSessionId = createSessionResponseSchema.parse(created.body).id;
+    });
+
+    it("raises missing and unreadable fields, and counts them in the session summary", async () => {
+      const id = await processingPayslip(warningSessionId);
+      await repositoryA().completeExtractionPass(
+        id,
+        "scalars",
+        extractionPass(
+          { ...complete, employerName: null, brutoPlaca: null },
+          { unreadableFields: ["brutoPlaca"] },
+        ),
+      );
+
+      const detail = await detailOf(id);
+      expect(detail.warnings).toEqual([
+        { code: "missing_critical_field", field: "employerName" },
+        { code: "unparseable_amount", field: "brutoPlaca" },
+      ]);
+      const session = sessionDetailResponseSchema.parse(
+        (await getAsA(`/api/sessions/${warningSessionId}`)).body,
+      );
+      expect(session.payslips.find((payslip) => payslip.id === id)?.warningCount).toBe(2);
+    });
+
+    it("serves low confidence and ungroundable fields from the pass metadata", async () => {
+      const id = await processingPayslip(warningSessionId);
+      await repositoryA().completeExtractionPass(
+        id,
+        "scalars",
+        extractionPass(complete, {
+          fields: { netoPlaca: { confidence: 0.2, source: "model" } },
+          ungroundableFields: ["netoPlaca"],
+        }),
+      );
+
+      expect(await detailOf(id)).toMatchObject({
+        warnings: [],
+        lowConfidenceFields: ["netoPlaca"],
+        ungroundableFields: ["netoPlaca"],
+      });
+    });
+
+    it("checks the pay-component sum only once the tables pass lands", async () => {
+      const id = await processingPayslip(warningSessionId);
+      await repositoryA().completeExtractionPass(id, "scalars", extractionPass(complete));
+      expect(await detailOf(id)).toMatchObject({ tablesStatus: "pending", warnings: [] });
+
+      await repositoryA().completeExtractionPass(id, "tables", tables);
+      expect(await detailOf(id)).toMatchObject({
+        tablesStatus: "ready",
+        warnings: [
+          // The shared tables fixture lists its null hours cell as unreadable.
+          { code: "unparseable_amount", field: "payComponents.0.sati" },
+          { code: "pay_components_sum_mismatch", field: "payComponents" },
+        ],
+      });
+    });
+  });
 });
 
 describe("soft delete", () => {
@@ -497,6 +578,11 @@ describe("soft delete", () => {
     expect(again.status).toBe(404);
   });
 });
+
+/** One extraction pass's write, with minimal metadata. */
+function extractionPass(fields: object, metadata: object = {}) {
+  return { fields, metadata: { unreadableFields: [], queuedMs: 1, ...metadata }, raw: {} };
+}
 
 function upload(
   token: string,

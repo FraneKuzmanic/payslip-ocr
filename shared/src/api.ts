@@ -128,6 +128,11 @@ export const payslipDetailResponseSchema = payslipSchema
     lowConfidenceFields: z.array(z.string()),
     unreadableFields: z.array(z.string()),
     /**
+     * Paths whose printed value was not found in the page's OCR words: a likely invented value
+     * (ROADMAP locked decision 16).
+     */
+    ungroundableFields: z.array(z.string()),
+    /**
      * Scalar canonical fields whose current value differs from the original machine extraction,
      * so the review UI can mark an outline as "this was corrected" rather than implying it still
      * matches the document. Never includes the line-item tables: row indices shift when the user

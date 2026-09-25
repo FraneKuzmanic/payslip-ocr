@@ -165,7 +165,7 @@ export const FIELD_SOURCES = ["model", "text", "inferred"] as const;
  * Provider-neutral metadata for one extracted value, keyed by canonical dotted path
  * (`netoPlaca`, `payComponents.2.iznos`). Stored with the payslip and never sent to the client
  * raw: the detail response exposes only its projections (`lowConfidenceFields`,
- * `unreadableFields`).
+ * `unreadableFields`, `ungroundableFields`).
  */
 export const fieldMetadataSchema = z
   .object({

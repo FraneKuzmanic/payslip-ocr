@@ -33,6 +33,12 @@ export interface ExtractionMetadata {
   /** Keyed by canonical dotted path (`netoPlaca`, `payComponents.2.iznos`). */
   readonly fields: Record<string, FieldMetadata>;
   readonly unreadableFields: string[];
+  /**
+   * Paths whose printed value is not among the page's OCR words: a likely invented value
+   * (ROADMAP locked decision 16). Computed at pass time, because the words live only in the raw
+   * response, which no request path reads (Task 06 D8).
+   */
+  readonly ungroundableFields: string[];
   /** Submits made before one was accepted; above 1 a duplicate analysis may have been billed. */
   readonly submitAttempts?: number;
   /**

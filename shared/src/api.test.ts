@@ -86,6 +86,7 @@ describe("response DTOs tolerate a newer API", () => {
         ...payslip,
         lowConfidenceFields: ["employeeOib"],
         unreadableFields: [],
+        ungroundableFields: ["iznosZaIsplatu"],
         editedFields: ["netoPlaca"],
         failureReason: null,
       },

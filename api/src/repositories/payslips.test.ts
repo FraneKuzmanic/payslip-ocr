@@ -21,7 +21,6 @@ function payslipRow(overrides: Partial<PayslipRow> = {}): PayslipRow {
     canonical_data: { employeeName: "Ana Horvat", period: "2025-03", netoPlaca: "1234.56" },
     extraction_metadata: null,
     raw_provider_result: null,
-    warnings: [],
     edited_fields: [],
     original_filename: "platna-lista.pdf",
     content_type: "application/pdf",
@@ -100,6 +99,66 @@ describe("mapPayslipRow", () => {
   });
 });
 
+describe("mapPayslipRow warnings (computed on read, Task 06 D1)", () => {
+  /** Every critical field present, and an identity-free chain, so each test adds one cause. */
+  const complete = {
+    employerName: "Poslodavac d.o.o.",
+    employeeName: "Ana Horvat",
+    employeeOib: "00000000010",
+    period: "2025-03",
+    brutoPlaca: "100.00",
+    netoPlaca: "80.00",
+    iznosZaIsplatu: "80.00",
+  };
+
+  it("raises nothing for a complete, reconciling payslip", () => {
+    expect(mapPayslipRow(payslipRow({ canonical_data: complete })).warnings).toEqual([]);
+  });
+
+  it("raises missing_critical_field for a review payslip without an employer", () => {
+    const row = payslipRow({ canonical_data: { ...complete, employerName: null } });
+
+    expect(mapPayslipRow(row).warnings).toEqual([
+      { code: "missing_critical_field", field: "employerName" },
+    ]);
+  });
+
+  it.each(["processing", "failed"])("raises nothing while the payslip is %s", (status) => {
+    const row = payslipRow({ status, canonical_data: { ...complete, employerName: null } });
+
+    expect(mapPayslipRow(row).warnings).toEqual([]);
+  });
+
+  it("checks the pay-component sum only once the tables are ready", () => {
+    const canonicalData = {
+      ...complete,
+      payComponents: [{ naziv: "Rad", sati: null, koeficijent: null, iznos: "90.00" }],
+    };
+    const mismatch = [{ code: "pay_components_sum_mismatch", field: "payComponents" }];
+
+    expect(mapPayslipRow(payslipRow({ canonical_data: canonicalData })).warnings).toEqual(mismatch);
+    expect(
+      mapPayslipRow(payslipRow({ canonical_data: canonicalData, tables_status: "pending" }))
+        .warnings,
+    ).toEqual([]);
+  });
+
+  it("raises unparseable_date for an unreadable period still null", () => {
+    const row = payslipRow({
+      canonical_data: { ...complete, period: null },
+      extraction_metadata: { scalars: { unreadableFields: ["period"] } },
+    });
+
+    expect(mapPayslipRow(row).warnings).toEqual([{ code: "unparseable_date", field: "period" }]);
+  });
+
+  it("rejects malformed extraction metadata as invalid_data", () => {
+    const row = payslipRow({ extraction_metadata: { scalars: { unreadableFields: "period" } } });
+
+    expect(() => mapPayslipRow(row)).toThrow(expect.objectContaining({ code: "invalid_data" }));
+  });
+});
+
 describe("PayslipRepository.create", () => {
   const input = {
     id: PAYSLIP_ID,
@@ -153,6 +212,46 @@ describe("PayslipRepository.findDetailState", () => {
     );
 
     expect((await repository.findDetailState(PAYSLIP_ID))?.unreadableFields).toEqual(expected);
+  });
+
+  it("projects low confidence and grounding from both passes, scalars first", async () => {
+    const metadata = {
+      tables: {
+        unreadableFields: [],
+        ungroundableFields: ["obustave.0.naziv"],
+        fields: { "obustave.0.iznos": { confidence: 0.1, source: "model" } },
+      },
+      scalars: {
+        unreadableFields: [],
+        ungroundableFields: ["iznosZaIsplatu"],
+        fields: {
+          iznosZaIsplatu: { confidence: 0.04, source: "model" },
+          netoPlaca: { confidence: 0.9, source: "model" },
+          period: { confidence: null, source: "model" },
+        },
+      },
+    };
+    const repository = new PayslipRepository(
+      singleRow(payslipRow({ extraction_metadata: metadata })),
+      USER_ID,
+    );
+
+    expect(await repository.findDetailState(PAYSLIP_ID)).toMatchObject({
+      lowConfidenceFields: ["iznosZaIsplatu", "obustave.0.iznos"],
+      ungroundableFields: ["iznosZaIsplatu", "obustave.0.naziv"],
+    });
+  });
+
+  it("reads metadata written before Task 06 as no attention signals", async () => {
+    const repository = new PayslipRepository(
+      singleRow(payslipRow({ extraction_metadata: { scalars: { unreadableFields: [] } } })),
+      USER_ID,
+    );
+
+    expect(await repository.findDetailState(PAYSLIP_ID)).toMatchObject({
+      lowConfidenceFields: [],
+      ungroundableFields: [],
+    });
   });
 
   it("rejects malformed extraction metadata as invalid_data", async () => {

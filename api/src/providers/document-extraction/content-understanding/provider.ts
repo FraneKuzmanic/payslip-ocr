@@ -121,6 +121,7 @@ export class ContentUnderstandingProvider implements DocumentExtractionProvider 
         documentConfidence: null,
         fields: mapped.fieldMetadata,
         unreadableFields: mapped.unreadableFields,
+        ungroundableFields: mapped.ungroundableFields,
         submitAttempts: attempts,
       },
       raw: body,

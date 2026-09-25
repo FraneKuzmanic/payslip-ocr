@@ -71,6 +71,23 @@ export function addAmounts(a: string, b: string): string {
 }
 
 /**
+ * Subtracts `b` from `a` at the wider of their two scales, mirroring `addAmounts`, so
+ * `100.50 - 0.5` is `100.00`. Both arguments must already be canonical.
+ */
+export function subtractAmounts(a: string, b: string): string {
+  return new Big(a).minus(b).toFixed(Math.max(scaleOf(a), scaleOf(b)));
+}
+
+/**
+ * Whether two canonical amounts agree to the cent: a difference of one cent or more is a
+ * mismatch. The tolerance is absolute, never relative — doc-guard compared payroll identities
+ * to nine significant figures, which no OCR'd cent value survives (PRD §7.9, Task 06 D3).
+ */
+export function amountsAgreeToTheCent(a: string, b: string): boolean {
+  return new Big(a).minus(b).abs().lt("0.01");
+}
+
+/**
  * Compares two canonical amounts numerically, so `100.50` and `100.5` are equal despite
  * differing scale. Both arguments must already be canonical.
  */

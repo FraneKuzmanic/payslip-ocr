@@ -39,7 +39,6 @@ export type Database = {
           tables_status: string
           updated_at: string
           user_id: string
-          warnings: Json
         }
         Insert: {
           canonical_data?: Json
@@ -65,7 +64,6 @@ export type Database = {
           tables_status?: string
           updated_at?: string
           user_id: string
-          warnings?: Json
         }
         Update: {
           canonical_data?: Json
@@ -91,7 +89,6 @@ export type Database = {
           tables_status?: string
           updated_at?: string
           user_id?: string
-          warnings?: Json
         }
         Relationships: [
           {

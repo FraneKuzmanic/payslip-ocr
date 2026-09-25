@@ -14,6 +14,27 @@ function operation(fields: Record<string, unknown>, markdown = "# OBRAČUN PLAĆ
   };
 }
 
+/** The same body with OCR words, one array per page. */
+function operationWithWords(fields: Record<string, unknown>, pages: string[][]) {
+  return {
+    id: "op",
+    status: "Succeeded",
+    result: {
+      contents: [
+        {
+          kind: "document",
+          markdown: "# OBRAČUN PLAĆE",
+          fields,
+          pages: pages.map((words, index) => ({
+            pageNumber: index + 1,
+            words: words.map((content) => ({ content, confidence: 0.99 })),
+          })),
+        },
+      ],
+    },
+  };
+}
+
 const str = (valueString?: string, confidence = 0.9) => ({
   type: "string",
   confidence,
@@ -145,6 +166,54 @@ describe("mapAnalyzeResult", () => {
     expect(Object.keys(mapped?.fieldMetadata ?? {})).toEqual(["obustave.0.naziv"]);
   });
 
+  describe("grounding", () => {
+    it("lists an invented value and not a printed one", () => {
+      const mapped = mapAnalyzeResult(
+        operationWithWords({ netoPlaca: str("1.466,36"), iznosZaIsplatu: str("2.033,32") }, [
+          ["NETO", "1.466,36", "ISPLATA", "1.625,27"],
+        ]),
+      );
+
+      expect(mapped?.ungroundableFields).toEqual(["iznosZaIsplatu"]);
+      expect(mapped?.fields.iznosZaIsplatu).toBe("2033.32");
+    });
+
+    it("never lists the period", () => {
+      const mapped = mapAnalyzeResult(
+        operationWithWords({ period: str("lipanj 2025.") }, [["GODINA", "2025", "MJESEC", "6"]]),
+      );
+
+      expect(mapped?.fields.period).toBe("2025-06");
+      expect(mapped?.ungroundableFields).toEqual([]);
+    });
+
+    it("lists a table cell by its canonical path", () => {
+      const mapped = mapAnalyzeResult(
+        operationWithWords({ obustave: table([{ naziv: str("Sindikat"), iznos: str("10,00") }]) }, [
+          ["OBUSTAVE", "10,00"],
+        ]),
+      );
+
+      expect(mapped?.ungroundableFields).toEqual(["obustave.0.naziv"]);
+    });
+
+    it("grounds an unreadable value against its printed text", () => {
+      const mapped = mapAnalyzeResult(
+        operationWithWords({ netoPlaca: str("1.219.08") }, [["NETO", "1.219.08"]]),
+      );
+
+      expect(mapped?.unreadableFields).toEqual(["netoPlaca"]);
+      expect(mapped?.ungroundableFields).toEqual([]);
+    });
+
+    it("grounds nothing in a body without pages", () => {
+      // Real bodies always carry pages; this pins what happens if one does not.
+      const mapped = mapAnalyzeResult(operation({ netoPlaca: str("1.466,36") }));
+
+      expect(mapped?.ungroundableFields).toEqual(["netoPlaca"]);
+    });
+  });
+
   it("reports whether the document carried any text", () => {
     expect(mapAnalyzeResult(operation({}, "  \n "))?.hasText).toBe(false);
     expect(mapAnalyzeResult(operation({}))?.hasText).toBe(true);
@@ -193,6 +262,24 @@ describe.skipIf(!existsSync(recordingsDir))("mapAnalyzeResult over the recorded 
       expect([...(scalars?.unreadableFields ?? []), ...(tables?.unreadableFields ?? [])]).toEqual(
         whole?.unreadableFields,
       );
+      expect([
+        ...(scalars?.ungroundableFields ?? []),
+        ...(tables?.ungroundableFields ?? []),
+      ]).toEqual(whole?.ungroundableFields);
     }
+  });
+
+  // Task 06 D8, measured over this set: correct values ground, so the signal stays rare.
+  it("grounds every scalar, and leaves at most one table cell ungrounded", () => {
+    const files = readdirSync(recordingsDir).filter((name) => name.endsWith(".json"));
+    const ungrounded = files.flatMap(
+      (file) =>
+        mapAnalyzeResult(JSON.parse(readFileSync(join(recordingsDir, file), "utf8")))
+          ?.ungroundableFields ?? [],
+    );
+
+    // A canonical scalar path has no dot; a table cell's does.
+    expect(ungrounded.filter((path) => !path.includes("."))).toEqual([]);
+    expect(ungrounded.length).toBeLessThanOrEqual(1);
   });
 });

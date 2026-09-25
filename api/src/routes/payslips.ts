@@ -81,9 +81,9 @@ export function createPayslipsRouter(): Router {
 
       const body: PayslipDetailResponse = {
         ...state.payslip,
-        // Task 06 owns the confidence threshold (Task 04 D6).
-        lowConfidenceFields: [],
+        lowConfidenceFields: state.lowConfidenceFields,
         unreadableFields: state.unreadableFields,
+        ungroundableFields: state.ungroundableFields,
         editedFields: state.editedFields,
         failureReason: state.failureReason,
       };

@@ -234,6 +234,71 @@ describe("scoreSet", () => {
   });
 });
 
+describe("scoreSet attention and OIB reporting (Task 06 D11)", () => {
+  it("reports the OIB checksum pass rate over extracted OIBs only", () => {
+    const expected = expectation();
+    const actual = {
+      ...faithful(expected),
+      employerOib: "00000000010",
+      employeeOib: "00000000011",
+    };
+
+    expect(scoreSet([input(expected, actual)]).oib).toEqual({ hit: 1, total: 2 });
+  });
+
+  it("counts warnings per code and lists each sample's codes", () => {
+    const expected = expectation();
+    const report = scoreSet([
+      {
+        ...input(expected, faithful(expected)),
+        warnings: [
+          { code: "missing_critical_field", field: "employerName" },
+          { code: "missing_critical_field", field: "employeeOib" },
+          { code: "neto_mismatch", field: "netoPlaca" },
+        ],
+      },
+    ]);
+
+    expect(report.warningsByCode).toMatchObject({ missing_critical_field: 2, neto_mismatch: 1 });
+    expect(report.warningsByCode.isplata_mismatch).toBe(0);
+    expect(report.perSample[0]?.warningCodes).toEqual([
+      "missing_critical_field",
+      "missing_critical_field",
+      "neto_mismatch",
+    ]);
+  });
+
+  it("counts a wrong scalar as flagged by a warning, low confidence or grounding", () => {
+    const expected = expectation();
+    const actual = {
+      ...faithful(expected),
+      employeeName: "Ivo",
+      brutoPlaca: "1.00",
+      period: "2025-06",
+    };
+    const report = scoreSet([
+      {
+        ...input(expected, actual),
+        warnings: [{ code: "pay_components_sum_mismatch", field: "payComponents" }],
+        lowConfidenceFields: ["brutoPlaca"],
+        ungroundableFields: ["employeeName", "obustave.0.naziv"],
+      },
+    ]);
+
+    // period is wrong and unflagged; the table path is not a scalar.
+    expect(report.attention).toEqual({ wrongFlagged: { hit: 2, total: 3 }, flaggedScalars: 2 });
+  });
+
+  it("reports zeros for an input without any signal", () => {
+    const expected = expectation();
+    const report = scoreSet([input(expected, faithful(expected))]);
+
+    expect(report.oib).toEqual({ hit: 0, total: 0 });
+    expect(Object.values(report.warningsByCode).every((n) => n === 0)).toBe(true);
+    expect(report.attention).toEqual({ wrongFlagged: { hit: 0, total: 0 }, flaggedScalars: 0 });
+  });
+});
+
 describe("percentiles", () => {
   it("uses nearest rank", () => {
     expect(percentiles([5, 1, 4, 2, 3, 10, 9, 8, 7, 6])).toEqual({ p50: 5, p90: 9, max: 10 });
