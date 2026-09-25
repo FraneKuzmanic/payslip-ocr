@@ -90,7 +90,7 @@ investigation and is recorded with its reasoning.
 | 04 | Content Understanding provider, mapper & scoring harness | ✅ complete → [`history/04`](./history/04-content-understanding-provider.md) |
 | 05 | Extraction latency: partial results or two-pass | ✅ complete, first-form target missed (p50 12.2 s) → [`history/05`](./history/05-extraction-latency-two-pass.md) |
 | 06 | Warnings & validation engine | ✅ complete → [`history/06`](./history/06-warnings-validation-engine.md) |
-| 07 | Capture & multi-upload UI | ✅ complete, reviewed and validated; M3 pending → [`history/07`](./history/07-capture-multi-upload.md) |
+| 07 | Capture & multi-upload UI | ✅ complete, reviewed and validated; M3 core journey passed, sub-steps pending → [`history/07`](./history/07-capture-multi-upload.md) |
 | 08 | Source regions & document preview with highlighting | ⬜ not started |
 | 09 | Review form & two-way linking | ⬜ not started |
 | 10 | Session navigation & phone layout | ⬜ not started |

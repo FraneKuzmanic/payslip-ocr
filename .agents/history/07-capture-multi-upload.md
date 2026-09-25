@@ -13,7 +13,7 @@
 The backend gained `POST /api/payslips/:id/retry` (PRD §10.8) and `originalFilename` on the session
 summary.
 
-**Status: implemented, reviewed and validated (review session, 2026-09-25); M3 pending.** The
+**Status: implemented, reviewed and validated (review session, 2026-09-25); M3's core journey passed, its four sub-steps not yet run.** The
 implementing session made no paid Azure run ($0). The review session's findings, fixes, validation
 and browser journey are recorded under "Review session" at the end; it spent about **$0.29**.
 
@@ -136,8 +136,8 @@ None. **$0** in this session (D13). The review session has a budget of about 20 
      still alive, it could write into the new attempt.
    - That needs a pass to outlive the 15-minute reaper, while each pass runs under
      `EXTRACTION_TIMEOUT_MS` (120 s by default). So nothing guards against it.
-5. **M3 pending:** real-phone capture journey (camera denial, retake, rotation, one-handed reach),
-   run and recorded here by the product owner.
+5. **M3, partly run:** see "M3 — real-phone capture" below. The core journey passed; camera
+   denial, retake, rotation and one-handed reach are still to run.
 6. **Leftover receipt copy.** `review.fields` in both locales still holds receipt field labels
    (`sellerName`, `buyerOib`, `issueDate`, `subtotal`, …). They are pre-existing dead copy that
    Task 09 should replace; left untouched here.
@@ -268,10 +268,27 @@ Per document: A02 $0.065, A01 $0.108 (two pages), G01 $0.036, B02 $0.040.
 
 ### Left for the product owner
 
-1. **M3**, the real-phone capture journey (camera denial, retake, rotation, one-handed reach).
+1. **M3's four sub-steps** (camera denial, retake, rotation, one-handed reach). The core journey is
+   recorded below.
 2. **Copy, two changes, applied at the product owner's request:**
    - `payslipStatus.failed` was "Could not be read" / "Nije očitano", which misstated a
      `provider_unavailable` failure where the document was never read. It is now "Failed" /
      "Nije uspjelo"; the reason line beneath it says why.
    - `capture.uploadingStatus` in hr: "Vaše se platne liste šalju." (the clitic in second place).
 3. Committed and pushed on the product owner's go-ahead.
+
+## M3 — real-phone capture (product owner, 2026-09-25)
+
+| | |
+| --- | --- |
+| Device | Samsung phone (model and Android version not recorded), Chrome |
+| Environment | not recorded |
+
+| Sub-step | Verdict | Notes |
+| --- | --- | --- |
+| Core journey: photograph a payslip with the camera, upload it | **Pass** | A normal photo (not HEIC), taken through the camera picker, uploaded and reached "Ready to review" |
+| Camera denial falls back to choosing a file | not run | |
+| Retake | not run | |
+| Rotation | not run | |
+| One-handed reach on the controls | not run | Task 07's controls are now 48 px, not the 44 px the ROADMAP row names |
+
