@@ -286,3 +286,35 @@ in all: **$0.76**.
    - en: "The highlights could not be updated, so some may be missing. Try again."
    - hr: "Oznake nije bilo moguće osvježiti pa neke možda nedostaju. Pokušajte ponovno."
 3. Committing waits for the product owner's go-ahead.
+
+## Production check by agent (2026-09-25, after commit `2e3a92f`)
+
+Run by `agent-browser` against `payslip-ocr-client.onrender.com`, signed in as the M1 account, over
+every page of all 14 documents at 3×. No upload, so no Azure cost. This is a pre-check, **not** M1:
+M1 stays the product owner's own spot-check.
+
+| Sample | Verdict | Notes |
+| --- | --- | --- |
+| A01 (2 pages) | pass | 121 + 60 outlines, identical to the dev run; all 23 pay components on their rows |
+| A02 | pass | |
+| A03 | pass | |
+| A04 | pass, with a service reading gap | Row 1's obustave name was read as "…SA\nSALDA", missing "KONTROLOM", so its second-line quad covers "SALDA" only. The 20-pixel quads on this low-resolution screenshot overlap their neighbours' strokes and look crossed |
+| B01 | pass | |
+| B02 | pass | Quads follow the skew |
+| C01 | pass | `period`'s second segment is on the day "01", not the month "6": the service's own source choice |
+| D01 (2 pages) | **one misplaced outline** | `paymentDate` (2025-06-10, correct; printed "10.06.25") carries a service source on "20, 10000" inside the employer address. It is drawn there, faithfully. Confidence 0.315 puts it in `lowConfidenceFields`; grounding does not flag it, because "10.06.25" is printed on the page |
+| E01 | pass | |
+| F01 | pass | |
+| G01 | pass | |
+| `A02-exif6.jpg` | pass | |
+| `A03-rotate90.pdf` | pass | |
+| `A02.heic` | pass | The notice and link; **exactly two** `/source` requests in production (the dev server's third is `StrictMode`) |
+
+Also in production: the focused preview heading at 80 px; the popover ("Amount, Obustave row 1",
+200.00, no Edit) in en and hr; Back closes the preview; at 375 px in en and hr `scrollWidth` 360
+with no control under 48 px in the preview or rows.
+
+**Open, for the product owner:** D01 shows the projection cannot tell a wrong service source from a
+right one. PRD §2 principle 2 says an outline that cannot be proven to sit on its own text is not
+drawn. A check that the OCR words **inside** a region contain the printed value would prove it,
+where grounding only checks the whole page.
