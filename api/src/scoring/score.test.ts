@@ -208,6 +208,30 @@ describe("scoreSet", () => {
 
     expect(report.latency).toEqual({ p50: 1000, p90: 3000, max: 3000 });
   });
+
+  it("reports first-form and complete percentiles for a two-pass set (Task 05 D12)", () => {
+    const expected = expectation();
+    const twoPass = (firstFormMs: number, completeMs: number) => ({
+      ...input(expected, faithful(expected)),
+      firstFormMs,
+      completeMs,
+    });
+
+    const report = scoreSet([twoPass(8000, 20_000), twoPass(6000, 12_000), twoPass(9000, 30_000)]);
+
+    expect(report.firstForm).toEqual({ p50: 8000, p90: 9000, max: 9000 });
+    expect(report.complete).toEqual({ p50: 20_000, p90: 30_000, max: 30_000 });
+    expect(report.latency).toBeNull();
+  });
+
+  it("leaves first-form and complete null for a single-pass set", () => {
+    const expected = expectation();
+
+    const report = scoreSet([input(expected, faithful(expected), 1000)]);
+
+    expect(report.firstForm).toBeNull();
+    expect(report.complete).toBeNull();
+  });
 });
 
 describe("percentiles", () => {

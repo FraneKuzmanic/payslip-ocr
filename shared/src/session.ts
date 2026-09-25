@@ -16,8 +16,9 @@ export const sessionSchema = z
 export type Session = z.infer<typeof sessionSchema>;
 
 /**
- * The payslip statuses of PRD §6.6, closed. ROADMAP Task 05 extends them with a tables-pending
- * state once one exists.
+ * The payslip statuses of PRD §6.6, closed: the user-facing lifecycle that governs editing,
+ * confirming and retrying. Whether the line-item tables have landed is a separate question,
+ * answered by `TABLES_STATUSES` (Task 05 D6), so no status has a with-tables twin.
  */
 export const PAYSLIP_STATUSES = ["processing", "review", "confirmed", "failed"] as const;
 export const payslipStatusSchema = z.enum(PAYSLIP_STATUSES);
@@ -39,6 +40,19 @@ export const PAYSLIP_STATUS_TRANSITIONS: Readonly<Record<PayslipStatus, readonly
 export function canTransition(from: PayslipStatus, to: PayslipStatus): boolean {
   return PAYSLIP_STATUS_TRANSITIONS[from].includes(to);
 }
+
+/**
+ * Whether a payslip's line-item tables have landed (Task 05 D6). Extraction runs in two passes:
+ * the scalars pass moves `status` to `review`, and the tables pass moves this to `ready`, in
+ * either order. `failed` means the tables pass failed, was cancelled or was reaped; a payslip in
+ * `review` with failed tables is usable and distinct from a failed payslip.
+ *
+ * Confirm is refused while `pending` (Task 09), so export, which requires `confirmed`, waits for
+ * both passes to settle.
+ */
+export const TABLES_STATUSES = ["pending", "ready", "failed"] as const;
+export const tablesStatusSchema = z.enum(TABLES_STATUSES);
+export type TablesStatus = z.infer<typeof tablesStatusSchema>;
 
 /** The statuses in which the canonical fields may be edited (PRD §7.7, §10.6). */
 export const EDITABLE_PAYSLIP_STATUSES = ["review", "confirmed"] as const;

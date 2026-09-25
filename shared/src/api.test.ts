@@ -26,6 +26,7 @@ const payslip = {
   sessionId: ID_B,
   userId: USER,
   status: "review",
+  tablesStatus: "ready",
   pageCount: 1,
   currency: "EUR",
   warnings: [{ code: "neto_mismatch", field: "netoPlaca" }],
@@ -68,6 +69,7 @@ describe("response DTOs tolerate a newer API", () => {
           {
             id: ID_A,
             status: "failed",
+            tablesStatus: "failed",
             period: null,
             employeeName: null,
             pageCount: 1,
@@ -116,11 +118,15 @@ describe("response DTOs tolerate a newer API", () => {
 
 describe("updatePayslipRequestSchema (PRD §10.6)", () => {
   // Strictness survives `.partial()`: a body naming a server-owned key is rejected outright.
-  it.each(["userId", "status", "currency", "id", "sessionId"])("rejects %s", (key) => {
-    expect(
-      updatePayslipRequestSchema.safeParse({ [key]: payslip[key as keyof typeof payslip] }).success,
-    ).toBe(false);
-  });
+  it.each(["userId", "status", "tablesStatus", "currency", "id", "sessionId"])(
+    "rejects %s",
+    (key) => {
+      expect(
+        updatePayslipRequestSchema.safeParse({ [key]: payslip[key as keyof typeof payslip] })
+          .success,
+      ).toBe(false);
+    },
+  );
 
   it.each([{}, { netoPlaca: "2298.97" }])("accepts %j", (body) => {
     expect(updatePayslipRequestSchema.safeParse(body).success).toBe(true);
@@ -135,6 +141,7 @@ describe("payslipSummarySchema (PRD §10.4)", () => {
   const summary = {
     id: ID_A,
     status: "processing",
+    tablesStatus: "pending",
     period: null,
     employeeName: null,
     pageCount: 1,
@@ -145,6 +152,9 @@ describe("payslipSummarySchema (PRD §10.4)", () => {
   it.each(["period", "employeeName"] as const)("requires %s, even when null", (key) => {
     const { [key]: _omitted, ...body } = summary;
     expect(payslipSummarySchema.safeParse(body).success).toBe(false);
+  });
+  it("carries tablesStatus, so a client knows the line-item tables are still coming", () => {
+    expect(payslipSummarySchema.parse(summary).tablesStatus).toBe("pending");
   });
 });
 

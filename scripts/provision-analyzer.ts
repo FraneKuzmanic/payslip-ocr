@@ -1,23 +1,33 @@
 /**
- * Provision the Content Understanding analyzer, repeatably, and check it has not drifted.
+ * Provision the Content Understanding analyzers, repeatably, and check they have not drifted.
  *
- *   npm run provision:analyzer              register defaults if missing; create the analyzer if
- *                                           missing; otherwise verify it matches the code
+ *   npm run provision:analyzer              register defaults if missing; create each pass
+ *                                           analyzer if missing; otherwise verify it matches
  *   npm run provision:analyzer -- --replace delete and recreate a drifted analyzer
  *
  * Two one-time actions live here so they cannot be lost to a portal click:
  * - `PATCH /contentunderstanding/defaults`, the per-resource model registration;
- * - the analyzer itself, built from the same definition the API calls.
+ * - one analyzer per extraction pass (Task 05 D5), `<AZURE_CU_ANALYZER_ID>_scalars` and
+ *   `<AZURE_CU_ANALYZER_ID>_tables`, built from the same definitions the API calls.
  *
- * A replaced analyzer invalidates every recording in `.bakeoff/`: re-record before scoring.
+ * The single-pass analyzer `<AZURE_CU_ANALYZER_ID>` itself stays deployed, untouched and no longer
+ * managed here: the product no longer calls it, but the single-pass recordings every two-pass
+ * figure is compared against came from it.
+ *
+ * A replaced analyzer invalidates the recordings made with it: re-record before scoring.
  * The key is never printed.
  */
 import { isDeepStrictEqual } from "node:util";
 import "dotenv/config";
 import {
   ANALYZER_DESCRIPTION,
+  analyzerIdFor,
   buildAnalyzerDefinition,
 } from "../api/src/providers/document-extraction/content-understanding/analyzer.ts";
+import {
+  EXTRACTION_PASSES,
+  type ExtractionPass,
+} from "../api/src/providers/document-extraction/types.ts";
 
 const EMBEDDING_MODEL = "text-embedding-3-large";
 
@@ -29,10 +39,13 @@ const completionModel = process.env["AZURE_OPENAI_DEPLOYMENT"]?.trim() || "gpt-4
 const replace = process.argv.includes("--replace");
 const headers = { "Ocp-Apim-Subscription-Key": key };
 
-console.log(`\nContent Understanding (${apiVersion}) — analyzer '${analyzerId}'\n`);
+console.log(`\nContent Understanding (${apiVersion}) — analyzer family '${analyzerId}'\n`);
 
 await ensureDefaults();
-const drifted = await ensureAnalyzer();
+let drifted = false;
+for (const pass of EXTRACTION_PASSES) {
+  if (await ensureAnalyzer(pass)) drifted = true;
+}
 process.exit(drifted ? 1 : 0);
 
 async function ensureDefaults(): Promise<void> {
@@ -59,21 +72,22 @@ async function ensureDefaults(): Promise<void> {
 }
 
 /** Returns true when the deployed analyzer differs from the code and was left alone. */
-async function ensureAnalyzer(): Promise<boolean> {
-  const url = `${endpoint}/contentunderstanding/analyzers/${analyzerId}?api-version=${apiVersion}`;
+async function ensureAnalyzer(pass: ExtractionPass): Promise<boolean> {
+  const id = analyzerIdFor(analyzerId, pass);
+  const url = `${endpoint}/contentunderstanding/analyzers/${id}?api-version=${apiVersion}`;
   const existing = await fetch(url, { headers });
 
   if (existing.status === 404) {
-    await create(url);
+    await create(url, id, pass);
     return false;
   }
-  if (!existing.ok) fail(`GET analyzer: HTTP ${existing.status}`);
+  if (!existing.ok) fail(`GET analyzer '${id}': HTTP ${existing.status}`);
 
   const deployed = (await existing.json()) as {
     description?: string;
     fieldSchema?: { fields?: Record<string, unknown> };
   };
-  const expected = buildAnalyzerDefinition(completionModel);
+  const expected = buildAnalyzerDefinition(completionModel, pass);
   const deployedFields = deployed.fieldSchema?.fields ?? {};
   const differing = [
     ...(deployed.description === ANALYZER_DESCRIPTION ? [] : ["(description)"]),
@@ -87,33 +101,35 @@ async function ensureAnalyzer(): Promise<boolean> {
   ];
 
   if (differing.length === 0) {
-    console.log(`  analyzer '${analyzerId}' matches the code`);
+    console.log(`  analyzer '${id}' matches the code`);
     return false;
   }
 
-  console.log(`  analyzer '${analyzerId}' DIFFERS from the code: ${differing.join(", ")}`);
+  console.log(`  analyzer '${id}' DIFFERS from the code: ${differing.join(", ")}`);
   if (!replace) {
-    console.log("  re-run with --replace to rebuild it (this invalidates every recording)");
+    console.log(
+      "  re-run with --replace to rebuild it (this invalidates every two-pass recording set)",
+    );
     return true;
   }
 
   const deleted = await fetch(url, { method: "DELETE", headers });
-  if (!deleted.ok) fail(`DELETE analyzer: HTTP ${deleted.status}`);
-  await create(url);
+  if (!deleted.ok) fail(`DELETE analyzer '${id}': HTTP ${deleted.status}`);
+  await create(url, id, pass);
   console.log(
-    "  !! recordings in .bakeoff/ are now stale: re-record them before running score:extraction",
+    "  !! two-pass recordings in .bakeoff/ are now stale: re-record them before running score:extraction",
   );
   return false;
 }
 
-async function create(url: string): Promise<void> {
-  console.log(`  creating analyzer '${analyzerId}' (completion model '${completionModel}')...`);
+async function create(url: string, id: string, pass: ExtractionPass): Promise<void> {
+  console.log(`  creating analyzer '${id}' (completion model '${completionModel}')...`);
   const response = await fetch(url, {
     method: "PUT",
     headers: { ...headers, "Content-Type": "application/json" },
-    body: JSON.stringify(buildAnalyzerDefinition(completionModel)),
+    body: JSON.stringify(buildAnalyzerDefinition(completionModel, pass)),
   });
-  if (!response.ok) fail(`PUT analyzer: HTTP ${response.status}`);
+  if (!response.ok) fail(`PUT analyzer '${id}': HTTP ${response.status}`);
   const operationUrl = response.headers.get("operation-location");
   if (operationUrl) await poll(operationUrl);
   console.log("  analyzer ready");

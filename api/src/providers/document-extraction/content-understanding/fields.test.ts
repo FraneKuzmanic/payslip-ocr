@@ -116,6 +116,35 @@ describe("mapAnalyzeResult", () => {
     );
   });
 
+  it("maps only the scalar keys on the scalars pass, and leaves the tables absent", () => {
+    const mapped = mapAnalyzeResult(
+      operation({ netoPlaca: str("2.298,97"), obustave: table([{ naziv: str("Sindikat") }]) }),
+      "scalars",
+    );
+
+    expect(mapped?.fields.netoPlaca).toBe("2298.97");
+    for (const key of ["payComponents", "obustave", "neoporeziviPrimici"]) {
+      expect(mapped?.fields).not.toHaveProperty(key);
+    }
+    expect(Object.keys(mapped?.fieldMetadata ?? {})).toEqual(["netoPlaca"]);
+  });
+
+  it("maps only the table keys on the tables pass, with [] for an absent table", () => {
+    const mapped = mapAnalyzeResult(
+      operation({ netoPlaca: str("2.298,97"), obustave: table([{ naziv: str("Sindikat") }]) }),
+      "tables",
+    );
+
+    expect(mapped?.fields).toEqual({
+      payComponents: [],
+      obustave: [
+        { naziv: "Sindikat", vjerovnik: null, iznos: null, ostatakSalda: null, brojRata: null },
+      ],
+      neoporeziviPrimici: [],
+    });
+    expect(Object.keys(mapped?.fieldMetadata ?? {})).toEqual(["obustave.0.naziv"]);
+  });
+
   it("reports whether the document carried any text", () => {
     expect(mapAnalyzeResult(operation({}, "  \n "))?.hasText).toBe(false);
     expect(mapAnalyzeResult(operation({}))?.hasText).toBe(true);
@@ -143,6 +172,27 @@ describe.skipIf(!existsSync(recordingsDir))("mapAnalyzeResult over the recorded 
       const mapped = mapAnalyzeResult(JSON.parse(readFileSync(join(recordingsDir, file), "utf8")));
       expect(mapped, file).not.toBeNull();
       expect(mapped?.hasText, file).toBe(true);
+    }
+  });
+
+  // The invariant that makes single- and two-pass recordings comparable in the harness.
+  it("maps each recording, pass by pass, to exactly the single-pass mapping", () => {
+    const files = readdirSync(recordingsDir).filter((name) => name.endsWith(".json"));
+    for (const file of files) {
+      const body: unknown = JSON.parse(readFileSync(join(recordingsDir, file), "utf8"));
+      const whole = mapAnalyzeResult(body);
+      const scalars = mapAnalyzeResult(body, "scalars");
+      const tables = mapAnalyzeResult(body, "tables");
+
+      expect(JSON.stringify({ ...scalars?.fields, ...tables?.fields }), file).toBe(
+        JSON.stringify(whole?.fields),
+      );
+      expect({ ...scalars?.fieldMetadata, ...tables?.fieldMetadata }, file).toEqual(
+        whole?.fieldMetadata,
+      );
+      expect([...(scalars?.unreadableFields ?? []), ...(tables?.unreadableFields ?? [])]).toEqual(
+        whole?.unreadableFields,
+      );
     }
   });
 });

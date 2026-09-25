@@ -6,11 +6,19 @@ import {
   type SourceContentType,
 } from "@payslip/shared";
 
+/**
+ * Extraction runs as two passes over the same document (Task 05): `scalars` returns the scalar
+ * fields and makes the form usable; `tables` returns the three line-item tables.
+ */
+export const EXTRACTION_PASSES = ["scalars", "tables"] as const;
+export type ExtractionPass = (typeof EXTRACTION_PASSES)[number];
+
 export interface ExtractionInput {
   readonly bytes: Buffer;
   readonly contentType: SourceContentType;
   /** The whole-analysis budget; aborting it ends the extraction as `provider_unavailable`. */
   readonly signal: AbortSignal;
+  readonly pass: ExtractionPass;
 }
 
 export interface ExtractionMetadata {
@@ -27,10 +35,16 @@ export interface ExtractionMetadata {
   readonly unreadableFields: string[];
   /** Submits made before one was accepted; above 1 a duplicate analysis may have been billed. */
   readonly submitAttempts?: number;
+  /**
+   * Time the pass waited in the runner's queue before the provider was called. Set by the runner,
+   * never by the provider; a user waits through it too.
+   */
+  readonly queuedMs?: number;
 }
 
 export interface ProviderExtractionResult {
-  readonly fields: CanonicalPayslipFields;
+  /** Only the pass's own canonical keys; the other pass's keys are absent, never empty. */
+  readonly fields: Partial<CanonicalPayslipFields>;
   readonly metadata: ExtractionMetadata;
   /** Provider response retained verbatim for debugging. */
   readonly raw: unknown;

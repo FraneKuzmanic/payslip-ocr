@@ -19,6 +19,13 @@ const vitestEntry = resolve("node_modules", "vitest", "vitest.mjs");
 const target = useLocal ? resolveLocalTarget() : resolveHostedTarget();
 
 console.log(`\nSupabase integration tests → ${target.label}: ${hostOf(target.env.SUPABASE_URL)}\n`);
+if (extraction) {
+  // Task 05 D13: the golden run's mode and the recording set it writes, passed through process.env.
+  console.log(
+    `Golden run: GOLDEN_MODE=${process.env.GOLDEN_MODE ?? "concurrent"}, ` +
+      `GOLDEN_SET=${process.env.GOLDEN_SET ?? "(unset)"}\n`,
+  );
+}
 
 const integrationFiles = extraction
   ? ["src/routes/extraction.integration.ts"]

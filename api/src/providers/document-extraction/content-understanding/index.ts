@@ -11,7 +11,7 @@ export function createDocumentExtractionProvider(): DocumentExtractionProvider {
   return new ContentUnderstandingProvider({
     endpoint: config.AZURE_CONTENT_UNDERSTANDING_ENDPOINT,
     key: config.AZURE_CONTENT_UNDERSTANDING_KEY,
-    analyzerId: config.AZURE_CU_ANALYZER_ID,
+    analyzerFamilyId: config.AZURE_CU_ANALYZER_ID,
     apiVersion: config.AZURE_CU_API_VERSION,
   });
 }

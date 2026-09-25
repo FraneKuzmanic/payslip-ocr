@@ -128,6 +128,12 @@ A quadrilateral on one Page, expressed in page-relative fractions, that locates 
 extracted value was read from. Drives the highlight drawn over the document preview.
 _Avoid_: Bounding box, highlight, annotation
 
+**Extraction pass**:
+One of the two analyses a Payslip's extraction is split into — the scalars pass, which makes the
+form usable, and the tables pass, which fills the three line-item tables. They run over the same
+document and land in either order.
+_Avoid_: Phase, stage, job
+
 **Extracted value**:
 A value the system read from a Payslip, always a draft. It is never authoritative until the
 user has reviewed it; low confidence marks a value for attention but never suppresses it.

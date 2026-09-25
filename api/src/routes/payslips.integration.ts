@@ -123,6 +123,7 @@ describe("sessions and payslips against the hosted project", () => {
     expect(detail.payslips[0]).toEqual({
       id: jpegPayslipId,
       status: "processing",
+      tablesStatus: "pending",
       period: null,
       employeeName: null,
       pageCount: 1,
@@ -312,6 +313,165 @@ describe("another user", () => {
       (await getAsA(`/api/sessions/${sessionId}`)).body,
     );
     expect(detail.payslips).toHaveLength(2);
+  });
+});
+
+describe("extraction passes (Task 05 D7, D10)", () => {
+  const scalars = {
+    fields: { employeeName: "Ana Horvat", netoPlaca: "1234.56" },
+    metadata: { unreadableFields: ["brutoPlaca"], queuedMs: 1 },
+    raw: { pass: "scalars" },
+  };
+  const tables = {
+    fields: {
+      payComponents: [{ naziv: "REDOVAN RAD", sati: null, koeficijent: null, iznos: "1200.00" }],
+      obustave: [],
+      neoporeziviPrimici: [],
+    },
+    metadata: { unreadableFields: ["payComponents.0.sati"], queuedMs: 2 },
+    raw: { pass: "tables" },
+  };
+  let passSessionId = "";
+  const repositoryA = () => new PayslipRepository(userA, userAId);
+
+  beforeAll(async () => {
+    const created = await request(app)
+      .post("/api/sessions")
+      .set("Authorization", `Bearer ${tokenA}`);
+    passSessionId = createSessionResponseSchema.parse(created.body).id;
+  });
+
+  /** A fresh `processing` row, inserted as user A: no source object is needed here. */
+  async function processingPayslip(): Promise<string> {
+    const { data, error } = await userA
+      .from("payslips")
+      .insert({
+        session_id: passSessionId,
+        user_id: userAId,
+        original_filename: "pass.pdf",
+        content_type: "application/pdf",
+        page_count: 1,
+      })
+      .select("id, status, tables_status")
+      .single();
+    if (error) throw new Error("Could not insert a processing payslip.");
+    expect(data).toMatchObject({ status: "processing", tables_status: "pending" });
+    return data.id;
+  }
+
+  async function row(id: string) {
+    const { data, error } = await admin
+      .from("payslips")
+      .select("status, tables_status, canonical_data, extraction_metadata, raw_provider_result")
+      .eq("id", id)
+      .single();
+    if (error) throw new Error(`Could not read payslip ${id}.`);
+    return data;
+  }
+
+  const merged = {
+    status: "review",
+    tables_status: "ready",
+    canonical_data: { ...scalars.fields, ...tables.fields },
+    extraction_metadata: { scalars: scalars.metadata, tables: tables.metadata },
+    raw_provider_result: { scalars: scalars.raw, tables: tables.raw },
+  };
+
+  it.each([
+    ["scalars then tables", ["scalars", "tables"] as const],
+    ["tables then scalars", ["tables", "scalars"] as const],
+  ])("merges both passes whichever lands first: %s", async (_name, order) => {
+    const id = await processingPayslip();
+    const [first, second] = order;
+    const payload = { scalars, tables };
+
+    expect(await repositoryA().completeExtractionPass(id, first, payload[first])).toBe(true);
+    if (first === "tables") {
+      expect(await row(id)).toMatchObject({ status: "processing", tables_status: "ready" });
+    }
+    expect(await repositoryA().completeExtractionPass(id, second, payload[second])).toBe(true);
+
+    expect(await row(id)).toEqual(merged);
+    const detail = payslipDetailResponseSchema.parse((await getAsA(`/api/payslips/${id}`)).body);
+    expect(detail).toMatchObject({ status: "review", tablesStatus: "ready", netoPlaca: "1234.56" });
+    expect(detail.unreadableFields).toEqual(["brutoPlaca", "payComponents.0.sati"]);
+  });
+
+  it("discards a second tables write, changing nothing", async () => {
+    const id = await processingPayslip();
+    await repositoryA().completeExtractionPass(id, "scalars", scalars);
+    await repositoryA().completeExtractionPass(id, "tables", tables);
+
+    const again = { ...tables, fields: { ...tables.fields, obustave: null } };
+    expect(await repositoryA().completeExtractionPass(id, "tables", again)).toBe(false);
+    expect(await row(id)).toEqual(merged);
+  });
+
+  it("discards a scalars write to a failed payslip, and a tables write to a failed one", async () => {
+    const id = await processingPayslip();
+    expect(await repositoryA().failExtraction(id, "unreadable_document")).toBe(true);
+
+    expect(await repositoryA().completeExtractionPass(id, "scalars", scalars)).toBe(false);
+    expect(await repositoryA().completeExtractionPass(id, "tables", tables)).toBe(false);
+    expect(await row(id)).toMatchObject({ status: "failed", canonical_data: {} });
+  });
+
+  it("discards either pass on a soft-deleted payslip", async () => {
+    const id = await processingPayslip();
+    await repositoryA().softDelete(id);
+
+    expect(await repositoryA().completeExtractionPass(id, "tables", tables)).toBe(false);
+    expect(await repositoryA().completeExtractionPass(id, "scalars", scalars)).toBe(false);
+    expect(await row(id)).toMatchObject({ status: "processing", tables_status: "pending" });
+  });
+
+  it("refuses a second user's write to the first user's payslip", async () => {
+    const id = await processingPayslip();
+    const intruder = new PayslipRepository(userB, userBId);
+
+    expect(await intruder.completeExtractionPass(id, "scalars", scalars)).toBe(false);
+    expect(await intruder.completeExtractionPass(id, "tables", tables)).toBe(false);
+    expect(await intruder.failTablesExtraction(id)).toBe(false);
+    expect(await row(id)).toMatchObject({
+      status: "processing",
+      tables_status: "pending",
+      canonical_data: {},
+      extraction_metadata: null,
+      raw_provider_result: null,
+    });
+  });
+
+  it("raises on an unknown pass", async () => {
+    const id = await processingPayslip();
+    const { error } = await userA.rpc("complete_extraction_pass", {
+      p_payslip_id: id,
+      p_pass: "everything",
+      p_fields: {},
+      p_metadata: {},
+      p_raw: {},
+    });
+
+    expect(error?.code).toBe("22023");
+    expect(error?.message).toBe("invalid_pass");
+  });
+
+  it("fails pending tables on a stale payslip in review, and leaves a fresh one alone", async () => {
+    const stale = await processingPayslip();
+    const fresh = await processingPayslip();
+    for (const id of [stale, fresh]) {
+      await repositoryA().completeExtractionPass(id, "scalars", scalars);
+    }
+    const { error } = await admin
+      .from("payslips")
+      .update({ updated_at: new Date(Date.now() - 60 * 60 * 1000).toISOString() })
+      .eq("id", stale);
+    if (error) throw new Error("Could not back-date the stale payslip.");
+
+    const reaped = await repositoryA().failStaleExtractions(new Date(Date.now() - 30 * 60 * 1000));
+
+    expect(reaped).toBe(1);
+    expect(await row(stale)).toMatchObject({ status: "review", tables_status: "failed" });
+    expect(await row(fresh)).toMatchObject({ status: "review", tables_status: "pending" });
   });
 });
 

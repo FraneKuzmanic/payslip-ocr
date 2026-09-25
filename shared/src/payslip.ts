@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { PERIOD_PATTERN } from "./datetime.js";
 import { AMOUNT_PATTERN } from "./money.js";
-import { payslipStatusSchema } from "./session.js";
+import { payslipStatusSchema, tablesStatusSchema } from "./session.js";
 import { payslipWarningSchema } from "./warnings.js";
 
 /**
@@ -146,6 +146,7 @@ export const payslipSchema = canonicalPayslipFieldsSchema.extend({
   sessionId: z.uuid(),
   userId: z.uuid(),
   status: payslipStatusSchema,
+  tablesStatus: tablesStatusSchema,
   pageCount: z.number().int().min(1),
   currency: z.literal("EUR"),
   warnings: z.array(payslipWarningSchema),

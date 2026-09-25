@@ -1,8 +1,18 @@
 # Spec — Two-pass extraction (latency)
 
-**Status:** proposed, not implemented
+**Status:** implemented (Task 05, 2026-09-25). The first-form target is **missed**: p50 12.2 s.
 **Owner:** ROADMAP Task 05, because it changes the API shape
-**Evidence:** `.agents/history/01-extraction-bakeoff.md`
+**Evidence:** `.agents/history/01-extraction-bakeoff.md`, `.agents/history/05-extraction-latency-two-pass.md`
+
+> **Measured, Task 05.** One payslip at a time on the product path: single-pass p50 20.7 s,
+> p90 46.2 s; two-pass first form **p50 12.2 s, p90 15.1 s**, complete p50 14.0 s. The prediction
+> below assumed 146 tok/s; on the day the service generated at ~70–100 tok/s, so a ~600-token
+> scalars pass took 6–14 s. The design delivered the structural win (A01 66.8 → 15.1 s) but not
+> the 10 s line. Cost: $0.045–0.051 per document against $0.031 single-pass, ~1.5×, close to the
+> 1.6× estimated below. Scalar accuracy 271 and 268 of 273 against single-pass 270–272; line-item
+> cells 478 and 502 against 502–504, the spread driven by `obustave` row order, which varies in
+> single-pass runs too. By the plan's test (every two-pass set ≥ lowest single-pass − 1 = 269), R3's
+> 268 is one field short.
 
 ## Problem
 
@@ -72,17 +82,23 @@ a JSON export is complete).
 
 ## Open questions
 
-1. **Does CU let one analyzer return partial results?** If it can stream or emit scalars early,
-   that beats two passes outright — no double OCR, no double billing. Not investigated; the GA
-   API surface suggests not, but it is worth ten minutes before building this.
-2. **Does splitting the schema change accuracy?** Pass A no longer sees the table definitions in
-   its prompt, and vice versa. Plausibly neutral or slightly better (less to confuse), but it must
-   be re-scored against the golden set, not assumed.
-3. **Which pass owns `ukupnoSati`?** It is a scalar but its value cross-checks against
-   `payComponents`. Belongs in Pass A; the `pay_components_sum_mismatch` warning then cannot be
-   computed until Pass B lands, so warnings need to recompute on arrival.
-4. **Failure independence.** If Pass B fails and Pass A succeeded, the payslip is usable but
-   incomplete. Needs its own status, distinct from `failed`.
+Answered in Task 05 (plan D1, D5, D6, D11):
+
+1. **Does CU let one analyzer return partial results?** No. In the `2025-11-01` GA reference the
+   operation is `NotStarted | Running | Succeeded | Failed | Canceled`, `result` exists only on
+   success, and there is no streaming or partial option. The two-analyzer split was built.
+2. **Does splitting the schema change accuracy?** Scalars: 271 and 268 of 273 against single-pass
+   270–272. R3 is one field under the plan's floor of 269. Its misses are fields that also flip
+   between runs of one design, so no split effect is shown, but the criterion is not met. Tables: one run lost 24 cells, almost all A01
+   `obustave` row order, and the next matched single-pass. Once, C01's tables pass took the IP1
+   statutory breakdown instead of the employer's pay rows: the tables analyzer no longer sees the
+   scalar fields, and that is the one plausibly systematic cost seen.
+3. **Which pass owns `ukupnoSati`?** The scalars pass. Task 06 computes
+   `pay_components_sum_mismatch` only once `tablesStatus` is `ready`, and recomputes warnings on
+   each pass's arrival.
+4. **Failure independence.** `tablesStatus` (`pending | ready | failed`) is its own field beside
+   the payslip status: `review` + `failed` is usable-but-incomplete, distinct from a failed
+   payslip. Confirm is refused while `pending`.
 
 ## Definition of done
 

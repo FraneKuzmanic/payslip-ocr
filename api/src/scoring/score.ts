@@ -68,6 +68,17 @@ export interface ScoringInput {
   readonly expected: Record<string, unknown>;
   readonly actual: CanonicalPayslipFields;
   readonly latencyMs: number | null;
+  /** Two-pass sets only (Task 05 D12): enqueue to the scalars pass recorded. */
+  readonly firstFormMs?: number | null;
+  /** Two-pass sets only: enqueue to the later of the two passes recorded. */
+  readonly completeMs?: number | null;
+}
+
+/** Nearest-rank latency percentiles, in milliseconds. */
+export interface Percentiles {
+  readonly p50: number;
+  readonly p90: number;
+  readonly max: number;
 }
 
 export interface SampleReport {
@@ -90,7 +101,10 @@ export interface SetReport {
   readonly bakeoffComparable: Tally;
   readonly perField: Map<string, Tally>;
   readonly skipped: { sample: string; field: string; reason: string }[];
-  readonly latency: { p50: number; p90: number; max: number } | null;
+  readonly latency: Percentiles | null;
+  /** `null` when no recording carries it, which is every single-pass set. */
+  readonly firstForm: Percentiles | null;
+  readonly complete: Percentiles | null;
   readonly perSample: SampleReport[];
 }
 
@@ -183,6 +197,8 @@ export function scoreSet(inputs: readonly ScoringInput[]): SetReport {
     perField,
     skipped,
     latency: percentiles(inputs.map((input) => input.latencyMs)),
+    firstForm: percentiles(inputs.map((input) => input.firstFormMs ?? null)),
+    complete: percentiles(inputs.map((input) => input.completeMs ?? null)),
     perSample,
   };
 }
@@ -275,9 +291,7 @@ export function textKey(value: string): string {
 }
 
 /** Nearest-rank percentiles over the recordings that carry a latency. */
-export function percentiles(
-  values: readonly (number | null)[],
-): { p50: number; p90: number; max: number } | null {
+export function percentiles(values: readonly (number | null)[]): Percentiles | null {
   const sorted = values
     .filter((value): value is number => value !== null)
     .toSorted((a, b) => a - b);

@@ -8,6 +8,7 @@ import {
   type CanonicalPayslipFields,
   type FieldMetadata,
 } from "@payslip/shared";
+import type { ExtractionPass } from "../types.js";
 
 /**
  * The only place Content Understanding's field names and value shapes meet the canonical model
@@ -103,16 +104,26 @@ const operationSchema = z
 type RawValue = z.infer<typeof rawValueSchema>;
 
 export interface MappedExtraction {
-  /** Every canonical key present; tables are `[]` when absent. */
-  readonly fields: CanonicalPayslipFields;
+  /**
+   * The mapped pass's canonical keys, every one present; tables are `[]` when absent. The other
+   * pass's keys are absent, never `null` or `[]`, so merging one pass never erases the other.
+   */
+  readonly fields: Partial<CanonicalPayslipFields>;
   readonly fieldMetadata: Record<string, FieldMetadata>;
   readonly unreadableFields: string[];
   /** Whether the document's markdown carries any text at all. */
   readonly hasText: boolean;
 }
 
-/** Returns `null` when the body does not have the shape the mapper reads. */
-export function mapAnalyzeResult(operation: unknown): MappedExtraction | null {
+/**
+ * Returns `null` when the body does not have the shape the mapper reads. `pass` limits the mapping
+ * to that pass's keys (Task 05); without it every key is mapped, which only the scoring harness
+ * uses, for single-pass recordings.
+ */
+export function mapAnalyzeResult(
+  operation: unknown,
+  pass?: ExtractionPass,
+): MappedExtraction | null {
   const parsed = operationSchema.safeParse(operation);
   if (!parsed.success) return null;
 
@@ -135,10 +146,14 @@ export function mapAnalyzeResult(operation: unknown): MappedExtraction | null {
   };
 
   const fields: Record<string, unknown> = {};
-  for (const [name, parse] of Object.entries(SCALAR_PARSERS)) {
+  const scalarParsers: Record<string, Parser> = pass === "tables" ? {} : SCALAR_PARSERS;
+  const tableParsers: Record<string, Record<string, Parser>> = pass === "scalars"
+    ? {}
+    : TABLE_PARSERS;
+  for (const [name, parse] of Object.entries(scalarParsers)) {
     fields[name] = read(name, rawFields[name], parse);
   }
-  for (const [table, columns] of Object.entries(TABLE_PARSERS)) {
+  for (const [table, columns] of Object.entries(tableParsers)) {
     // Absent and printed-empty tables both come back without `valueArray`; the golden set records
     // both as `[]`. The null-versus-zero distinction lives on the totals, not the tables.
     const rows = rawFields[table]?.valueArray ?? [];

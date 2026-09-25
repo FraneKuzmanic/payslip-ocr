@@ -284,13 +284,15 @@ interface DocumentExtractionProvider {
     bytes: Buffer;
     contentType: string;
     signal: AbortSignal;
+    pass: "scalars" | "tables";   // Task 05: two passes over the same document
   }): Promise<ExtractionResult>;
 }
 
 interface ExtractionResult {
-  fields: Partial<CanonicalPayslipFields>;
+  fields: Partial<CanonicalPayslipFields>;   // only the pass's own keys
   metadata: ExtractionMetadata;   // provider, modelId, apiVersion, latencyMs,
-                                  // per-field {confidence, source}, unreadableFields
+                                  // per-field {confidence, source}, unreadableFields;
+                                  // the runner adds queuedMs
   raw: unknown;                   // retained verbatim for later projection
 }
 
@@ -402,6 +404,16 @@ The asymmetry is deliberate. `iznosZaIsplatu` is critical because it is the only
                                        └── retry (retryable reasons only) ──► processing
 ```
 
+**Tables** (Task 05). Extraction runs as two passes over the same document: the scalars pass moves the payslip from `processing` to `review`; the tables pass records the three line-item tables. They land in either order. Whether the tables have landed is its own field, `tablesStatus`, not a payslip status:
+
+```
+ pending ──── tables pass recorded ───► ready
+    │
+    └──── tables pass failed, cancelled or reaped ───► failed
+```
+
+`review` with `tablesStatus: failed` is a usable payslip whose tables did not arrive, distinct from a `failed` payslip. Confirm is refused while `tablesStatus` is `pending`.
+
 **Session** has no status of its own. It is a container; its progress is derived from the statuses of the payslips it holds ("3 of 5 confirmed").
 
 ### 6.7 Suggested repository structure
@@ -472,13 +484,13 @@ prototypes/payslip-ocr/
 
 **Expected flow.** The client creates a Session, then POSTs each selected file to it as its own Payslip. Each POST starts extraction immediately and returns `201` without waiting. The client navigates to the session review screen as soon as the first Payslip exists.
 
-**Rules.** One Source File is always exactly one Payslip — a three-page PDF is one Payslip with three Pages. Extraction runs in parallel, capped at three concurrent analyses. A Payslip that fails does not affect its siblings.
+**Rules.** One Source File is always exactly one Payslip — a three-page PDF is one Payslip with three Pages. Extraction runs in parallel, capped at three concurrent analyses. A payslip is two analyses (the scalars and tables passes, §7.4), and a waiting scalars pass is served before any tables pass, so forms appear before the last tables start. A Payslip that fails does not affect its siblings.
 
 ### 7.4 Extraction
 
 **Purpose.** Turn a payslip document into canonical fields with per-field geometry and confidence.
 
-**Requirements.** Primary engine is an Azure Content Understanding custom analyzer with a Croatian-language field schema and `estimateFieldSourceAndConfidence` enabled, so page, bounding quad and confidence arrive per field including for nested table rows. Whole-analysis timeout via `AbortController`. Failures classified into `unreadable_document` (non-retryable), `provider_rejected` (non-retryable) and `provider_unavailable` (retryable). The raw response is retained verbatim.
+**Requirements.** Primary engine is an Azure Content Understanding custom analyzer with a Croatian-language field schema and `estimateFieldSourceAndConfidence` enabled, so page, bounding quad and confidence arrive per field including for nested table rows. Extraction runs as **two analyzers over the same document** (Task 05), partitioned from one field schema with the descriptions unchanged: `<id>_scalars` returns the scalar fields and makes the form usable; `<id>_tables` returns the three line-item tables. Each pass has its own timeout via `AbortController` and is recorded atomically on its own, in either order. A scalars failure fails the payslip and cancels its tables pass; a tables failure leaves a usable payslip with `tablesStatus: failed`. Failures classified into `unreadable_document` (non-retryable), `provider_rejected` (non-retryable) and `provider_unavailable` (retryable). The raw response is retained verbatim.
 
 **Rules.** Confidence never suppresses a value. Amounts are parsed from text, never from a numeric field. A value that cannot be normalised is recorded as unreadable rather than guessed.
 
@@ -692,16 +704,16 @@ All routes under `/api/sessions` and `/api/payslips` require `Authorization: Bea
 → `201 {id, sessionId, status, createdAt}` · `413 file_too_large` · `415 unsupported_media_type` · `422 pdf_encrypted | pdf_too_many_pages | pdf_unreadable` · `409 session_full`
 
 **10.4** `GET /api/sessions/:id`
-→ `200 {id, createdAt, payslips: [{id, status, period, employeeName, pageCount, failureReason, warningCount}]}`
+→ `200 {id, createdAt, payslips: [{id, status, tablesStatus, period, employeeName, pageCount, failureReason, warningCount}]}`
 
 **10.5** `GET /api/payslips/:id`
-→ `200` canonical payslip + `lowConfidenceFields`, `unreadableFields`, `warnings`, `editedFields`, `failureReason`
+→ `200` canonical payslip (including `tablesStatus`) + `lowConfidenceFields`, `unreadableFields`, `warnings`, `editedFields`, `failureReason`
 
 **10.6** `PATCH /api/payslips/:id`
 Body is the canonical field schema, partial and strict. Recomputes warnings. Never changes status.
 → `200` detail shape · `409 edit_not_allowed` outside `review`/`confirmed`
 
-**10.7** `POST /api/payslips/:id/confirm` → `200 {id, status, confirmedAt}`; idempotent · `409 confirm_not_allowed`
+**10.7** `POST /api/payslips/:id/confirm` → `200 {id, status, confirmedAt}`; idempotent · `409 confirm_not_allowed`, also while `tablesStatus` is `pending` (Task 05), so export waits for both passes
 
 **10.8** `POST /api/payslips/:id/retry` → `202 {id, status}` · `409 retry_not_allowed` if not failed, or the failure is non-retryable
 
@@ -780,6 +792,14 @@ three line-item tables, not by the model — a `gpt-4.1-mini` swap was measured 
 [`.agents/specs/two-pass-extraction.md`](./.agents/specs/two-pass-extraction.md), which splits
 scalars from tables so the form renders at ~8 s while the tables fill in behind. **It changes the
 API shape, so it belongs in Phase 3's design rather than a later optimisation pass.**
+
+Measured on the product path in Task 05 (2026-09-24/25, [`history/05`](./.agents/history/05-extraction-latency-two-pass.md)),
+one payslip at a time: single-pass **p50 20.7 s, p90 46.2 s, max 66.8 s**; two-pass first form
+**p50 12.2 s, p90 15.1 s, max 28.2 s**, complete p50 14.0 s. The ≤10 s first-form target is
+**missed** by the service's generation rate on the day (~70–100 tok/s against the Phase 2
+decomposition's 146), not by the design: a scalars pass emits ~600 tokens. All eleven at once
+(cap 3): first form p50 27.9 s, all complete in 76 s. Cost per document: $0.031 single-pass,
+$0.045–0.051 two-pass (~1.5×).
 
 ### 11.5 User-experience targets
 
@@ -922,9 +942,11 @@ users                    (Supabase auth)
         id, user_id, created_at, deleted_at
         └── payslips
               id, session_id, user_id
-              status, failure_reason, canonical_data jsonb, extraction_metadata jsonb,
+              status, tables_status, failure_reason, canonical_data jsonb,
+              extraction_metadata jsonb   -- { scalars?, tables? }, one entry per pass
               warnings jsonb,
-              raw_provider_result jsonb, edited_fields text[],
+              raw_provider_result jsonb   -- { scalars?, tables? }, verbatim per pass
+              edited_fields text[],
               original_filename, content_type, page_count,
               merged_from uuid[], confirmed_at, created_at,
               updated_at, deleted_at

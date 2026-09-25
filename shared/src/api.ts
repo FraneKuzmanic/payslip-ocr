@@ -92,7 +92,14 @@ export type CreatePayslipResponse = z.infer<typeof createPayslipResponseSchema>;
 
 /** PRD §10.4 — one payslip as a session lists it. */
 export const payslipSummarySchema = payslipSchema
-  .pick({ id: true, status: true, period: true, employeeName: true, pageCount: true })
+  .pick({
+    id: true,
+    status: true,
+    tablesStatus: true,
+    period: true,
+    employeeName: true,
+    pageCount: true,
+  })
   // Canonical fields are optional; §10.4 prints these two on every item, null when unread.
   .required({ period: true, employeeName: true })
   .extend({

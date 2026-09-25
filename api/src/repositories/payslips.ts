@@ -13,6 +13,7 @@ import {
   type SourceContentType,
 } from "@payslip/shared";
 import type { Database, Json } from "../database.types.js";
+import type { ExtractionPass } from "../providers/document-extraction/types.js";
 
 type PayslipRow = Database["public"]["Tables"]["payslips"]["Row"];
 type PayslipUpdate = Database["public"]["Tables"]["payslips"]["Update"];
@@ -25,14 +26,16 @@ type PayslipReadRow = Omit<PayslipRow, "raw_provider_result">;
  * payslips would otherwise move up to ~10 MB. Only a source-region projection reads the raw column.
  */
 const PAYSLIP_COLUMNS =
-  "id, session_id, user_id, status, failure_reason, canonical_data, extraction_metadata, warnings, edited_fields, original_filename, content_type, page_count, merged_from, confirmed_at, created_at, updated_at, deleted_at, employee_name, employer_name, period, neto_placa, iznos_za_isplatu";
+  "id, session_id, user_id, status, tables_status, failure_reason, canonical_data, extraction_metadata, warnings, edited_fields, original_filename, content_type, page_count, merged_from, confirmed_at, created_at, updated_at, deleted_at, employee_name, employer_name, period, neto_placa, iznos_za_isplatu";
 
 const uuidSchema = z.uuid();
 const warningsSchema = z.array(payslipWarningSchema);
 const failureReasonSchema = extractionFailureReasonSchema.nullable();
-/** The one projection over `extraction_metadata` read so far; the rest is Task 06's. */
+/** One pass's metadata; `unreadableFields` is the one projection read so far, the rest is Task 06's. */
+const passMetadataSchema = z.object({ unreadableFields: z.array(z.string()) }).loose();
+/** `{ scalars?, tables? }`: each extraction pass merges its own metadata (Task 05 D7). */
 const extractionMetadataSchema = z
-  .object({ unreadableFields: z.array(z.string()) })
+  .object({ scalars: passMetadataSchema.optional(), tables: passMetadataSchema.optional() })
   .loose()
   .nullable();
 
@@ -60,9 +63,10 @@ export interface PayslipDetailState extends PayslipState {
   readonly unreadableFields: string[];
 }
 
-/** A successful extraction, written back in one update. */
+/** One successful extraction pass, merged into the row in one statement. */
 export interface CompletedExtraction {
-  readonly fields: CanonicalPayslipFields;
+  /** Only the pass's own keys: the merge replaces top-level keys, so another key would erase. */
+  readonly fields: Partial<CanonicalPayslipFields>;
   readonly metadata: Json;
   readonly raw: Json;
 }
@@ -144,7 +148,10 @@ export class PayslipRepository {
     return {
       ...mapPayslipState(data),
       editedFields: data.edited_fields,
-      unreadableFields: metadata.data?.unreadableFields ?? [],
+      unreadableFields: [
+        ...(metadata.data?.scalars?.unreadableFields ?? []),
+        ...(metadata.data?.tables?.unreadableFields ?? []),
+      ],
     };
   }
 
@@ -233,20 +240,34 @@ export class PayslipRepository {
   }
 
   /**
-   * The extraction writes (Task 04 D15). Each applies only to a live payslip still in
-   * `processing`, so a payslip deleted or reaped while its analysis ran is never resurrected.
-   * `false` means the write was discarded for that reason.
+   * Records one extraction pass (Task 05 D7) through `complete_extraction_pass`, which merges the
+   * pass's fields, metadata and raw body into the row atomically, so the passes may land in either
+   * order. The scalars pass applies only while the payslip is `processing` and moves it to
+   * `review`; the tables pass applies only while its tables are `pending` on a payslip that has not
+   * failed. `false` means the write was discarded: the payslip was deleted, reaped or failed while
+   * the pass ran, and is never resurrected.
    */
-  async completeExtraction(id: string, result: CompletedExtraction): Promise<boolean> {
-    return this.#updateProcessing(id, {
-      status: "review",
-      canonical_data: result.fields,
-      extraction_metadata: result.metadata,
-      raw_provider_result: result.raw,
-      failure_reason: null,
+  async completeExtractionPass(
+    id: string,
+    pass: ExtractionPass,
+    result: CompletedExtraction,
+  ): Promise<boolean> {
+    const { data, error } = await this.#client.rpc("complete_extraction_pass", {
+      p_payslip_id: uuidSchema.parse(id),
+      p_pass: pass,
+      p_fields: result.fields,
+      p_metadata: result.metadata,
+      p_raw: result.raw,
     });
+
+    if (error) throw new PayslipRepositoryError("query_failed", error);
+    return data === true;
   }
 
+  /**
+   * The scalars pass failed (Task 04 D15): applies only to a live payslip still in `processing`.
+   * The tables pass records its own outcome.
+   */
   async failExtraction(id: string, reason: ExtractionFailureReason): Promise<boolean> {
     return this.#updateProcessing(id, { status: "failed", failure_reason: reason });
   }
@@ -262,6 +283,9 @@ export class PayslipRepository {
       .update({
         status: "failed",
         failure_reason: "provider_unavailable",
+        // A lost payslip's tables are lost with it. If its tables pass had already landed, this
+        // turns `ready` into `failed` on a payslip that is failing anyway, which is harmless.
+        tables_status: "failed",
         updated_at: new Date().toISOString(),
       })
       .eq("user_id", this.#userId)
@@ -271,7 +295,39 @@ export class PayslipRepository {
       .select("id");
 
     if (error) throw new PayslipRepositoryError("query_failed", error);
-    return data.length;
+
+    // Task 05 D10: a payslip in `review` whose tables pass was lost. `updated_at`, as above: a
+    // user edit during the pending window only delays the reap, and can never cause one.
+    const tables = await this.#client
+      .from("payslips")
+      .update({ tables_status: "failed", updated_at: new Date().toISOString() })
+      .eq("user_id", this.#userId)
+      .eq("tables_status", "pending")
+      .is("deleted_at", null)
+      .lt("updated_at", cutoff.toISOString())
+      .select("id");
+
+    if (tables.error) throw new PayslipRepositoryError("query_failed", tables.error);
+    return data.length + tables.data.length;
+  }
+
+  /**
+   * The tables pass failed or was cancelled (Task 05 D9). Applies only while the tables are still
+   * `pending` on a live payslip; `false` means discarded. No reason is stored: it is logged.
+   */
+  async failTablesExtraction(id: string): Promise<boolean> {
+    const { data, error } = await this.#client
+      .from("payslips")
+      .update({ tables_status: "failed", updated_at: new Date().toISOString() })
+      .eq("id", uuidSchema.parse(id))
+      .eq("user_id", this.#userId)
+      .eq("tables_status", "pending")
+      .is("deleted_at", null)
+      .select("id")
+      .maybeSingle();
+
+    if (error) throw new PayslipRepositoryError("query_failed", error);
+    return data !== null;
   }
 
   async #updateProcessing(id: string, update: PayslipUpdate): Promise<boolean> {
@@ -303,6 +359,7 @@ export function mapPayslipRow(row: PayslipReadRow): Payslip {
       sessionId: row.session_id,
       userId: row.user_id,
       status: row.status,
+      tablesStatus: row.tables_status,
       pageCount: row.page_count,
       // Always EUR (ROADMAP locked decision 7), so there is no column for it.
       currency: "EUR",

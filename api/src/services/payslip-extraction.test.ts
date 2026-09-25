@@ -28,15 +28,24 @@ const result: ProviderExtractionResult = {
 
 function repository(overrides: Partial<ExtractionJob["repository"]> = {}) {
   return {
-    completeExtraction: vi.fn(() => Promise.resolve(true)),
+    completeExtractionPass: vi.fn(() => Promise.resolve(true)),
     failExtraction: vi.fn(() => Promise.resolve(true)),
+    failTablesExtraction: vi.fn(() => Promise.resolve(true)),
     ...overrides,
   };
 }
 
 function job(payslipId: string, repo = repository()): ExtractionJob {
-  return { payslipId, repository: repo, bytes: Buffer.from("x"), contentType: "image/png" };
+  return {
+    payslipId,
+    repository: repo,
+    bytes: Buffer.from(payslipId),
+    contentType: "image/png",
+  };
 }
+
+/** `payslipId:pass`, the unit the runner schedules. */
+const key = (input: ExtractionInput) => `${input.bytes.toString()}:${input.pass}`;
 
 function deferred() {
   let resolve!: () => void;
@@ -46,35 +55,86 @@ function deferred() {
   return { promise, resolve };
 }
 
+/** A provider whose every analysis waits on its own gate, recording the start order. */
+function gatedProvider() {
+  const gates = new Map<string, ReturnType<typeof deferred>>();
+  const started: string[] = [];
+  let inFlight = 0;
+  let peak = 0;
+  const gate = (name: string) => {
+    let entry = gates.get(name);
+    if (entry === undefined) {
+      entry = deferred();
+      gates.set(name, entry);
+    }
+    return entry;
+  };
+  const provider: DocumentExtractionProvider = {
+    async extract(input) {
+      started.push(key(input));
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      await gate(key(input)).promise;
+      inFlight--;
+      return result;
+    },
+  };
+  return { provider, started, open: (name: string) => gate(name).resolve(), peak: () => peak };
+}
+
 describe("createExtractionRunner", () => {
-  it("runs at most `concurrency` analyses at once, in FIFO order", async () => {
-    const gates = new Map<string, ReturnType<typeof deferred>>();
-    const started: string[] = [];
-    let inFlight = 0;
-    let peak = 0;
-    const provider: DocumentExtractionProvider = {
-      async extract(input: ExtractionInput) {
-        const id = input.bytes.toString();
-        started.push(id);
-        inFlight++;
-        peak = Math.max(peak, inFlight);
-        await gates.get(id)?.promise;
-        inFlight--;
-        return result;
-      },
-    };
+  it("runs both passes of one payslip at once and resolves once both are recorded", async () => {
+    const repo = repository();
+    const { provider, started, open } = gatedProvider();
     const runner = createExtractionRunner({ provider, concurrency: 3, timeoutMs: 60_000 });
-    const ids = ["1", "2", "3", "4", "5"];
-    for (const id of ids) gates.set(id, deferred());
 
-    const done = ids.map((id) => runner.enqueue({ ...job(id), bytes: Buffer.from(id) }));
-    await vi.waitFor(() => expect(started).toEqual(["1", "2", "3"]));
+    let resolved = false;
+    const done = runner.enqueue(job("a", repo)).then(() => {
+      resolved = true;
+    });
+    await vi.waitFor(() => expect(started).toEqual(["a:scalars", "a:tables"]));
 
-    for (const id of ids) gates.get(id)?.resolve();
+    open("a:scalars");
+    await vi.waitFor(() =>
+      expect(repo.completeExtractionPass).toHaveBeenCalledWith("a", "scalars", expect.anything()),
+    );
+    expect(resolved).toBe(false);
+
+    open("a:tables");
+    await done;
+    expect(repo.completeExtractionPass).toHaveBeenCalledWith("a", "tables", expect.anything());
+  });
+
+  it("runs at most `concurrency` analyses at once", async () => {
+    const { provider, started, open, peak } = gatedProvider();
+    const runner = createExtractionRunner({ provider, concurrency: 3, timeoutMs: 60_000 });
+    const ids = ["1", "2", "3"];
+
+    const done = ids.map((id) => runner.enqueue(job(id)));
+    await vi.waitFor(() => expect(started).toHaveLength(3));
+    for (const id of ids) {
+      open(`${id}:scalars`);
+      open(`${id}:tables`);
+    }
     await Promise.all(done);
 
-    expect(peak).toBe(3);
-    expect(started).toEqual(ids);
+    expect(peak()).toBe(3);
+    expect(started).toHaveLength(6);
+  });
+
+  it("serves every waiting scalars pass before any tables pass, each in FIFO order", async () => {
+    const { provider, started, open } = gatedProvider();
+    const runner = createExtractionRunner({ provider, concurrency: 1, timeoutMs: 60_000 });
+
+    const done = [runner.enqueue(job("A")), runner.enqueue(job("B")), runner.enqueue(job("C"))];
+    const order = ["A:scalars", "B:scalars", "C:scalars", "A:tables", "B:tables", "C:tables"];
+    for (const [index, name] of order.entries()) {
+      await vi.waitFor(() => expect(started).toHaveLength(index + 1));
+      open(name);
+    }
+    await Promise.all(done);
+
+    expect(started).toEqual(order);
   });
 
   it("isolates one payslip's failure from its siblings", async () => {
@@ -87,19 +147,122 @@ describe("createExtractionRunner", () => {
     };
     const runner = createExtractionRunner({ provider, concurrency: 3, timeoutMs: 60_000 });
 
-    await Promise.all(
-      ["a", "b", "bad", "c", "d"].map((id) =>
-        runner.enqueue({ ...job(id, repo), bytes: Buffer.from(id) }),
-      ),
-    );
+    await Promise.all(["a", "b", "bad", "c", "d"].map((id) => runner.enqueue(job(id, repo))));
 
     expect(repo.failExtraction).toHaveBeenCalledExactlyOnceWith("bad", "unreadable_document");
-    expect(repo.completeExtraction).toHaveBeenCalledTimes(4);
-    expect(repo.completeExtraction).toHaveBeenCalledWith("a", {
+    expect(repo.failTablesExtraction).toHaveBeenCalledExactlyOnceWith("bad");
+    expect(repo.completeExtractionPass).toHaveBeenCalledTimes(8);
+    expect(repo.completeExtractionPass).toHaveBeenCalledWith("a", "scalars", {
       fields: result.fields,
-      metadata: result.metadata,
+      metadata: { ...result.metadata, queuedMs: expect.any(Number) },
       raw: result.raw,
     });
+  });
+
+  it("never calls the provider for a queued tables pass once its scalars pass has failed", async () => {
+    const repo = repository();
+    const extract = vi.fn((input: ExtractionInput) =>
+      input.pass === "scalars"
+        ? Promise.reject(new ExtractionError("unreadable_document"))
+        : Promise.resolve(result),
+    );
+
+    await createExtractionRunner({
+      provider: { extract },
+      concurrency: 1,
+      timeoutMs: 60_000,
+    }).enqueue(job("p", repo));
+
+    expect(extract.mock.calls.map(([input]) => input.pass)).toEqual(["scalars"]);
+    expect(repo.failExtraction).toHaveBeenCalledExactlyOnceWith("p", "unreadable_document");
+    expect(repo.failTablesExtraction).toHaveBeenCalledExactlyOnceWith("p");
+  });
+
+  it("aborts a running tables pass when its scalars pass fails", async () => {
+    const repo = repository();
+    const scalarsGate = deferred();
+    let tablesSignal: AbortSignal | undefined;
+    const provider: DocumentExtractionProvider = {
+      async extract(input) {
+        if (input.pass === "scalars") {
+          await scalarsGate.promise;
+          throw new ExtractionError("unreadable_document");
+        }
+        tablesSignal = input.signal;
+        await new Promise((_resolve, reject) => {
+          input.signal.addEventListener("abort", () => {
+            reject(new ExtractionError("provider_unavailable"));
+          });
+        });
+        return result;
+      },
+    };
+
+    const done = createExtractionRunner({ provider, concurrency: 2, timeoutMs: 60_000 }).enqueue(
+      job("p", repo),
+    );
+    await vi.waitFor(() => expect(tablesSignal).toBeDefined());
+    expect(tablesSignal?.aborted).toBe(false);
+    scalarsGate.resolve();
+    await done;
+
+    expect(tablesSignal?.aborted).toBe(true);
+    expect(repo.failTablesExtraction).toHaveBeenCalledExactlyOnceWith("p");
+    expect(repo.completeExtractionPass).not.toHaveBeenCalled();
+  });
+
+  it("keeps the scalars result when only the tables pass fails", async () => {
+    const repo = repository();
+    const provider: DocumentExtractionProvider = {
+      extract: (input) =>
+        input.pass === "tables"
+          ? Promise.reject(new ExtractionError("provider_unavailable"))
+          : Promise.resolve(result),
+    };
+
+    await createExtractionRunner({ provider, concurrency: 2, timeoutMs: 60_000 }).enqueue(
+      job("p", repo),
+    );
+
+    expect(repo.completeExtractionPass).toHaveBeenCalledExactlyOnceWith(
+      "p",
+      "scalars",
+      expect.anything(),
+    );
+    expect(repo.failTablesExtraction).toHaveBeenCalledExactlyOnceWith("p");
+    expect(repo.failExtraction).not.toHaveBeenCalled();
+  });
+
+  it("records each pass's queue wait in its metadata", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const repo = repository();
+      const { provider, started, open } = gatedProvider();
+      const runner = createExtractionRunner({ provider, concurrency: 1, timeoutMs: 60_000 });
+
+      const done = runner.enqueue(job("p", repo));
+      await vi.waitFor(() => expect(started).toEqual(["p:scalars"]));
+      vi.setSystemTime(Date.now() + 5000);
+      open("p:scalars");
+      await vi.waitFor(() => expect(started).toEqual(["p:scalars", "p:tables"]));
+      open("p:tables");
+      await done;
+
+      const queued = Object.fromEntries(
+        vi
+          .mocked(repo.completeExtractionPass)
+          .mock.calls.map(([, pass, written]) => [
+            pass,
+            (written.metadata as { queuedMs: number }).queuedMs,
+          ]),
+      );
+      // `vi.waitFor` steps the faked clock by its poll interval, so not exactly zero.
+      expect(queued.scalars).toBeLessThan(5000);
+      // The tables pass waited for the only slot while the scalars pass held it.
+      expect(queued.tables).toBeGreaterThanOrEqual(5000);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("records an unexpected error as provider_unavailable", async () => {
@@ -115,27 +278,32 @@ describe("createExtractionRunner", () => {
     expect(repo.failExtraction).toHaveBeenCalledExactlyOnceWith("p", "provider_unavailable");
   });
 
-  it("does not fail a payslip whose completed result was discarded", async () => {
-    const repo = repository({ completeExtraction: vi.fn(() => Promise.resolve(false)) });
-    const provider: DocumentExtractionProvider = { extract: () => Promise.resolve(result) };
-
-    await createExtractionRunner({ provider, concurrency: 1, timeoutMs: 60_000 }).enqueue(
-      job("p", repo),
-    );
-
-    expect(repo.failExtraction).not.toHaveBeenCalled();
-  });
-
-  it("hands the provider a whole-analysis abort signal", async () => {
+  it("does not fail a payslip whose scalars result was discarded, and skips its tables", async () => {
+    const repo = repository({ completeExtractionPass: vi.fn(() => Promise.resolve(false)) });
     const extract = vi.fn((_input: ExtractionInput) => Promise.resolve(result));
 
     await createExtractionRunner({
       provider: { extract },
       concurrency: 1,
       timeoutMs: 60_000,
+    }).enqueue(job("p", repo));
+
+    expect(repo.failExtraction).not.toHaveBeenCalled();
+    expect(extract).toHaveBeenCalledOnce();
+  });
+
+  it("hands each pass a whole-analysis abort signal and its pass", async () => {
+    const extract = vi.fn((_input: ExtractionInput) => Promise.resolve(result));
+
+    await createExtractionRunner({
+      provider: { extract },
+      concurrency: 2,
+      timeoutMs: 60_000,
     }).enqueue(job("p"));
 
-    expect(extract.mock.calls[0]?.[0].signal).toBeInstanceOf(AbortSignal);
+    const inputs = extract.mock.calls.map(([input]) => input);
+    expect(inputs.map((input) => input.pass).toSorted()).toEqual(["scalars", "tables"]);
+    for (const input of inputs) expect(input.signal).toBeInstanceOf(AbortSignal);
   });
 
   it("fails a job that waited too long to finish before the stale cutoff, without analysing it", async () => {
@@ -157,20 +325,29 @@ describe("createExtractionRunner", () => {
       gate.resolve();
       await Promise.all([first, second]);
 
+      // Only the first payslip's scalars pass ran; its tables pass also expired in the queue.
       expect(extract).toHaveBeenCalledOnce();
       expect(late.failExtraction).toHaveBeenCalledExactlyOnceWith("late", "provider_unavailable");
+      expect(late.failTablesExtraction).toHaveBeenCalledExactlyOnceWith("late");
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it("resolves even when recording the result throws, and frees its slot", async () => {
-    const repo = repository({ completeExtraction: vi.fn(() => Promise.reject(new Error("db"))) });
-    const provider: DocumentExtractionProvider = { extract: () => Promise.resolve(result) };
-    const runner = createExtractionRunner({ provider, concurrency: 1, timeoutMs: 60_000 });
+  it("resolves even when recording the result throws, frees its slots and skips the tables", async () => {
+    const repo = repository({
+      completeExtractionPass: vi.fn(() => Promise.reject(new Error("db"))),
+    });
+    const extract = vi.fn((_input: ExtractionInput) => Promise.resolve(result));
+    const runner = createExtractionRunner({
+      provider: { extract },
+      concurrency: 1,
+      timeoutMs: 60_000,
+    });
 
     await expect(runner.enqueue(job("p", repo))).resolves.toBeUndefined();
     await expect(runner.enqueue(job("q", repo))).resolves.toBeUndefined();
-    expect(repo.completeExtraction).toHaveBeenCalledTimes(2);
+    expect(repo.completeExtractionPass).toHaveBeenCalledTimes(2);
+    expect(extract.mock.calls.map(([input]) => input.pass)).toEqual(["scalars", "scalars"]);
   });
 });

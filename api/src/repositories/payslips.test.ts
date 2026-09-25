@@ -16,6 +16,7 @@ function payslipRow(overrides: Partial<PayslipRow> = {}): PayslipRow {
     session_id: SESSION_ID,
     user_id: USER_ID,
     status: "review",
+    tables_status: "ready",
     failure_reason: null,
     canonical_data: { employeeName: "Ana Horvat", period: "2025-03", netoPlaca: "1234.56" },
     extraction_metadata: null,
@@ -54,6 +55,18 @@ describe("mapPayslipRow", () => {
       employeeName: "Ana Horvat",
       period: "2025-03",
     });
+  });
+
+  it.each(["pending", "ready", "failed"] as const)("maps tables_status %s", (tablesStatus) => {
+    expect(mapPayslipRow(payslipRow({ tables_status: tablesStatus })).tablesStatus).toBe(
+      tablesStatus,
+    );
+  });
+
+  it("rejects an unknown tables_status as invalid_data", () => {
+    expect(() => mapPayslipRow(payslipRow({ tables_status: "cancelled" }))).toThrow(
+      expect.objectContaining({ code: "invalid_data" }),
+    );
   });
 
   it("normalizes PostgREST timestamps to ISO UTC", () => {
@@ -121,9 +134,17 @@ describe("PayslipRepository.findDetailState", () => {
   it.each([
     ["null metadata", null, []],
     [
-      "metadata listing unreadable paths",
-      { unreadableFields: ["brutoPlaca"], latencyMs: 1 },
+      "the scalars pass alone",
+      { scalars: { unreadableFields: ["brutoPlaca"], latencyMs: 1 } },
       ["brutoPlaca"],
+    ],
+    [
+      "both passes, scalars first",
+      {
+        tables: { unreadableFields: ["obustave.0.iznos"] },
+        scalars: { unreadableFields: ["brutoPlaca"] },
+      },
+      ["brutoPlaca", "obustave.0.iznos"],
     ],
   ])("reads unreadableFields from %s", async (_name, metadata, expected) => {
     const repository = new PayslipRepository(
@@ -136,7 +157,9 @@ describe("PayslipRepository.findDetailState", () => {
 
   it("rejects malformed extraction metadata as invalid_data", async () => {
     const repository = new PayslipRepository(
-      singleRow(payslipRow({ extraction_metadata: { unreadableFields: "brutoPlaca" } })),
+      singleRow(
+        payslipRow({ extraction_metadata: { scalars: { unreadableFields: "brutoPlaca" } } }),
+      ),
       USER_ID,
     );
 

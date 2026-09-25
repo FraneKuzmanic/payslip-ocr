@@ -8,12 +8,14 @@ import {
   type ExtractionInput,
   type ProviderExtractionResult,
 } from "../types.js";
+import { analyzerIdFor } from "./analyzer.js";
 import { mapAnalyzeResult } from "./fields.js";
 
 export interface ContentUnderstandingOptions {
   readonly endpoint: string;
   readonly key: string;
-  readonly analyzerId: string;
+  /** The analyzer family: each pass analyses with `<family>_<pass>` (Task 05 D5). */
+  readonly analyzerFamilyId: string;
   readonly apiVersion: string;
   /** 1 s by default (Task 04 D12); tests pass a tiny value. */
   readonly pollIntervalMs?: number;
@@ -76,14 +78,21 @@ export class ContentUnderstandingProvider implements DocumentExtractionProvider 
     bytes,
     contentType,
     signal,
+    pass,
   }: ExtractionInput): Promise<ProviderExtractionResult> {
+    const analyzerId = analyzerIdFor(this.#options.analyzerFamilyId, pass);
     const started = Date.now();
-    const { operationUrl, attempts } = await this.#submitWithRetry(bytes, contentType, signal);
+    const { operationUrl, attempts } = await this.#submitWithRetry(
+      analyzerId,
+      bytes,
+      contentType,
+      signal,
+    );
     const submitted = Date.now();
     const body = await this.#poll(operationUrl, signal);
     const finished = Date.now();
 
-    const mapped = mapAnalyzeResult(body);
+    const mapped = mapAnalyzeResult(body, pass);
     if (mapped === null) {
       // Contract drift, not the document's fault.
       logger.error("content understanding result did not match the mapped shape");
@@ -92,14 +101,18 @@ export class ContentUnderstandingProvider implements DocumentExtractionProvider 
     const anyValue = Object.values(mapped.fields).some(
       (value) => value !== null && !(Array.isArray(value) && value.length === 0),
     );
-    // PRD US-11: a blank or illegible page is a per-payslip failure the user retakes.
-    if (!mapped.hasText || !anyValue) throw new ExtractionError("unreadable_document");
+    // PRD US-11: a blank or illegible page is a per-payslip failure the user retakes. Three empty
+    // tables are a valid tables result (G01 prints no pay components), so only the scalars pass
+    // needs a value (Task 05 D9).
+    if (!mapped.hasText || (pass === "scalars" && !anyValue)) {
+      throw new ExtractionError("unreadable_document");
+    }
 
     return {
       fields: mapped.fields,
       metadata: {
         provider: "content-understanding",
-        modelId: this.#options.analyzerId,
+        modelId: analyzerId,
         apiVersion: this.#options.apiVersion,
         analyzedAt: new Date(finished).toISOString(),
         latencyMs: finished - started,
@@ -115,13 +128,14 @@ export class ContentUnderstandingProvider implements DocumentExtractionProvider 
   }
 
   async #submitWithRetry(
+    analyzerId: string,
     bytes: Buffer,
     contentType: string,
     signal: AbortSignal,
   ): Promise<{ operationUrl: string; attempts: number }> {
     // `:analyze` takes JSON ({url: ...}) only; `:analyzeBinary` is the one that accepts raw
     // bytes, which is what we need for sources that must not be published anywhere.
-    const { endpoint, analyzerId, apiVersion } = this.#options;
+    const { endpoint, apiVersion } = this.#options;
     const url = `${endpoint}/contentunderstanding/analyzers/${analyzerId}:analyzeBinary?api-version=${apiVersion}`;
 
     let lastStall: unknown;

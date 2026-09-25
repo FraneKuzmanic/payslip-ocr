@@ -59,7 +59,7 @@ function provider(overrides: { submitTimeoutMs?: number } = {}) {
   return new ContentUnderstandingProvider({
     endpoint: "https://cu.invalid",
     key: "test-key",
-    analyzerId: "testAnalyzer",
+    analyzerFamilyId: "testAnalyzer",
     apiVersion: "2025-11-01",
     pollIntervalMs: 1,
     ...overrides,
@@ -76,10 +76,14 @@ async function drain(body: BodyInit | null | undefined, pauseMs = 0): Promise<Bu
   return Buffer.concat(chunks);
 }
 
-const input = (signal: AbortSignal = new AbortController().signal) => ({
+const input = (
+  signal: AbortSignal = new AbortController().signal,
+  pass: "scalars" | "tables" = "scalars",
+) => ({
   bytes: Buffer.from("%PDF-1.7"),
   contentType: "application/pdf" as const,
   signal,
+  pass,
 });
 
 async function failure(promise: Promise<unknown>): Promise<ExtractionError> {
@@ -104,7 +108,7 @@ describe("ContentUnderstandingProvider", () => {
     expect(result.fields.netoPlaca).toBe("2298.97");
     expect(result.metadata).toMatchObject({
       provider: "content-understanding",
-      modelId: "testAnalyzer",
+      modelId: "testAnalyzer_scalars",
       apiVersion: "2025-11-01",
       submitAttempts: 1,
       unreadableFields: [],
@@ -114,7 +118,7 @@ describe("ContentUnderstandingProvider", () => {
 
     const submit = calls[0];
     expect(submit?.url).toBe(
-      "https://cu.invalid/contentunderstanding/analyzers/testAnalyzer:analyzeBinary?api-version=2025-11-01",
+      "https://cu.invalid/contentunderstanding/analyzers/testAnalyzer_scalars:analyzeBinary?api-version=2025-11-01",
     );
     expect(submit?.init?.method).toBe("POST");
     expect(submit?.init?.headers).toMatchObject({
@@ -248,6 +252,65 @@ describe("ContentUnderstandingProvider", () => {
     stubFetch([accepted, succeeded("# page", { netoPlaca: { type: "string" } })]);
 
     expect((await failure(provider().extract(input()))).reason).toBe("unreadable_document");
+  });
+
+  it("maps only the scalars pass's keys on the scalars pass", async () => {
+    stubFetch([accepted, succeeded()]);
+
+    const { fields } = await provider().extract(input());
+
+    expect(fields).not.toHaveProperty("payComponents");
+    expect(fields).toHaveProperty("employerName", null);
+  });
+
+  describe("the tables pass (Task 05 D9)", () => {
+    const rows = {
+      payComponents: {
+        type: "array",
+        valueArray: [
+          {
+            valueObject: {
+              naziv: { valueString: "REDOVAN RAD" },
+              iznos: { valueString: "1.200,00" },
+            },
+          },
+        ],
+      },
+    };
+
+    it("analyses with the tables analyzer and returns only the table keys", async () => {
+      const calls = stubFetch([accepted, succeeded("# page", rows)]);
+
+      const result = await provider().extract(input(undefined, "tables"));
+
+      expect(calls[0]?.url).toContain("/analyzers/testAnalyzer_tables:analyzeBinary");
+      expect(result.metadata.modelId).toBe("testAnalyzer_tables");
+      expect(Object.keys(result.fields).toSorted()).toEqual([
+        "neoporeziviPrimici",
+        "obustave",
+        "payComponents",
+      ]);
+      expect(result.fields.payComponents?.[0]).toMatchObject({
+        naziv: "REDOVAN RAD",
+        iznos: "1200.00",
+      });
+    });
+
+    it("treats a page with text and three empty tables as a result, not a failure", async () => {
+      stubFetch([accepted, succeeded("# page")]);
+
+      const { fields } = await provider().extract(input(undefined, "tables"));
+
+      expect(fields).toEqual({ payComponents: [], obustave: [], neoporeziviPrimici: [] });
+    });
+
+    it("classifies blank markdown as unreadable_document", async () => {
+      stubFetch([accepted, succeeded("  ", rows)]);
+
+      const error = await failure(provider().extract(input(undefined, "tables")));
+
+      expect(error.reason).toBe("unreadable_document");
+    });
   });
 
   it("stops promptly when the whole-analysis signal aborts mid-poll", async () => {

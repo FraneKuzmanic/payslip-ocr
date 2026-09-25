@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   EXTRACTION_FAILURE_REASONS,
   PAYSLIP_STATUSES,
+  TABLES_STATUSES,
   canTransition,
   isRetryableFailure,
   sessionSchema,
+  tablesStatusSchema,
   type PayslipStatus,
 } from "./session.js";
 
@@ -31,6 +33,16 @@ describe("payslip status machine (PRD §6.6)", () => {
 
   it.each(PAYSLIP_STATUSES)("refuses the self-transition %s → %s", (status) => {
     expect(canTransition(status, status)).toBe(false);
+  });
+});
+
+describe("tables status (Task 05 D6)", () => {
+  it("is a closed set of three", () => {
+    expect(TABLES_STATUSES).toEqual(["pending", "ready", "failed"]);
+  });
+
+  it.each(["processing", "review", "cancelled", ""])("rejects %j", (value) => {
+    expect(tablesStatusSchema.safeParse(value).success).toBe(false);
   });
 });
 

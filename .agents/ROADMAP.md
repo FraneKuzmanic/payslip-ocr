@@ -88,7 +88,7 @@ investigation and is recorded with its reasoning.
 | 02 | Canonical payslip domain model & shared contracts | ✅ complete → [`history/02`](./history/02-canonical-payslip-model.md) |
 | 03 | Session & payslip persistence, upload API | ✅ complete → [`history/03`](./history/03-session-payslip-persistence-upload.md) |
 | 04 | Content Understanding provider, mapper & scoring harness | ✅ complete → [`history/04`](./history/04-content-understanding-provider.md) |
-| 05 | Extraction latency: partial results or two-pass | ⬜ not started |
+| 05 | Extraction latency: partial results or two-pass | ✅ complete, first-form target missed (p50 12.2 s) → [`history/05`](./history/05-extraction-latency-two-pass.md) |
 | 06 | Warnings & validation engine | ⬜ not started |
 | 07 | Capture & multi-upload UI | ⬜ not started |
 | 08 | Source regions & document preview with highlighting | ⬜ not started |
@@ -334,10 +334,18 @@ something.
 **Definition of done**
 
 - [ ] p50 time to first usable form ≤10 s over the 11 samples, measured, not estimated.
-- [ ] Scalar accuracy within the 0.5% noise band of the single-pass baseline.
-- [ ] Cost per document recorded in the history file — the split roughly doubles OCR and input
-      tokens and that must be a known number, not a surprise.
-- [ ] Export blocks until both passes complete, or states explicitly that tables are pending.
+      **Measured and missed: p50 12.2 s** (single-pass 20.7 s), one payslip at a time. The
+      service generated at ~70–100 tok/s on the day; accepted by the product owner on 2026-09-25
+      (option A), with further splitting of the scalars pass left open.
+- [x] Scalar accuracy within the 0.5% noise band of the single-pass baseline. **Met by R2 (271);
+      R3 is one field under D12's floor (268 against 269; single-pass 270–272).** Every R3 miss is a
+      field that also flips between runs of one design (history/05). Accepted by the product owner
+      as run-to-run variance on 2026-09-25.
+- [x] Cost per document recorded in the history file: $0.045–0.051 two-pass against $0.031
+      single-pass, ~1.5×.
+- [x] Export blocks until both passes complete: confirm is refused while `tablesStatus` is
+      `pending` (PRD §10.7, Task 09), export requires `confirmed`, and every export carries
+      `tablesStatus`.
 
 ---
 
@@ -364,7 +372,11 @@ check first.
   as its own signal. Confidence **never suppresses a value**.
 - Compute grounding over the retained raw response (`pages[].words`); Task 04 stores per-field
   `{confidence, source}` and leaves both projections to this task (Task 04 D6).
-- Recompute on every PATCH.
+- **Since Task 05, both are per pass:** `extraction_metadata` and `raw_provider_result` are
+  `{ scalars?, tables? }`. Both passes OCR the same document, so grounding can read
+  `pages[].words` from the scalars body, which exists whenever the payslip is in `review`.
+- Recompute on every PATCH **and on each extraction pass's completion** (Task 05 D11).
+  `pay_components_sum_mismatch` is evaluated only once `tablesStatus` is `ready`.
 
 **Not in this task:** rendering warnings (09).
 
@@ -399,7 +411,8 @@ screen within a couple of seconds, with per-payslip progress.
 - Per-payslip status surfaced while extraction runs; a failure is one bad item with a retry, not
   a dead batch.
 - Croatian and English copy for everything added, including hr/en copy for every
-  `PAYSLIP_STATUSES` value, guarded by a test mirroring `uploadErrors.test.ts` (Task 02 D8).
+  `PAYSLIP_STATUSES` and `TABLES_STATUSES` value, guarded by a test mirroring
+  `uploadErrors.test.ts` (Task 02 D8, Task 05 D6).
 
 **Not in this task:** the review form (09), the chip rail (10).
 
@@ -424,7 +437,9 @@ honestly not outlined at all.
 **Scope**
 
 - `GET /api/payslips/:id/regions` as a **read-time projection** over the retained raw response —
-  no stored geometry, no migration, retroactive on everything already analysed.
+  no stored geometry, no migration, retroactive on everything already analysed. Since Task 05 the
+  response is `{ scalars?, tables? }`: project regions from both bodies, whose field paths are
+  disjoint.
 - Parse CU's `D(page,x1,y1,…,x4,y4)` source strings and divide by each page's own dimensions to
   produce **page-relative fractions plus an aspect ratio**. CU reports inches for PDFs and pixels
   for images; this normalisation is what makes them identical to the client.
@@ -471,6 +486,11 @@ place on the page.
   failure. Low confidence and a specific warning share one appearance; never both at once.
 - Explicit save, never debounced. Confirm disabled while dirty, idempotent thereafter.
 - Skeleton state for the line-item sections while the second extraction pass is outstanding.
+- **Task 05 rules:** confirm returns `409 confirm_not_allowed` while `tablesStatus` is `pending`;
+  table fields are read-only while `pending`, because the tables pass writes only while pending
+  and would otherwise overwrite an edit made before it lands. A tables-only retry and a stored
+  tables failure reason were not built; decide whether `review` + `tablesStatus: failed` needs
+  them (Task 05 D9).
 - hr/en copy for every `WARNING_CODES` value, guarded by a test mirroring
   `uploadErrors.test.ts` (Task 02 D8).
 - Decide server-side writes against the direct-write gap: `authenticated` can update its own
@@ -627,7 +647,7 @@ each is run separately and its result recorded in the owning task's history file
 
 | Risk | Status | Where it bites |
 | --- | --- | --- |
-| **Residual latency** — 15.1 s mean single-pass against a ≤10 s target. On the product path with three analyses in flight: **p50 20.5 s, p90 45.7 s, max 66.3 s** (Task 04, 2026-09-24) | Open, mitigated by submit-retry | Task 05 is the fix; concurrent analyses share one deployment's throughput, so measure a single-document baseline first |
+| **Residual latency** — two-pass first form **p50 12.2 s, p90 15.1 s** against ≤10 s (Task 05). Single-pass on the same path p50 20.7 s. Concurrency is **not** the cause (single-pass A01 66.8 s alone against 66.3 s with three in flight); the service's generation rate is: ~70–100 tok/s on 2026-09-24/25 against up to 245 on 2026-09-20, with 500K TPM of quota unused | Open, accepted for now | A ~600-token scalars pass cannot beat 10 s at that rate. The lever left is splitting the scalars pass further, now that concurrent analyses cost nothing measurable; or re-measuring on a faster day |
 | **Submit stall** — intermittent ~29 s server-side stall on `:analyzeBinary` | Mitigated, not fixed | Worth an Azure support ticket; the retry costs a duplicate analysis |
 | **Small corpus** — 11 payslips, 7 layouts, no more available | Accepted | Every accuracy figure describes these seven vendors and no eighth |
 | **Hand-written rule creep** — a Croatian parser growing beneath a generic model | Watch | A growing count of deterministic post-processing rules is the signal to revisit the engine, not progress |

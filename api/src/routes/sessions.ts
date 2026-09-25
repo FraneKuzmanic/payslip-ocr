@@ -121,6 +121,7 @@ export function createSessionsRouter(extraction: ExtractionRunner): Router {
         payslips: payslips.map(({ payslip, failureReason }) => ({
           id: payslip.id,
           status: payslip.status,
+          tablesStatus: payslip.tablesStatus,
           period: payslip.period ?? null,
           employeeName: payslip.employeeName ?? null,
           pageCount: payslip.pageCount,

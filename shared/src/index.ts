@@ -47,14 +47,17 @@ export {
   PAYSLIP_STATUSES,
   PAYSLIP_STATUS_TRANSITIONS,
   RETRYABLE_FAILURE_REASONS,
+  TABLES_STATUSES,
   canTransition,
   extractionFailureReasonSchema,
   isRetryableFailure,
   payslipStatusSchema,
   sessionSchema,
+  tablesStatusSchema,
   type ExtractionFailureReason,
   type PayslipStatus,
   type Session,
+  type TablesStatus,
 } from "./session.js";
 
 export {

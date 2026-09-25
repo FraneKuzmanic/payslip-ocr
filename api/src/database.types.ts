@@ -36,6 +36,7 @@ export type Database = {
           raw_provider_result: Json | null
           session_id: string
           status: string
+          tables_status: string
           updated_at: string
           user_id: string
           warnings: Json
@@ -61,6 +62,7 @@ export type Database = {
           raw_provider_result?: Json | null
           session_id: string
           status?: string
+          tables_status?: string
           updated_at?: string
           user_id: string
           warnings?: Json
@@ -86,6 +88,7 @@ export type Database = {
           raw_provider_result?: Json | null
           session_id?: string
           status?: string
+          tables_status?: string
           updated_at?: string
           user_id?: string
           warnings?: Json
@@ -126,7 +129,16 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      complete_extraction_pass: {
+        Args: {
+          p_fields: Json
+          p_metadata: Json
+          p_pass: string
+          p_payslip_id: string
+          p_raw: Json
+        }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never
