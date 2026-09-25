@@ -1,8 +1,16 @@
 import {
   HEALTH_PATH,
   apiErrorResponseSchema,
+  createPayslipResponseSchema,
+  createSessionResponseSchema,
+  retryPayslipResponseSchema,
+  sessionDetailResponseSchema,
   sourceDocumentResponseSchema,
+  type CreatePayslipResponse,
+  type CreateSessionResponse,
   type HealthResponse,
+  type RetryPayslipResponse,
+  type SessionDetailResponse,
   type SourceDocumentResponse,
 } from "@payslip/shared";
 import { supabase } from "../lib/supabase";
@@ -101,6 +109,41 @@ async function parseResponse<T>(
 export async function getHealth(): Promise<HealthResponse> {
   const response = await request(HEALTH_PATH);
   return (await response.json()) as HealthResponse;
+}
+
+export async function createSession(): Promise<CreateSessionResponse> {
+  const response = await request("/api/sessions", { method: "POST" });
+  return await parseResponse(createSessionResponseSchema, response, "POST /api/sessions");
+}
+
+export async function uploadPayslip(sessionId: string, file: File): Promise<CreatePayslipResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await request(`/api/sessions/${encodeURIComponent(sessionId)}/payslips`, {
+    method: "POST",
+    body: formData,
+  });
+  return await parseResponse(
+    createPayslipResponseSchema,
+    response,
+    "POST /api/sessions/:id/payslips",
+  );
+}
+
+/** Not `getSession`: that would read as `supabase.auth.getSession`, which `request()` calls. */
+export async function getSessionDetail(
+  id: string,
+  signal?: AbortSignal,
+): Promise<SessionDetailResponse> {
+  const response = await request(`/api/sessions/${encodeURIComponent(id)}`, { signal });
+  return await parseResponse(sessionDetailResponseSchema, response, "GET /api/sessions/:id");
+}
+
+export async function retryPayslip(id: string): Promise<RetryPayslipResponse> {
+  const response = await request(`/api/payslips/${encodeURIComponent(id)}/retry`, {
+    method: "POST",
+  });
+  return await parseResponse(retryPayslipResponseSchema, response, "POST /api/payslips/:id/retry");
 }
 
 export async function getPayslipSource(id: string): Promise<SourceDocumentResponse> {

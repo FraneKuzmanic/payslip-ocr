@@ -4,6 +4,7 @@ import {
   canonicalPayslipFieldsSchema,
   extractionFailureReasonSchema,
   payslipSchema,
+  RETRYABLE_FAILURE_REASONS,
   sourceContentTypeSchema,
   tablesStatusSchema,
   type CanonicalPayslipFields,
@@ -70,6 +71,7 @@ export interface UpdatePayslipInput {
 export interface PayslipState {
   readonly payslip: Payslip;
   readonly failureReason: ExtractionFailureReason | null;
+  readonly originalFilename: string;
 }
 
 export interface PayslipDetailState extends PayslipState {
@@ -254,6 +256,37 @@ export class PayslipRepository {
   }
 
   /**
+   * Task 07 D8: resets a retryable failure to a fresh extraction. One conditional update, so of two
+   * concurrent retries only one matches, and only one analysis is paid for. The tables pass writes
+   * only while `pending`, and a tables result that landed before the scalars pass failed is cleared
+   * with the rest. Null: missing, foreign, deleted, or not retryable now.
+   */
+  async beginRetry(id: string): Promise<Payslip | null> {
+    const { data, error } = await this.#client
+      .from("payslips")
+      .update({
+        status: "processing",
+        tables_status: "pending",
+        failure_reason: null,
+        canonical_data: {},
+        extraction_metadata: null,
+        raw_provider_result: null,
+        edited_fields: [],
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", uuidSchema.parse(id))
+      .eq("user_id", this.#userId)
+      .eq("status", "failed")
+      .in("failure_reason", [...RETRYABLE_FAILURE_REASONS])
+      .is("deleted_at", null)
+      .select(PAYSLIP_COLUMNS)
+      .maybeSingle();
+
+    if (error) throw new PayslipRepositoryError("query_failed", error);
+    return data === null ? null : mapPayslipRow(data);
+  }
+
+  /**
    * Records one extraction pass (Task 05 D7) through `complete_extraction_pass`, which merges the
    * pass's fields, metadata and raw body into the row atomically, so the passes may land in either
    * order. The scalars pass applies only while the payslip is `processing` and moves it to
@@ -402,7 +435,7 @@ function mapPayslipState(row: PayslipReadRow): PayslipState {
   const payslip = mapPayslipRow(row);
   const failureReason = failureReasonSchema.safeParse(row.failure_reason);
   if (!failureReason.success) throw new PayslipRepositoryError("invalid_data", failureReason.error);
-  return { payslip, failureReason: failureReason.data };
+  return { payslip, failureReason: failureReason.data, originalFilename: row.original_filename };
 }
 
 /** PostgREST returns `…T10:00:00.123456+00:00`, which `z.iso.datetime()` rejects. */

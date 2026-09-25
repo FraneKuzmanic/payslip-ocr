@@ -1,24 +1,27 @@
 import { Router } from "express";
 import { z } from "zod";
 import {
+  isRetryableFailure,
   listPayslipsQuerySchema,
   type ListPayslipsResponse,
   type PayslipDetailResponse,
+  type RetryPayslipResponse,
   type SourceDocumentResponse,
 } from "@payslip/shared";
 import { HttpError } from "../middleware/error-handler.js";
 import { authenticated } from "../middleware/require-auth.js";
 import { PayslipRepository } from "../repositories/payslips.js";
-import { STALE_EXTRACTION_MS } from "../services/payslip-extraction.js";
+import { STALE_EXTRACTION_MS, type ExtractionRunner } from "../services/payslip-extraction.js";
 import {
   SOURCE_URL_TTL_SECONDS,
   createSourceSignedUrl,
+  downloadSource,
   sourceObjectPath,
 } from "../storage/payslip-sources.js";
 
 const idSchema = z.uuid();
 
-export function createPayslipsRouter(): Router {
+export function createPayslipsRouter(extraction: ExtractionRunner): Router {
   const router = Router();
 
   /** PRD §10.12. Owner scoping and soft-delete filtering live in the repository. */
@@ -58,6 +61,51 @@ export function createPayslipsRouter(): Router {
         expiresAt: new Date(Date.now() + SOURCE_URL_TTL_SECONDS * 1000).toISOString(),
       };
       res.json(body);
+    }),
+  );
+
+  /**
+   * PRD §10.8 (Task 07 D8). A retryable failure is reset to a fresh extraction and re-enqueued with
+   * its stored bytes. The bytes are downloaded before the reset, so a Storage failure leaves the
+   * payslip `failed` and retryable rather than `processing` with no job behind it. The reset is one
+   * conditional update: of two concurrent retries only one matches, so a double click pays for one
+   * analysis. The stale reaper is deliberately not run here: a payslip that is only stale is still
+   * `processing`, and becomes retryable once a read reaps it.
+   */
+  router.post(
+    "/:id/retry",
+    authenticated(async (req, res, auth) => {
+      const id = idSchema.safeParse(req.params["id"]);
+      if (!id.success) throw new HttpError(400, "invalid_request");
+
+      const repository = new PayslipRepository(auth.client, auth.userId);
+      // A fast refusal that downloads nothing; `beginRetry` below is the authoritative check.
+      const state = await repository.findDetailState(id.data);
+      if (state === null) throw new HttpError(404, "not_found");
+      const { payslip, failureReason } = state;
+      if (
+        payslip.status !== "failed" ||
+        failureReason === null ||
+        !isRetryableFailure(failureReason)
+      ) {
+        throw new HttpError(409, "retry_not_allowed");
+      }
+
+      const source = await repository.findSourceById(id.data);
+      if (source === null) throw new HttpError(404, "not_found");
+      const bytes = await downloadSource(auth.client, sourceObjectPath(auth.userId, id.data));
+
+      const retried = await repository.beginRetry(id.data);
+      if (retried === null) throw new HttpError(409, "retry_not_allowed");
+
+      void extraction.enqueue({
+        payslipId: retried.id,
+        repository,
+        bytes,
+        contentType: source.contentType,
+      });
+      const body: RetryPayslipResponse = { id: retried.id, status: retried.status };
+      res.status(202).json(body);
     }),
   );
 

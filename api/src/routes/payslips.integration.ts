@@ -9,6 +9,7 @@ import {
   createSessionResponseSchema,
   listPayslipsResponseSchema,
   payslipDetailResponseSchema,
+  retryPayslipResponseSchema,
   sessionDetailResponseSchema,
   sourceDocumentResponseSchema,
 } from "@payslip/shared";
@@ -16,6 +17,7 @@ import { createApp } from "../app.js";
 import { config } from "../config.js";
 import type { Database } from "../database.types.js";
 import { PayslipRepository } from "../repositories/payslips.js";
+import type { ExtractionJob } from "../services/payslip-extraction.js";
 import { SOURCE_URL_TTL_SECONDS, sourceObjectPath } from "../storage/payslip-sources.js";
 
 const userAId = randomUUID();
@@ -131,6 +133,7 @@ describe("sessions and payslips against the hosted project", () => {
       pageCount: 1,
       failureReason: null,
       warningCount: 0,
+      originalFilename: "payslip.jpg",
     });
   });
 
@@ -273,6 +276,7 @@ describe("another user", () => {
       request(app).get(`/api/payslips/${jpegPayslipId}`),
       request(app).get(`/api/payslips/${jpegPayslipId}/source`),
       request(app).delete(`/api/payslips/${jpegPayslipId}`),
+      request(app).post(`/api/payslips/${jpegPayslipId}/retry`),
     ];
 
     for (const attempt of attempts) {
@@ -553,6 +557,118 @@ describe("extraction passes (Task 05 D7, D10)", () => {
         ],
       });
     });
+  });
+});
+
+describe("retry (Task 07 D8)", () => {
+  // Records the jobs instead of running them, so the reset and the bytes can be asserted at $0.
+  const enqueued: ExtractionJob[] = [];
+  const retryApp = createApp({
+    extraction: {
+      enqueue: (job) => {
+        enqueued.push(job);
+        return Promise.resolve();
+      },
+    },
+  });
+  let payslipId = "";
+
+  const retry = (id: string) =>
+    request(retryApp).post(`/api/payslips/${id}/retry`).set("Authorization", `Bearer ${tokenA}`);
+
+  async function setRow(change: Database["public"]["Tables"]["payslips"]["Update"]) {
+    const { error } = await admin.from("payslips").update(change).eq("id", payslipId);
+    if (error) throw new Error("Could not set up the retry payslip.");
+  }
+
+  beforeAll(async () => {
+    // Its own session: the others are near the ten-payslip cap.
+    const created = await request(retryApp)
+      .post("/api/sessions")
+      .set("Authorization", `Bearer ${tokenA}`);
+    const retrySessionId = createSessionResponseSchema.parse(created.body).id;
+
+    const response = await request(retryApp)
+      .post(`/api/sessions/${retrySessionId}/payslips`)
+      .set("Authorization", `Bearer ${tokenA}`)
+      .attach("file", jpeg, { filename: "retry.jpg", contentType: "image/jpeg" });
+    payslipId = createPayslipResponseSchema.parse(response.body).id;
+    sourcePaths.push(sourceObjectPath(userAId, payslipId));
+    enqueued.length = 0;
+  });
+
+  it("resets a retryable failure to a fresh extraction and enqueues the stored bytes", async () => {
+    // A failed payslip whose tables pass landed before its scalars pass failed (history/05 item 9).
+    await setRow({
+      status: "failed",
+      failure_reason: "provider_unavailable",
+      tables_status: "ready",
+      canonical_data: { brutoPlaca: "1.00", payComponents: [] },
+      extraction_metadata: { tables: { unreadableFields: [] } },
+      raw_provider_result: { tables: {} },
+    });
+
+    const response = await retry(payslipId);
+
+    expect(response.status).toBe(202);
+    expect(retryPayslipResponseSchema.parse(response.body)).toEqual({
+      id: payslipId,
+      status: "processing",
+    });
+    const { data } = await admin
+      .from("payslips")
+      .select(
+        "status, tables_status, failure_reason, canonical_data, extraction_metadata, raw_provider_result",
+      )
+      .eq("id", payslipId)
+      .single();
+    expect(data).toEqual({
+      status: "processing",
+      tables_status: "pending",
+      failure_reason: null,
+      canonical_data: {},
+      extraction_metadata: null,
+      raw_provider_result: null,
+    });
+    expect(enqueued).toHaveLength(1);
+    expect(enqueued[0]).toMatchObject({ payslipId, contentType: "image/jpeg" });
+    expect(enqueued[0]?.bytes).toEqual(jpeg);
+  });
+
+  it("refuses a second retry once the first has reset the payslip", async () => {
+    const response = await retry(payslipId);
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({ error: { code: "retry_not_allowed" } });
+    expect(enqueued).toHaveLength(1);
+  });
+
+  it.each([
+    ["a non-retryable failure", { status: "failed", failure_reason: "unreadable_document" }],
+    ["a payslip in review", { status: "review", failure_reason: null }],
+    ["a payslip still processing", { status: "processing", failure_reason: null }],
+  ] as const)("refuses %s with 409", async (_name, change) => {
+    await setRow(change);
+
+    const response = await retry(payslipId);
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({ error: { code: "retry_not_allowed" } });
+    expect(enqueued).toHaveLength(1);
+  });
+
+  it("answers 404 for a soft-deleted payslip and 400 for a malformed id", async () => {
+    await setRow({
+      status: "failed",
+      failure_reason: "provider_unavailable",
+      deleted_at: new Date().toISOString(),
+    });
+
+    expect((await retry(payslipId)).status).toBe(404);
+    const malformed = await retry("not-a-uuid");
+    expect(malformed.status).toBe(400);
+    expect(malformed.body).toEqual({ error: { code: "invalid_request" } });
+    expect(enqueued).toHaveLength(1);
   });
 });
 

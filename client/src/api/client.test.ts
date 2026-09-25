@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { supabase } from "../lib/supabase";
-import { ApiError, getHealth, getPayslipSource } from "./client";
+import {
+  ApiError,
+  getHealth,
+  getPayslipSource,
+  getSessionDetail,
+  retryPayslip,
+  uploadPayslip,
+} from "./client";
 
 type SessionResult = Awaited<ReturnType<typeof supabase.auth.getSession>>;
 type SignOutResult = Awaited<ReturnType<typeof supabase.auth.signOut>>;
@@ -93,6 +100,53 @@ describe("the API client", () => {
     await expect(getPayslipSource("payslip/id")).resolves.toEqual(source);
     expect(fetchMock).toHaveBeenCalledWith("/api/payslips/payslip%2Fid/source", expect.any(Object));
     expect(sentHeaders(fetchMock).get("Authorization")).toBe("Bearer token-abc");
+  });
+
+  it("uploads one file as the single multipart part to the encoded session path", async () => {
+    getSession.mockResolvedValue(sessionResult("token-abc"));
+    const created = {
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      sessionId: "22222222-2222-4222-8222-222222222222",
+      status: "processing",
+      createdAt: "2026-09-25T10:00:00.000Z",
+    };
+    const fetchMock = respondWith(201, created);
+    vi.stubGlobal("fetch", fetchMock);
+    const file = new File(["bytes"], "platna.jpg", { type: "image/jpeg" });
+
+    await expect(uploadPayslip("session/id", file)).resolves.toEqual(created);
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe("/api/sessions/session%2Fid/payslips");
+    expect(init?.method).toBe("POST");
+    const body = init?.body as FormData;
+    expect([...body.keys()]).toEqual(["file"]);
+    expect((body.get("file") as File).name).toBe("platna.jpg");
+  });
+
+  it("passes the abort signal through when reading a session", async () => {
+    getSession.mockResolvedValue(sessionResult("token-abc"));
+    const fetchMock = respondWith(200, {
+      id: "22222222-2222-4222-8222-222222222222",
+      createdAt: "2026-09-25T10:00:00.000Z",
+      payslips: [],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const controller = new AbortController();
+
+    await getSessionDetail("22222222-2222-4222-8222-222222222222", controller.signal);
+
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).toBe(controller.signal);
+  });
+
+  it("surfaces a refused retry as an ApiError carrying retry_not_allowed", async () => {
+    getSession.mockResolvedValue(sessionResult("token-abc"));
+    vi.stubGlobal("fetch", respondWith(409, { error: { code: "retry_not_allowed" } }));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(retryPayslip("id")).rejects.toMatchObject({
+      status: 409,
+      code: "retry_not_allowed",
+    });
   });
 
   it("says so in the console when a response does not match its shape, then rethrows", async () => {

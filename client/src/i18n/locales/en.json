@@ -92,5 +92,60 @@
     "pdf_too_many_pages": "This PDF has too many pages. Upload a document of up to 10 pages.",
     "pdf_unreadable": "This PDF could not be read. It may be damaged. Try exporting it again.",
     "session_full": "This session already holds 10 payslips. Start a new session to add more."
+  },
+  "capture": {
+    "scan": "Scan payslip",
+    "scanAnother": "Scan another",
+    "chooseFiles": "Choose files",
+    "guidance": "Photograph each payslip flat and fully in frame, or choose image or PDF files. Up to 10 at once.",
+    "trayLabel": "Selected payslips",
+    "remove": "Remove {{name}}",
+    "fileSize": "{{size}} MB",
+    "documentPreview": "PDF document",
+    "previewUnavailable": "Preview is not available in this browser. The file will still be uploaded.",
+    "imagePreview": "Preview of {{name}}",
+    "lowResolution": "The photo has a low resolution, so some values may be misread.",
+    "possibleBlur": "The photo may be blurred. A sharper photo gives better results.",
+    "processing": "Preparing {{name}}",
+    "cap": "At most 10 payslips have been added.",
+    "overCap_one": "{{count}} file was not added: a session holds at most 10 payslips.",
+    "overCap_other": "{{count}} files were not added: a session holds at most 10 payslips.",
+    "rejectedFile": "{{name}}: {{reason}}",
+    "upload_one": "Upload {{count}} payslip",
+    "upload_other": "Upload {{count}} payslips",
+    "uploading": "Uploading…",
+    "uploadingStatus": "Uploading your payslips.",
+    "allRejected": "None of the files could be uploaded. Remove them or choose others.",
+    "sessionError": "The upload could not start. Try again."
+  },
+  "session": {
+    "title": "Your payslips",
+    "progress": "{{ready}} of {{total}} ready to review",
+    "position": "Payslip {{index}}",
+    "waiting": "Waiting to upload",
+    "uploading": "Uploading",
+    "uploadNetworkError": "The upload failed. Check your connection.",
+    "dismiss": "Dismiss {{name}}",
+    "retry": "Try again",
+    "scanMore": "Scan more payslips",
+    "notFound": "This session does not exist.",
+    "loadError": "The session could not be loaded.",
+    "retryError": "The retry could not be started. Check your connection and try again."
+  },
+  "payslipStatus": {
+    "processing": "Reading the payslip",
+    "review": "Ready to review",
+    "confirmed": "Confirmed",
+    "failed": "Failed"
+  },
+  "tablesStatus": {
+    "pending": "Line items still loading",
+    "ready": "Line items ready",
+    "failed": "Line items could not be read"
+  },
+  "failureReason": {
+    "unreadable_document": "The document could not be read. Try a sharper photo.",
+    "provider_rejected": "The extraction service refused this document.",
+    "provider_unavailable": "The extraction service was unavailable. Try again."
   }
 }

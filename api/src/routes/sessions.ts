@@ -118,7 +118,7 @@ export function createSessionsRouter(extraction: ExtractionRunner): Router {
       const body: SessionDetailResponse = {
         id: session.id,
         createdAt: session.createdAt,
-        payslips: payslips.map(({ payslip, failureReason }) => ({
+        payslips: payslips.map(({ payslip, failureReason, originalFilename }) => ({
           id: payslip.id,
           status: payslip.status,
           tablesStatus: payslip.tablesStatus,
@@ -127,6 +127,7 @@ export function createSessionsRouter(extraction: ExtractionRunner): Router {
           pageCount: payslip.pageCount,
           failureReason,
           warningCount: payslip.warnings.length,
+          originalFilename,
         })),
       };
       res.json(body);

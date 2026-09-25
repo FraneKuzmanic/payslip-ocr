@@ -266,6 +266,53 @@ describe("PayslipRepository.findDetailState", () => {
       code: "invalid_data",
     });
   });
+
+  it("carries the original filename (Task 07 D9)", async () => {
+    const repository = new PayslipRepository(singleRow(payslipRow()), USER_ID);
+
+    expect((await repository.findDetailState(PAYSLIP_ID))?.originalFilename).toBe(
+      "platna-lista.pdf",
+    );
+  });
+});
+
+describe("PayslipRepository.beginRetry (Task 07 D8)", () => {
+  it("resets to a fresh extraction, only from a live, owned, retryable failure", async () => {
+    const { client, calls } = recordingUpdate(
+      payslipRow({ status: "processing", tables_status: "pending", canonical_data: {} }),
+    );
+
+    const payslip = await new PayslipRepository(client, USER_ID).beginRetry(PAYSLIP_ID);
+
+    expect(payslip).toMatchObject({ status: "processing", tablesStatus: "pending" });
+    expect(calls).toEqual([
+      [
+        "update",
+        {
+          status: "processing",
+          tables_status: "pending",
+          failure_reason: null,
+          canonical_data: {},
+          extraction_metadata: null,
+          raw_provider_result: null,
+          edited_fields: [],
+          updated_at: expect.any(String),
+        },
+      ],
+      ["eq", "id", PAYSLIP_ID],
+      ["eq", "user_id", USER_ID],
+      ["eq", "status", "failed"],
+      ["in", "failure_reason", ["provider_unavailable"]],
+      ["is", "deleted_at", null],
+      ["select", expect.not.stringContaining("raw_provider_result")],
+    ]);
+  });
+
+  it("returns null when no row matched: not retryable now, or a concurrent retry won", async () => {
+    const { client } = recordingUpdate(null);
+
+    expect(await new PayslipRepository(client, USER_ID).beginRetry(PAYSLIP_ID)).toBeNull();
+  });
 });
 
 /** The `from().select().eq().eq().is().maybeSingle()` chain `findDetailState` uses. */
@@ -277,6 +324,26 @@ function singleRow(row: PayslipRow): SupabaseClient<Database> {
     maybeSingle: () => Promise.resolve({ data: row, error: null }),
   };
   return { from: () => chain } as unknown as SupabaseClient<Database>;
+}
+
+/** The `from().update()…maybeSingle()` chain `beginRetry` uses, recording every call. */
+function recordingUpdate(row: PayslipRow | null) {
+  const calls: unknown[][] = [];
+  const record =
+    (name: string) =>
+    (...args: unknown[]) => {
+      calls.push([name, ...args]);
+      return chain;
+    };
+  const chain = {
+    update: record("update"),
+    eq: record("eq"),
+    in: record("in"),
+    is: record("is"),
+    select: record("select"),
+    maybeSingle: () => Promise.resolve({ data: row, error: null }),
+  };
+  return { client: { from: () => chain } as unknown as SupabaseClient<Database>, calls };
 }
 
 /** The minimal `from().insert().select().single()` chain `create` uses, resolving to an error. */

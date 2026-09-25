@@ -75,6 +75,7 @@ describe("response DTOs tolerate a newer API", () => {
             pageCount: 1,
             failureReason: "provider_unavailable",
             warningCount: 0,
+            originalFilename: "payslip.jpg",
           },
         ],
       },
@@ -148,9 +149,10 @@ describe("payslipSummarySchema (PRD §10.4)", () => {
     pageCount: 1,
     failureReason: null,
     warningCount: 0,
+    originalFilename: "payslip.jpg",
   };
 
-  it.each(["period", "employeeName"] as const)("requires %s, even when null", (key) => {
+  it.each(["period", "employeeName", "originalFilename"] as const)("requires %s", (key) => {
     const { [key]: _omitted, ...body } = summary;
     expect(payslipSummarySchema.safeParse(body).success).toBe(false);
   });

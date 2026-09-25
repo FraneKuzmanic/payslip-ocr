@@ -32,6 +32,13 @@ without losing the others' state. A Session has no status of its own; its progre
 the Payslips it holds.
 _Avoid_: Batch, upload, job
 
+**Upload batch**:
+The browser's transient record of the Source Files one tab is still sending into a Session: each
+file waiting, uploading, uploaded or rejected. It lives only in client memory and ends once every
+file has been sent. It is not a Session and has no server representation; the Session is what
+persists. The client names it `UploadBatchProvider`, `BatchItem` and `startBatch` (Task 07).
+_Avoid_: Using "batch" for the Session itself
+
 **Merge**:
 Replacing two Payslips that turn out to be pages of one with a single Payslip owning both
 Pages. Merging combines the Source Files and re-extracts, rather than reconciling two sets of

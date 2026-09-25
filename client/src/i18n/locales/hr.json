@@ -92,5 +92,62 @@
     "pdf_too_many_pages": "Ovaj PDF ima previše stranica. Prenesite dokument s najviše 10 stranica.",
     "pdf_unreadable": "Ovaj PDF nije moguće pročitati. Možda je oštećen. Pokušajte ga ponovno izvesti.",
     "session_full": "Ova sesija već sadrži 10 platnih lista. Započnite novu sesiju za dodatne."
+  },
+  "capture": {
+    "scan": "Skeniraj platnu listu",
+    "scanAnother": "Skeniraj još jednu",
+    "chooseFiles": "Odaberi datoteku",
+    "guidance": "Fotografirajte svaku platnu listu ravno i cijelu u kadru ili odaberite slike ili PDF datoteke. Najviše 10 odjednom.",
+    "trayLabel": "Odabrane platne liste",
+    "remove": "Ukloni {{name}}",
+    "fileSize": "{{size}} MB",
+    "documentPreview": "PDF dokument",
+    "previewUnavailable": "Pregled nije dostupan u ovom pregledniku. Datoteka će se ipak poslati.",
+    "imagePreview": "Pregled datoteke {{name}}",
+    "lowResolution": "Fotografija ima nisku razlučivost pa neke vrijednosti mogu biti pogrešno očitane.",
+    "possibleBlur": "Fotografija je možda mutna. Oštrija fotografija daje bolje rezultate.",
+    "processing": "Priprema datoteke {{name}}",
+    "cap": "Dodano je najviše 10 platnih lista.",
+    "overCap_one": "{{count}} datoteka nije dodana: jedna sesija može imati najviše 10 platnih lista.",
+    "overCap_few": "{{count}} datoteke nisu dodane: jedna sesija može imati najviše 10 platnih lista.",
+    "overCap_other": "{{count}} datoteka nije dodano: jedna sesija može imati najviše 10 platnih lista.",
+    "rejectedFile": "{{name}}: {{reason}}",
+    "upload_one": "Pošalji {{count}} platnu listu",
+    "upload_few": "Pošalji {{count}} platne liste",
+    "upload_other": "Pošalji {{count}} platnih lista",
+    "uploading": "Slanje u tijeku…",
+    "uploadingStatus": "Vaše se platne liste šalju.",
+    "allRejected": "Nijednu datoteku nije bilo moguće poslati. Uklonite ih ili odaberite druge.",
+    "sessionError": "Slanje nije moguće započeti. Pokušajte ponovno."
+  },
+  "session": {
+    "title": "Vaše platne liste",
+    "progress": "{{ready}} od {{total}} spremno za pregled",
+    "position": "Platna lista {{index}}",
+    "waiting": "Čeka slanje",
+    "uploading": "Slanje u tijeku",
+    "uploadNetworkError": "Slanje nije uspjelo. Provjerite vezu.",
+    "dismiss": "Odbaci {{name}}",
+    "retry": "Pokušaj ponovno",
+    "scanMore": "Skeniraj još platnih lista",
+    "notFound": "Ova sesija ne postoji.",
+    "loadError": "Sesiju nije moguće učitati.",
+    "retryError": "Ponovni pokušaj nije pokrenut. Provjerite vezu i pokušajte ponovno."
+  },
+  "payslipStatus": {
+    "processing": "Očitavanje u tijeku",
+    "review": "Spremno za pregled",
+    "confirmed": "Potvrđeno",
+    "failed": "Nije uspjelo"
+  },
+  "tablesStatus": {
+    "pending": "Stavke se još učitavaju",
+    "ready": "Stavke su učitane",
+    "failed": "Stavke nije moguće očitati"
+  },
+  "failureReason": {
+    "unreadable_document": "Dokument nije moguće pročitati. Pokušajte s oštrijom fotografijom.",
+    "provider_rejected": "Servis za očitavanje odbio je ovaj dokument.",
+    "provider_unavailable": "Servis za očitavanje nije bio dostupan. Pokušajte ponovno."
   }
 }

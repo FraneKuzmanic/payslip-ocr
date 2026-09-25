@@ -478,11 +478,13 @@ prototypes/payslip-ocr/
 
 **Requirements.** Device-adaptive pickers driven by `(pointer: coarse)`: on a phone, a primary **Skeniraj** button (`capture="environment"`) plus a permanently visible **Odaberi datoteku**; on desktop, file choice only. The file input accepts **multiple files**, capped at ten per upload. Accepted types are sniffed from the **bytes**, not the filename: JPEG, PNG, HEIC/HEIF, PDF. Images over 2 MP or 1.5 MB are re-encoded to a 1,600 px long edge at quality 0.82, and the preview is built from the exact bytes that upload. Advisory blur and resolution warnings are shown but never block.
 
+Selected files collect in a **tray** before anything uploads (Task 07): each **Skeniraj** press opens the camera once and adds one photo, since `capture` opens a single-shot camera on which `multiple` is ignored or unreliable; **Odaberi datoteku** adds several at once. The tray stops at ten and says how many were left out. An image the browser cannot decode (HEIC outside Safari) is shown as a file card with a note instead of a preview, and its **original bytes** upload: the service decodes HEIC, so it is not refused.
+
 ### 7.3 Session and payslip creation
 
 **Purpose.** Establish the scope within which several payslips are reviewed together.
 
-**Expected flow.** The client creates a Session, then POSTs each selected file to it as its own Payslip. Each POST starts extraction immediately and returns `201` without waiting. The client navigates to the session review screen as soon as the first Payslip exists.
+**Expected flow.** The client refreshes its auth session, creates a Session, then POSTs each selected file to it as its own Payslip, **one at a time in tray order**, so upload order is selection order. The refresh gives the background extraction writes, which use the token the upload carried, the full token lifetime. Each POST starts extraction immediately and returns `201` without waiting. The client navigates to the session review screen as soon as the first Payslip exists; the remaining uploads continue in the background.
 
 **Rules.** One Source File is always exactly one Payslip — a three-page PDF is one Payslip with three Pages. Extraction runs in parallel, capped at three concurrent analyses. A payslip is two analyses (the scalars and tables passes, §7.4), and a waiting scalars pass is served before any tables pass, so forms appear before the last tables start. A Payslip that fails does not affect its siblings.
 
@@ -706,7 +708,7 @@ All routes under `/api/sessions` and `/api/payslips` require `Authorization: Bea
 → `201 {id, sessionId, status, createdAt}` · `413 file_too_large` · `415 unsupported_media_type` · `422 pdf_encrypted | pdf_too_many_pages | pdf_unreadable` · `409 session_full`
 
 **10.4** `GET /api/sessions/:id`
-→ `200 {id, createdAt, payslips: [{id, status, tablesStatus, period, employeeName, pageCount, failureReason, warningCount}]}`
+→ `200 {id, createdAt, payslips: [{id, status, tablesStatus, period, employeeName, pageCount, failureReason, warningCount, originalFilename}]}`. `originalFilename` identifies a payslip before extraction has read a name (Task 07).
 
 **10.5** `GET /api/payslips/:id`
 → `200` canonical payslip (including `tablesStatus`) + `lowConfidenceFields`, `unreadableFields`, `ungroundableFields`, `warnings`, `editedFields`, `failureReason`
@@ -718,6 +720,7 @@ Body is the canonical field schema, partial and strict. Recomputes warnings. Nev
 **10.7** `POST /api/payslips/:id/confirm` → `200 {id, status, confirmedAt}`; idempotent · `409 confirm_not_allowed`, also while `tablesStatus` is `pending` (Task 05), so export waits for both passes
 
 **10.8** `POST /api/payslips/:id/retry` → `202 {id, status}` · `409 retry_not_allowed` if not failed, or the failure is non-retryable
+A retry is a full reset to a fresh extraction: status `processing`, `tablesStatus` `pending`, and the canonical data, metadata and raw response cleared, then both passes re-run over the stored source. The reset is one conditional update, so a concurrent second retry gets `409` and only one analysis is paid for (Task 07).
 
 **10.9** `GET /api/payslips/:id/source` → `200 {url, contentType, originalFilename, expiresAt}` — signed, 300 s TTL
 

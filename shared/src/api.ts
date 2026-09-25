@@ -105,6 +105,8 @@ export const payslipSummarySchema = payslipSchema
   .extend({
     failureReason: extractionFailureReasonSchema.nullable(),
     warningCount: z.number().int().min(0),
+    // The only identifier a row has before extraction reads a name (Task 07 D9).
+    originalFilename: z.string().min(1),
   })
   .strip();
 

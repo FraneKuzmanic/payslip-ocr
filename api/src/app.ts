@@ -46,7 +46,7 @@ export function createApp(options: AppOptions = {}): Express {
   // default — and what makes a path with no route answer 401 rather than 404.
   app.use(["/api/sessions", "/api/payslips"], requireAuth(authenticator));
   app.use("/api/sessions", createSessionsRouter(extraction));
-  app.use("/api/payslips", createPayslipsRouter());
+  app.use("/api/payslips", createPayslipsRouter(extraction));
 
   app.use((_req, _res, next) => {
     next(new HttpError(404, "not_found"));

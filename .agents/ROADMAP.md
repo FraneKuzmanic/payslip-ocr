@@ -90,7 +90,7 @@ investigation and is recorded with its reasoning.
 | 04 | Content Understanding provider, mapper & scoring harness | ✅ complete → [`history/04`](./history/04-content-understanding-provider.md) |
 | 05 | Extraction latency: partial results or two-pass | ✅ complete, first-form target missed (p50 12.2 s) → [`history/05`](./history/05-extraction-latency-two-pass.md) |
 | 06 | Warnings & validation engine | ✅ complete → [`history/06`](./history/06-warnings-validation-engine.md) |
-| 07 | Capture & multi-upload UI | ⬜ not started |
+| 07 | Capture & multi-upload UI | ✅ complete, reviewed and validated; M3 pending → [`history/07`](./history/07-capture-multi-upload.md) |
 | 08 | Source regions & document preview with highlighting | ⬜ not started |
 | 09 | Review form & two-way linking | ⬜ not started |
 | 10 | Session navigation & phone layout | ⬜ not started |
@@ -431,16 +431,24 @@ screen within a couple of seconds, with per-payslip progress.
   `PAYSLIP_STATUSES` and `TABLES_STATUSES` value, guarded by a test mirroring
   `uploadErrors.test.ts` (Task 02 D8, Task 05 D6).
 
+- Added in planning (plan 07): the tray, where each camera press adds one photo (D1); the minimal
+  session page at `/sessions/:sessionId`, which Tasks 09 and 10 replace in place (D2); sequential
+  upload from a context above the routes (D3); `originalFilename` on the session summary (D9);
+  HEIC uploaded as the original bytes when the browser cannot preview it (D10).
+
 **Not in this task:** the review form (09), the chip rail (10).
 
 **Definition of done**
 
-- [ ] Selecting four files creates one session with four payslips and four independent extractions.
-- [ ] The review route is reachable in under 3 s from upload start, before extraction completes.
-- [ ] A HEIC photo, a multi-page PDF and a PNG screenshot all upload successfully.
-- [ ] Busy state keeps the pressed button in the tab order (`aria-disabled`, not `disabled`) and
+- [x] Selecting four files creates one session with four payslips and four independent extractions.
+- [x] The review route is reachable in under 3 s from upload start, before extraction completes.
+      **2.27 s** to the first `201` (review session, 2026-09-25).
+- [x] A HEIC photo (previewed where the browser can decode it), a multi-page PDF and a PNG
+      screenshot all upload and extract. On Chromium the HEIC shows a file card and uploads its
+      original bytes; the Safari preview was not exercised.
+- [x] Busy state keeps the pressed button in the tab order (`aria-disabled`, not `disabled`) and
       announces via a visually-hidden `role="status"`.
-- [ ] Both locales have complete copy; the key-set guard test passes.
+- [x] Both locales have complete copy; the key-set guard test passes (`statusCopy.test.ts`).
 
 ---
 
@@ -681,6 +689,6 @@ each is run separately and its result recorded in the owning task's history file
 | **Hand-written rule creep** — a Croatian parser growing beneath a generic model | Watch | A growing count of deterministic post-processing rules is the signal to revisit the engine, not progress |
 | **Phone layout has no prior art** — every document-AI review UI found is desktop-only | Open | Task 10; first thing to put in front of a real user |
 | **Inherited gaps** — no password reset, unverified emails, Render cold starts | Accepted | Documented, not fixed. CI exists since Task 01b |
-| **Direct-write gap** — a signed-in user can update their own payslip's `status` or `canonical_data` through PostgREST, bypassing the API | Open | Task 09, where confirm and PATCH land: server-side writes plus `revoke update` |
+| **Direct-write gap** — a signed-in user can update their own payslip's `status` or `canonical_data` through PostgREST, bypassing the API | Open | Task 09, where confirm and PATCH land: server-side writes plus `revoke update`. Task 07's retry route is one more server write that must keep working (a `security invoker` function, or the same columns) |
 | **In-memory extraction queue** — upload bytes wait in process memory; a redeploy drops in-flight work | Accepted for a demo | Lost jobs fail on the next read after 15 min and are retryable (Task 04 D3). Worst case 10 × 10 MB per session on a 512 MB instance; Task 07's downscale shrinks images |
-| **Background writes use the upload's token** — a token near expiry at upload can fail the completion write | Accepted | The row is failed by the stale reaper and is retryable. Task 07: refresh the session before an upload batch |
+| **Background writes use the upload's token** — a token near expiry at upload can fail the completion write | Mitigated (Task 07 D5) | The client refreshes the session before each upload batch, giving every write about the full token lifetime. If it still happens, the row is failed by the stale reaper and is retryable |
