@@ -372,7 +372,7 @@ describe("SessionPage", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("counts payslips in review and confirmed as ready", async () => {
+  it("counts review as ready and confirmed separately", async () => {
     mockedDetail.mockResolvedValue(
       session(
         summary("a", { status: "review", tablesStatus: "ready" }),
@@ -384,7 +384,35 @@ describe("SessionPage", () => {
     renderPage();
     await flush();
 
-    expect(screen.getByRole("status")).toHaveTextContent("2 of 4 ready to review");
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "1 of 4 ready to review · 1 of 4 confirmed",
+    );
+  });
+
+  it("shows only the confirmed count once every payslip is confirmed", async () => {
+    mockedDetail.mockResolvedValue(
+      session(
+        summary("a", { status: "confirmed", tablesStatus: "ready" }),
+        summary("b", { status: "confirmed", tablesStatus: "ready" }),
+      ),
+    );
+    renderPage();
+    await flush();
+
+    expect(screen.getByRole("status").textContent).toBe("2 of 2 confirmed");
+  });
+
+  it("shows no confirmed count while none is confirmed", async () => {
+    mockedDetail.mockResolvedValue(
+      session(
+        summary("a", { status: "review", tablesStatus: "ready" }),
+        summary("b", { status: "failed", failureReason: "provider_rejected" }),
+      ),
+    );
+    renderPage();
+    await flush();
+
+    expect(screen.getByRole("status").textContent).toBe("1 of 2 ready to review");
   });
 });
 

@@ -281,6 +281,8 @@ in all: **$0.76**.
 
 1. **M1:** sign in as `m1-review-08@example.test` (password given in the review session) and
    spot-check all 11 golden documents in sessions 1 and 2; record the table in this file.
+   *Moved to the Task 13 device sitting, on desktop, over the Task 13 hosted run's account
+   (plan 13 D5, D12); see history/13.*
 2. **Copy:** plan 08 step 13's table, plus `review.imageUnavailable` (above) and
    `review.errors.refresh`:
    - en: "The highlights could not be updated, so some may be missing. Try again."

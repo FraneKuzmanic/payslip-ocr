@@ -302,10 +302,13 @@ export function SessionPage() {
   const pending = items.filter(
     (item) => item.state !== "uploaded" || !listed.has(item.payslipId ?? ""),
   );
-  const ready = payslips.filter(
-    (payslip) => payslip.status === "review" || payslip.status === "confirmed",
-  ).length;
+  const ready = payslips.filter((payslip) => payslip.status === "review").length;
+  const confirmed = payslips.filter((payslip) => payslip.status === "confirmed").length;
   const total = payslips.length + pending.filter((item) => item.state !== "rejected").length;
+  const progress = [
+    ...(ready === 0 && confirmed > 0 ? [] : [t("session.progress", { ready, total })]),
+    ...(confirmed > 0 ? [t("session.confirmedCount", { count: confirmed, total })] : []),
+  ].join(" · ");
 
   return (
     <section
@@ -316,7 +319,7 @@ export function SessionPage() {
       <div className="flex flex-col gap-2">
         <h1 className="text-2xl font-semibold">{t("session.title")}</h1>
         <p role="status" className="text-slate-600">
-          {t("session.progress", { ready, total })}
+          {progress}
         </p>
       </div>
 

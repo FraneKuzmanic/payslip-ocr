@@ -191,6 +191,8 @@
     "processingPanel": "This payslip is still being read. Its form opens here when it is ready.",
     "title": "Your payslips",
     "progress": "{{ready}} of {{total}} ready to review",
+    "confirmedCount_one": "{{count}} of {{total}} confirmed",
+    "confirmedCount_other": "{{count}} of {{total}} confirmed",
     "position": "Payslip {{index}}",
     "waiting": "Waiting to upload",
     "uploading": "Uploading",

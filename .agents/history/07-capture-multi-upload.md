@@ -292,3 +292,5 @@ Per document: A02 $0.065, A01 $0.108 (two pages), G01 $0.036, B02 $0.040.
 | Rotation | not run | |
 | One-handed reach on the controls | not run | Task 07's controls are now 48 px, not the 44 px the ROADMAP row names |
 
+*The four "not run" sub-steps are run in the Task 13 device sitting; see history/13.*
+

@@ -5,6 +5,7 @@
 **Outcome:** session tabs, page navigation and the phone source strip are implemented. Unsaved
 edits survive payslip switches, Back/Forward and leaving/returning to the session in the same tab.
 **Status: implemented, reviewed and browser-validated; M2 pending; not committed.**
+*Committed and deployed: see `git log` (`f32836b`). Noted 2026-09-26, Task 13.*
 
 Following D10, this session did not run `/code-review`, `/validate`, browser journeys, paid
 extraction, migrations or deployment, and did not commit. Local `npm run validate` is distinct
@@ -117,6 +118,8 @@ and pre-existing `.claude/` files remain untracked; no staging or commits were p
 
 1. **M2: real iPhone.** Record device, iOS version, screenshots and verdict. Verify fixed-strip
    tracking, focus clearance and simultaneous input/source visibility with the actual keyboard.
+   *Rescoped to Android Chrome and run in the Task 13 device sitting (plan 13 D5): the product
+   owner has no iPhone, so iOS stays unverified. See history/13.*
 2. **Android back-dismiss limitation.** Dismissing the keyboard without blurring leaves strip
    mode active until focus leaves the input; focus is intentionally the keyboard signal.
 3. **Zoom reset.** Leaving keyboard mode remounts the normal viewport at fit; field focus

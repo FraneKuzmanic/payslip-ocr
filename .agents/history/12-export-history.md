@@ -6,6 +6,7 @@
 together. A history screen lists, filters, pages and soft-deletes every payslip and links back
 into its session. There is no migration and no new dependency.
 **Status: implemented, reviewed and validated; journey 9.11 passed. Not committed.**
+*Committed and deployed: see `git log` (`9e66da4`). Noted 2026-09-26, Task 13.*
 
 Following plan 12 D12 and the standing session split, this session did not run `/code-review`,
 `/validate` or any browser journey, and did not commit. Paid runs: **0 analyses, $0.**
@@ -229,3 +230,7 @@ automation's, not the app's. The files were read by hooking `URL.createObjectURL
 - Read the `history.*` copy in `hr` and `en` with the product owner, including the new
   `emptyFiltered` line.
 - Nothing committed or deployed. `.agents/plans/12-export-history.md` is still untracked.
+- *2026-09-26, Task 13: the `history.*` copy was **approved** by the product owner in both
+  languages (plan 13 D7), with one change: `history.errors.export` hr now reads "Izvoz nije
+  moguće izraditi. Pokušajte ponovno." The session header's progress copy is fixed by plan 13
+  D6. Committed and deployed as `9e66da4`.*

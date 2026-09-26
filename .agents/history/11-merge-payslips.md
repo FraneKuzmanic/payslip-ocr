@@ -7,6 +7,7 @@ server-computed suggestion or from the payslip's action menu. The migration is a
 hosted project.
 **Status: implemented, reviewed and validated, journey 9.10 passed; not committed.** See
 "Review session" at the end.
+*Committed and deployed: see `git log` (`785dbda`). Noted 2026-09-26, Task 13.*
 
 Following plan 11 D14 and the standing session split, this session did not run `/code-review`,
 `/validate` or any browser journey, and did not commit. Paid runs: **0 analyses, $0.**
@@ -232,3 +233,5 @@ A01.pdf split into `A01-p1.pdf` and `A01-p2.pdf` locally.
 - Read the `merge.*` copy in `hr` and `en` with the product owner (unchanged handoff item).
 - Mirrored EXIF orientations, and three suggestion pairs for a three-page payslip (open items 2–3).
 - Nothing committed or deployed. The migration was already applied to the hosted project.
+- *2026-09-26, Task 13: the `merge.*` copy was **approved** by the product owner in both
+  languages, unchanged (plan 13 D7). Committed and deployed as `785dbda`.*

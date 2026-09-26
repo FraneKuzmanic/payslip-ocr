@@ -416,15 +416,18 @@ The asymmetry is deliberate. `iznosZaIsplatu` is critical because it is the only
 
 **Session** has no status of its own. It is a container; its progress is derived from the statuses of the payslips it holds ("3 of 5 confirmed").
 
-### 6.7 Suggested repository structure
+### 6.7 Repository structure
 
-Forked from `receipt-ocr`. Three flat npm workspaces at the prototype root.
+Forked from `receipt-ocr`. Three flat npm workspaces at the prototype root. This is the tree as
+built, from `git ls-files` at Task 13, trimmed to directories and key files. The suggestion it
+replaces is in git history.
 
 ```
 prototypes/payslip-ocr/
 ├── PRD.md  README.md  CONTEXT.md  AGENTS.md
 ├── package.json  tsconfig.json  tsconfig.base.json  vitest.config.ts
-├── render.yaml  .env.example  .oxlintrc.json  .prettierrc.json
+├── render.yaml  .env.example  .oxlintrc.json  .prettierrc.json  .nvmrc
+├── .github/workflows/ci.yml
 ├── docs/
 │   ├── adr/0001-payslip-extraction-architecture.md
 │   └── agents/{domain,issue-tracker,triage-labels}.md
@@ -432,34 +435,41 @@ prototypes/payslip-ocr/
 │   ├── ROADMAP.md  plans/  history/  specs/
 │   └── fixtures/expected/*.json        # golden set (sources git-ignored)
 ├── scripts/
-│   ├── score-extraction.ts             # offline accuracy + latency harness
-│   ├── record-provider-fixture.mjs
-│   └── compare-providers.mjs           # the bake-off harness
-├── supabase/migrations/  tests/
+│   ├── score-extraction.ts             # offline accuracy harness over .bakeoff/ recordings
+│   ├── check-golden-set.py             # payroll identities and OIB checksums of the golden set
+│   ├── check-client-secrets.mjs        # no secret in .env.example or the client bundle
+│   ├── provision-analyzer.ts  provision-storage.mjs
+│   ├── run-supabase-integration-tests.mjs
+│   └── bakeoff/                        # the Phase 2 harness, the measured fallback
+├── supabase/migrations/*.sql
 ├── shared/src/
-│   ├── index.ts  payslip.ts  api.ts  money.ts  datetime.ts
-│   ├── warnings.ts  upload.ts  session.ts
+│   ├── index.ts  payslip.ts  api.ts  session.ts  warnings.ts  upload.ts
+│   └── money.ts  quantity.ts  datetime.ts  health.ts
 ├── api/src/
+│   ├── app.ts  index.ts  config.ts  logger.ts
+│   ├── auth/  middleware/{require-auth,error-handler}.ts
 │   ├── routes/{sessions,payslips,health}.ts
 │   ├── repositories/{sessions,payslips}.ts
 │   ├── services/{payslip-extraction,payslip-merge}.ts
 │   ├── storage/payslip-sources.ts
 │   ├── upload/{multipart,source-file}.ts
-│   ├── validation/warnings.ts
+│   ├── validation/{warnings,attention,edited,oib}.ts
 │   ├── export/payslips.ts
+│   ├── scoring/score.ts
 │   └── providers/document-extraction/
 │       ├── types.ts
-│       ├── content-understanding/{provider,fields,regions}.ts
-│       ├── layout-llm/{provider,prompt,grounding}.ts
-│       ├── croatian.ts        # OIB checksum, number + date normalisation
-│       └── fixtures/*.json
+│       └── content-understanding/{provider,analyzer,field-schema,fields,
+│                                  grounding,regions,original,usage}.ts
 └── client/src/
-    ├── capture/  auth/  components/  i18n/
-    ├── routes/{HomePage,SessionReviewPage,HistoryPage,…}.tsx
-    ├── session/{PayslipChipRail,PayslipStatusDot,MergeDialog}.tsx
-    └── review/{reviewForm,LineItemRows,SourceDocumentPanel,PdfSource,
-                ZoomableSourceViewport,SourceOverlay,RegionPopover,
-                PageSheet,sourceZoom,regionSections}.ts(x)
+    ├── App.tsx  main.tsx  api/client.ts  lib/supabase.ts
+    ├── auth/  capture/  components/  i18n/  upload/
+    ├── routes/{HomePage,SessionPage,HistoryPage,LoginPage,RegisterPage,NotFoundPage}.tsx
+    ├── session/{MergeDialog,MergeSuggestions,SourceThumbnail}.tsx
+    ├── history/{PayslipTable,PayslipCards,PayslipActions}.tsx  download.ts  historyRow.ts
+    └── review/{PayslipReview,PayslipForm,PayslipRail,LineItemSection,ReviewField,
+                SourceDocumentPanel,PdfSource,ZoomableSourceViewport,SourceOverlay,
+                SourceStrip,RegionPopover,PageNavigator}.tsx
+               reviewForm.ts  sourceZoom.ts  regionSections.ts  unsaved/
 ```
 
 ---
@@ -686,7 +696,7 @@ Task 09 narrowed both:
 
 Supabase email/password. Every `/api/sessions` and `/api/payslips` route sits behind an auth guard applied to the **path prefix**, not to individual routes, so a route added later is protected by construction and an unknown path answers `401` rather than `404`. The proven user id is passed to handlers as an argument, never read off the request object, so a handler is structurally incapable of using an unproven identity. A resource belonging to another user returns **404, never 403** — it falls out of the owner-scoped query rather than a separate check.
 
-Every payslip write goes through a `security definer` SQL function that enforces the API's own rule and filters on `user_id = auth.uid()` (Task 09). `authenticated` can then lose its direct `update` grant, so a signed-in user cannot set their own payslip's `status` or `canonical_data` through PostgREST. The functions are applied; the revoke is applied once the API that uses them is deployed (Task 09 step P).
+Every payslip write goes through a `security definer` SQL function that enforces the API's own rule and filters on `user_id = auth.uid()` (Task 09). `authenticated` can then lose its direct `update` grant, so a signed-in user cannot set their own payslip's `status` or `canonical_data` through PostgREST. The functions and the revoke are both applied (Task 09 step P, 2026-09-26); `insert` is narrowed to the six upload columns.
 
 ### 9.2 Secrets and configuration
 
@@ -703,7 +713,6 @@ AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT      # challenger path only
 AZURE_DOCUMENT_INTELLIGENCE_KEY           # challenger path only
 AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_KEY   # challenger path only
 AZURE_OPENAI_DEPLOYMENT, AZURE_OPENAI_API_VERSION
-EXTRACTION_TIMEOUT_MS, EXTRACTION_CONCURRENCY
 MAX_UPLOAD_BYTES, MAX_PDF_PAGES
 SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, SUPABASE_SECRET_KEY, STORAGE_BUCKET
 VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VITE_API_BASE_URL
@@ -822,7 +831,7 @@ Ground truth is built from the native-text PDFs and **spot-checked by the produc
 | Time to interactive review screen after upload starts | ≤ 3 s (skeleton state) |
 | Cost per page | ≈ $0.01–0.02 |
 
-Render's free tier adds a 30–50 s cold start that is outside these targets; warm the service before a demo.
+Render's free tier adds a cold start that is outside these targets: **22.4 s** to the first `200`, measured twice after 20+ minutes idle (Task 13). Warm the service before a demo.
 
 Measured at the close of Phase 2: **~14 s mean, 22 s worst** for a complete single-pass
 extraction. Latency is `~4 s constant OCR + output tokens ÷ ~146 tok/s`, so it is driven by the
@@ -839,6 +848,16 @@ one payslip at a time: single-pass **p50 20.7 s, p90 46.2 s, max 66.8 s**; two-p
 decomposition's 146), not by the design: a scalars pass emits ~600 tokens. All eleven at once
 (cap 3): first form p50 27.9 s, all complete in 76 s. Cost per document: $0.031 single-pass,
 $0.045–0.051 two-pass (~1.5×).
+
+Measured on the **deployed** stack in Task 13 (2026-09-26, [`history/13`](./.agents/history/13-deploy-end-to-end.md)),
+the eleven samples plus A01 again in three sessions of four, each uploaded one file after another
+as the client does. **Four in parallel is missed**: 73.3 s, 32.4 s and 73.2 s against ≤ 25 s. The
+slowest payslip sets the wall clock. A01's tables pass alone ran 50–55 s, so both quads holding A01
+took about 73 s. Quad 2's 32.4 s includes 14.3 s of uploads from the test machine, which sent
+original bytes without the client's downscale. "Cap 3" counts analyses, and each payslip is two,
+so a quad is eight analyses at three at a time. Over the twelve: first form p50 11.9 s, p90 21.3 s,
+max 22.7 s; complete p50 17.9 s, max 68.0 s. Accuracy on the deployed stack was 270/273 scalars and
+518/548 line-item cells, within the noise band. The run cost about $0.68.
 
 ### 11.5 User-experience targets
 
@@ -901,6 +920,10 @@ $0.045–0.051 two-pass (~1.5×).
 >
 > **Status, 2026-09-26:** Task 10 navigation, unsaved-edit preservation and the phone keyboard
 > strip are implemented; pending review; M2 pending.
+>
+> **Status, 2026-09-26 (Task 13):** Task 10 is reviewed, browser-validated and deployed. M2 is
+> rescoped to Android Chrome, the only device available, and runs in the Task 13 device sitting;
+> the iOS `visualViewport` fallback stays unverified (ROADMAP §5).
 
 ### Phase 4 — Merge, export and polish
 
@@ -914,6 +937,10 @@ $0.045–0.051 two-pass (~1.5×).
 > **Status, 2026-09-26:** Task 11 merge is implemented, reviewed and validated, journey 9.10
 > included. Task 12 export and history is implemented, reviewed and validated, journey 9.11
 > included.
+>
+> **Status, 2026-09-26 (Task 13):** deploy and end-to-end verification implemented: the secret
+> guard runs in CI, the four-in-parallel target and cold starts are measured on the hosted stack
+> (§11.4). The §11.1 journey on a phone is the device sitting, pending.
 
 **Validation.** The §11.1 journey completed on the deployed app, on a phone.
 

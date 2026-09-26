@@ -1,6 +1,9 @@
 # Runs in the payslip-github mirror, where this directory is the repository root. Render deploys a
 # commit only after this workflow passes (`autoDeployTrigger: checksPass` in render.yaml).
 #
+# After the build, `npm run check:secrets` enforces that no secret reaches the client bundle (PRD
+# §9.2). CI has no .env, so the script's real-values check runs only locally.
+#
 # Not covered here, by design: the golden-set check and bake-off score need git-ignored personal
 # data, and the hosted Supabase integration test needs secrets. Both stay in /validate.
 name: CI
@@ -37,3 +40,4 @@ jobs:
       - run: npm run format:check
       - run: npm test
       - run: npm run build
+      - run: npm run check:secrets

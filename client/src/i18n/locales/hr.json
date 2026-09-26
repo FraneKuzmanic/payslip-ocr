@@ -193,6 +193,9 @@
     "processingPanel": "Ova se platna lista još čita. Obrazac će se otvoriti ovdje kad bude spreman.",
     "title": "Vaše platne liste",
     "progress": "{{ready}} od {{total}} spremno za pregled",
+    "confirmedCount_one": "{{count}} od {{total}} potvrđena",
+    "confirmedCount_few": "{{count}} od {{total}} potvrđene",
+    "confirmedCount_other": "{{count}} od {{total}} potvrđenih",
     "position": "Platna lista {{index}}",
     "waiting": "Čeka slanje",
     "uploading": "Slanje u tijeku",
@@ -305,7 +308,7 @@
     "errors": {
       "load": "Platne liste nije moguće učitati. Pokušajte ponovno.",
       "delete": "Ovu platnu listu nije moguće obrisati. Pokušajte ponovno.",
-      "export": "Izvoz nije bilo moguće stvoriti. Pokušajte ponovno."
+      "export": "Izvoz nije moguće izraditi. Pokušajte ponovno."
     }
   }
 }

@@ -7,6 +7,9 @@
 | **Source of truth** | [`PRD.md`](../PRD.md) · [`CONTEXT.md`](../CONTEXT.md) · [`docs/adr/0001`](../docs/adr/0001-payslip-extraction-architecture.md) |
 | **Tasks** | 13, numbered 01–13 |
 
+Once Task 13's device sitting is recorded, this roadmap is complete. Later work is planned as new
+iterations from the product owner's own testing, not as new rows in the §2 table.
+
 Tasks are sized to be planned, implemented and validated as one unit. Each is a meaningful slice
 of product, not a ticket — several touch schema, API and UI together, because splitting them
 would produce pieces that cannot be verified on their own.
@@ -93,10 +96,10 @@ investigation and is recorded with its reasoning.
 | 07 | Capture & multi-upload UI | ✅ complete, reviewed and validated; M3 core journey passed, sub-steps pending → [`history/07`](./history/07-capture-multi-upload.md) |
 | 08 | Source regions & document preview with highlighting | ✅ complete, reviewed and validated; M1 spot-check pending → [`history/08`](./history/08-source-regions-preview.md) |
 | 09 | Review form & two-way linking | ✅ complete, reviewed and validated; migration 2 applied (step P) → [`history/09`](./history/09-review-form-two-way-linking.md) |
-| 10 | Session navigation & phone layout | ✅ implemented and reviewed; M2 pending |
+| 10 | Session navigation & phone layout | ✅ implemented and reviewed; M2 (Android, plan 13 D5) in the Task 13 sitting → [`history/10`](./history/10-session-navigation-phone-layout.md) |
 | 11 | Merge payslips | ✅ complete, reviewed and validated; journey 9.10 passed → [`history/11`](./history/11-merge-payslips.md) |
 | 12 | Export & history | ✅ complete, reviewed and validated; journey 9.11 passed → [`history/12`](./history/12-export-history.md) |
-| 13 | Deploy & end-to-end verification | ⬜ not started |
+| 13 | Deploy & end-to-end verification | 🟡 implemented, reviewed and validated; commit, deploy, journey 9.12 (deployed) and device sitting pending → [`history/13`](./history/13-deploy-end-to-end.md) |
 
 ---
 
@@ -765,13 +768,40 @@ Added in execution: the upload size cap applies to the combined PDF too
 
 **Not in this task:** preview environments, rollback.
 
+**Added in planning (plan 13)**
+
+- D1: §11.1's "about ten seconds" is recorded against the accepted Task 05 miss, not gated.
+- D2: four in parallel measured on the deployed API: all 11 samples in three quads, plus A01 again.
+- D3: the secret guard is a committed script, `npm run check:secrets`, run in CI after the build.
+- D4: cold start measured twice and documented, with no warm-up code.
+- D5: one device sitting after the deploy: M5, M2 on Android Chrome, M3's sub-steps, M1 on desktop.
+- D6: the session header counts `review` and `confirmed` separately.
+- D7: the merge and history copy approved, with one hr fix.
+- D8: a concise operator README.
+- D9: stale docs corrected; PRD §6.7 shows the real tree.
+- D10: §5 is the single list of what stays open; the roadmap closes after the sitting.
+- D11: the implementing session stops before review, `/validate`, journeys and commit.
+- D12: the hosted run's account is kept as the corpus for the sitting, then deleted.
+
+Added in execution: the guard does not search for a server value equal to a `VITE_` value
+(`SUPABASE_PUBLISHABLE_KEY` is the same public key as `VITE_SUPABASE_PUBLISHABLE_KEY`, and the plan's
+rule would have failed on it), and its URL mode follows chunk references, so it scans the lazy
+pdf.js chunk and worker too.
+
 **Definition of done**
 
-- [ ] The §11.1 journey completes on the deployed app from a real phone.
-- [ ] Cold-start behaviour documented, with the warming step a demo operator needs.
-- [ ] No secret reaches the client bundle — only `VITE_`-prefixed values, publishable key
-      allow-listed by name.
-- [ ] `.env.example` holds names only.
+- [ ] The §11.1 journey completes on the deployed app from a real phone. **Pending the device
+      sitting** (M5), recorded in history/13.
+- [x] Cold-start behaviour documented, with the warming step a demo operator needs. Measured twice
+      (history/13); the README's "Before a demo" cites it.
+- [x] No secret reaches the client bundle — only `VITE_`-prefixed values, publishable key
+      allow-listed by name. `npm run check:secrets` in CI after the build, bite-checked on scratch
+      copies, and run against the live bundle (history/13).
+- [x] `.env.example` holds names only. The same script, rule 2.
+- [x] Four in parallel ≤25 s measured on the hosted stack (D2): **measured and missed**, 73.3 s,
+      32.4 s and 73.2 s. A01's tables pass (50–55 s) sets both quads it is in; quad 2 includes 14.3 s
+      of uploads. Recorded, not tuned (plan 13 notes); it joins §5 "Residual latency". Accuracy on
+      the deployed stack: 270/273 scalars, 518/548 cells, within the band. $0.68 (history/13).
 
 ---
 
@@ -782,10 +812,11 @@ each is run separately and its result recorded in the owning task's history file
 
 | # | Step | Owning task | Record |
 | --- | --- | --- | --- |
-| M1 | Visual spot-check that outlines sit on their values, all 11 golden-set documents, image and PDF. The Task 08 review session uploads them and leaves them in place (plan 08 D13) | 08 | Table in `history/08-*.md`: sample, verdict, notes |
-| M2 | Real-iPhone keyboard behaviour — field focused, preview collapsed, value and source visible together; Safari `visualViewport` fallback | 10 | Device, iOS version, screenshots, verdict |
-| M3 | Real-phone capture journey — camera denial fallback, retake, rotation, one-handed reach on 44 px controls | 07 | Device, verdict per sub-step |
+| M1 | Visual spot-check that outlines sit on their values, all 11 golden-set documents, image and PDF. **In the Task 13 sitting, on desktop, in the plan 13 D12 account** | 08 | Table in `history/13-*.md`: sample, verdict, notes |
+| M2 | Keyboard behaviour on **Android Chrome** (plan 13 D5) — field focused, preview collapsed to the 64 px strip, value and source visible together. **iOS unverified, no device** | 10 | Device, Android and Chrome versions, verdict, in `history/13-*.md` |
+| M3 | Real-phone capture journey — camera denial fallback, retake, rotation, one-handed reach on 48 px controls. **In the Task 13 sitting** | 07 | Device, verdict per sub-step, in `history/13-*.md` |
 | M4 | Golden-set ground truth spot-check after any fixture change | any | Confirmation in the history file |
+| M5 | PRD §11.1 on the deployed app from a real phone (plan 13 D5) | 13 | Device, per-step verdict and the timings table in `history/13-*.md` |
 
 ---
 
@@ -793,14 +824,17 @@ each is run separately and its result recorded in the owning task's history file
 
 | Risk | Status | Where it bites |
 | --- | --- | --- |
-| **Residual latency** — two-pass first form **p50 12.2 s, mean 13.3 s, p90 15.1 s** against ≤10 s (Task 05). Complete form ≤25 s holds at the median (14.0 s) but not for A01, A04, B02 or E01. Single-pass on the same path p50 20.7 s. Concurrency is **not** the cause (single-pass A01 66.8 s alone against 66.3 s with three in flight); the service's generation rate is: ~70–100 tok/s on 2026-09-24/25 against up to 245 on 2026-09-20, with 500K TPM of quota unused | Open, accepted for now; **the product owner expects it improved in a later phase** | A ~600-token scalars pass cannot beat 10 s at that rate. The levers: split the scalars pass further (history/05 option B), now that concurrent analyses cost nothing measurable; re-measure on a faster day first. Needs its own plan and paid runs |
+| **Residual latency** — two-pass first form **p50 12.2 s, mean 13.3 s, p90 15.1 s** against ≤10 s (Task 05). Complete form ≤25 s holds at the median (14.0 s) but not for A01, A04, B02 or E01. Single-pass on the same path p50 20.7 s. Concurrency is **not** the cause (single-pass A01 66.8 s alone against 66.3 s with three in flight); the service's generation rate is: ~70–100 tok/s on 2026-09-24/25 against up to 245 on 2026-09-20, with 500K TPM of quota unused. **Deployed (Task 13):** first form p50 11.9 s, max 22.7 s; complete p50 17.9 s; **four in parallel 73.3 / 32.4 / 73.2 s against ≤25 s**, set by the slowest payslip, A01, whose tables pass alone runs 50–55 s | Open, accepted for now; **the product owner expects it improved in a later phase** | A ~600-token scalars pass cannot beat 10 s at that rate. The levers: split the scalars pass further (history/05 option B), now that concurrent analyses cost nothing measurable; re-measure on a faster day first. Needs its own plan and paid runs |
 | **Cost per page above target** — PRD §11.4 says ≈ $0.01–0.02. Measured: bake-off ~$0.021, single-pass R1 $0.026, two-pass $0.038–0.043 (Task 05). Most of the single-pass rise is input tokens that were not cached | Open, found in the Task 05 audit | Any further latency split (option B) adds another analysis per document and makes it worse; weigh the two together |
 | **Submit stall** — intermittent ~29 s server-side stall on `:analyzeBinary` | Mitigated, not fixed | Worth an Azure support ticket; the retry costs a duplicate analysis |
 | **Small corpus** — 11 payslips, 7 layouts, no more available | Accepted | Every accuracy figure describes these seven vendors and no eighth |
 | **Hand-written rule creep** — a Croatian parser growing beneath a generic model | Watch | A growing count of deterministic post-processing rules is the signal to revisit the engine, not progress |
-| **Phone layout has no prior art** — every document-AI review UI found is desktop-only | Open | Task 10 implemented it; browser review and M2 real-iPhone verification remain the test |
+| **Phone layout has no prior art** — every document-AI review UI found is desktop-only | Open until the Task 13 sitting | Task 10 implemented it; browser review passed. M2 on Android Chrome is the remaining test; iOS is the row below |
+| **iOS keyboard fallback unverified** — Safari and Chrome on iOS do not honour `interactive-widget=resizes-content`, so the phone strip relies on the `visualViewport` fallback there | Open, no device (plan 13 D5) | Unit-tested and simulated in Chromium only. Anyone demoing on an iPhone is the first real test |
+| **Mirrored EXIF orientations** (2, 4, 5, 7) are not applied when merge converts an image to a PDF page | Accepted (history/11 open item 2) | Phone cameras do not write them; such a page stays as drawn |
+| **Three suggestion pairs for a three-page payslip** photographed as three files | Accepted (history/11 open item 3, plan 11 D5) | After one merge, the re-extracted payslip pairs with the third. By design, but noisy |
 | **Forked PDF library** — `@cantoo/pdf-lib` replaces `pdf-lib` because only the fork decrypts permissions-only PDFs (plan 11 D1) | Watch | A fork's maintenance is the risk. Upload validation and merge both depend on it; `source-file.test.ts` and `payslip-merge.test.ts` are the regression checks |
-| **Inherited gaps** — no password reset, unverified emails, Render cold starts | Accepted | Documented, not fixed. CI exists since Task 01b |
+| **Inherited gaps** — no password reset, unverified emails, Render cold starts (22.3–22.4 s, Task 13) | Accepted | Documented, not fixed. CI exists since Task 01b |
 | **Direct-write gap** — a signed-in user can update their own payslip's `status` or `canonical_data` through PostgREST, bypassing the API | **Closed** (Task 09 step P, 2026-09-26) | Every write, retry included, goes through a `security definer` function. `update` is revoked and `insert` narrowed to the six upload columns (migration `20260926081337`); `direct-writes.integration.ts` proves both on every run. The functions still accept any `jsonb`, so a direct RPC can store fields that fail the canonical schema, on the caller's own payslip only |
 | **Service source on the wrong text** — D01's `paymentDate` carries a service source on the employer address and is outlined there faithfully (history/08). Grounding checks the whole page, not the region | Open (Task 09 D15) | Needs its own measurement over the recordings: whether the OCR words inside each region contain the printed value |
 | **In-memory extraction queue** — upload bytes wait in process memory; a redeploy drops in-flight work | Accepted for a demo | Lost jobs fail on the next read after 15 min and are retryable (Task 04 D3). Worst case 10 × 10 MB per session on a 512 MB instance; Task 07's downscale shrinks images |
