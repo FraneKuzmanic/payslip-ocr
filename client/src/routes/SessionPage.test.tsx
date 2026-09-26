@@ -23,9 +23,23 @@ vi.mock("../api/client", () => {
 let batchItems: readonly BatchItem[] = [];
 const dismiss = vi.fn();
 
-vi.mock("../review/PayslipPreview", () => ({
-  PayslipPreview: ({ payslipId, tablesStatus }: { payslipId: string; tablesStatus: string }) => (
-    <p data-testid="preview">{`${payslipId} ${tablesStatus}`}</p>
+// The review reports unsaved edits through `onDirtyChange`; the stub offers it as a button.
+vi.mock("../review/PayslipReview", () => ({
+  PayslipReview: ({
+    payslipId,
+    tablesStatus,
+    onDirtyChange,
+  }: {
+    payslipId: string;
+    tablesStatus: string;
+    onDirtyChange: (dirty: boolean) => void;
+  }) => (
+    <>
+      <p data-testid="preview">{`${payslipId} ${tablesStatus}`}</p>
+      <button type="button" onClick={() => onDirtyChange(true)}>
+        make dirty
+      </button>
+    </>
   ),
 }));
 
@@ -336,7 +350,7 @@ describe("SessionPage", () => {
   });
 });
 
-describe("SessionPage document preview (Task 08 D1)", () => {
+describe("SessionPage review (Task 08 D1, Task 09 D11)", () => {
   const readable = () =>
     session(
       summary("ready", { status: "review", tablesStatus: "ready" }),
@@ -344,9 +358,9 @@ describe("SessionPage document preview (Task 08 D1)", () => {
       summary("broken", { status: "failed", failureReason: "unreadable_document" }),
       summary("done", { status: "confirmed", tablesStatus: "ready" }),
     );
-  const show = { name: "Show document" };
+  const show = { name: "Review" };
 
-  it("offers Show document only on payslips with a readable form", async () => {
+  it("offers Review only on payslips with a readable form", async () => {
     mockedDetail.mockResolvedValue(readable());
     renderPage();
     await flush();
@@ -375,7 +389,7 @@ describe("SessionPage document preview (Task 08 D1)", () => {
     expect(screen.getByTestId("preview")).toHaveTextContent("ready ready");
     const heading = screen.getByRole("heading", { name: "Payslip 1 · ready.jpg" });
     expect(document.activeElement).toBe(heading);
-    const hide = within(rows()[0]!).getByRole("button", { name: "Hide document" });
+    const hide = within(rows()[0]!).getByRole("button", { name: "Hide review" });
     expect(hide).toHaveAttribute("aria-expanded", "true");
 
     fireEvent.click(hide);
@@ -435,5 +449,89 @@ describe("SessionPage document preview (Task 08 D1)", () => {
     await tick();
 
     expect(screen.getByTestId("preview")).toHaveTextContent("ready ready");
+  });
+});
+
+/** Whether the page asked the browser to confirm leaving. */
+function unload(): boolean {
+  const event = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(event);
+  return event.defaultPrevented;
+}
+
+describe("SessionPage unsaved edits (Task 09 D13)", () => {
+  const two = () =>
+    session(
+      summary("ready", { status: "review", tablesStatus: "ready" }),
+      summary("done", { status: "confirmed", tablesStatus: "ready" }),
+    );
+  const review = { name: "Review" };
+
+  it("asks before switching away from a dirty review; Keep editing stays", async () => {
+    mockedDetail.mockResolvedValue(two());
+    renderPage("?payslip=ready");
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "make dirty" }));
+
+    fireEvent.click(within(rows()[1]!).getByRole("button", review));
+    await flush();
+
+    const dialog = screen.getByRole("dialog", { name: "Discard unsaved changes?" });
+    expect(dialog).toHaveTextContent("Your changes to this payslip will be lost.");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Keep editing" }));
+    await flush();
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent("?payslip=ready");
+  });
+
+  it("switches once the user discards", async () => {
+    mockedDetail.mockResolvedValue(two());
+    renderPage("?payslip=ready");
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "make dirty" }));
+
+    fireEvent.click(within(rows()[1]!).getByRole("button", review));
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
+    await flush();
+
+    expect(screen.getByTestId("location")).toHaveTextContent("?payslip=done");
+    expect(screen.getByTestId("preview")).toHaveTextContent("done ready");
+  });
+
+  it("asks before closing a dirty review too", async () => {
+    mockedDetail.mockResolvedValue(two());
+    renderPage("?payslip=ready");
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "make dirty" }));
+
+    fireEvent.click(within(rows()[0]!).getByRole("button", { name: "Hide review" }));
+    await flush();
+
+    expect(screen.getByRole("dialog", { name: "Discard unsaved changes?" })).toBeInTheDocument();
+    expect(screen.getByTestId("preview")).toBeInTheDocument();
+  });
+
+  it("switches without asking while the review is clean", async () => {
+    mockedDetail.mockResolvedValue(two());
+    renderPage("?payslip=ready");
+    await flush();
+
+    fireEvent.click(within(rows()[1]!).getByRole("button", review));
+    await flush();
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent("?payslip=done");
+  });
+
+  it("guards reload and closing the tab only while dirty", async () => {
+    mockedDetail.mockResolvedValue(two());
+    renderPage("?payslip=ready");
+    await flush();
+    expect(unload()).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "make dirty" }));
+    await flush();
+    expect(unload()).toBe(true);
   });
 });

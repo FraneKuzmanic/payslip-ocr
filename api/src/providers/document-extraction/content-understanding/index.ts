@@ -2,8 +2,9 @@ import { config } from "../../../config.js";
 import type { DocumentExtractionProvider } from "../types.js";
 import { ContentUnderstandingProvider } from "./provider.js";
 
-// The regions route's only entry into this module (Task 08).
+// The payslips routes' only entries into this module (Tasks 08 and 09).
 export { projectSourceRegions } from "./regions.js";
+export { originalExtraction } from "./original.js";
 
 /**
  * The application's extraction provider, built from `config`. Reading the configuration here

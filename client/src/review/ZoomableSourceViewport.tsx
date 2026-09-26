@@ -86,6 +86,7 @@ export function ZoomableSourceViewport({
   const [viewport, setViewport] = useState<Viewport>({ width: 0, height: 0 });
   const [view, setView] = useState<ZoomState>(FIT);
   const viewportNode = useRef<HTMLDivElement | null>(null);
+  const surfaceNode = useRef<HTMLDivElement | null>(null);
   const drag = useRef<{
     pointerId: number;
     startX: number;
@@ -126,6 +127,21 @@ export function ZoomableSourceViewport({
   useEffect(() => {
     setInspected(null);
   }, [page]);
+
+  // Escape closes the popover (Task 09 D9). It takes no focus when it opens, so focus is moved
+  // only if the user had tabbed into it; then it goes to the viewport rather than the page body.
+  useEffect(() => {
+    if (inspected === null) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      const popover = document.activeElement?.closest('[role="dialog"]');
+      const focusWasInside = popover != null && surfaceNode.current?.contains(popover) === true;
+      setInspected(null);
+      if (focusWasInside) viewportNode.current?.focus();
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [inspected]);
 
   const region = findRegion(regions, page, activeField);
 
@@ -206,9 +222,11 @@ export function ZoomableSourceViewport({
 
       {/* Relative so the popover can be placed against the surface without being clipped by the
           viewport's own `overflow-hidden`. */}
-      <div className="relative">
+      <div ref={surfaceNode} className="relative">
         <div
           ref={measureRef}
+          // Focusable by script only, so focus has somewhere to land when the popover closes.
+          tabIndex={-1}
           // The width is computed from the height budget rather than left to shrink-to-fit, so
           // `height = width / ratio` lands exactly on that budget and a tall document is never
           // stretched. See iteration 15 — this was a real, visible distortion bug.

@@ -1,8 +1,11 @@
 import { Router } from "express";
 import { z } from "zod";
 import {
+  EDITABLE_PAYSLIP_STATUSES,
   isRetryableFailure,
   listPayslipsQuerySchema,
+  updatePayslipRequestSchema,
+  type ConfirmPayslipResponse,
   type ListPayslipsResponse,
   type PayslipDetailResponse,
   type RetryPayslipResponse,
@@ -10,9 +13,12 @@ import {
   type SourceRegionsResponse,
 } from "@payslip/shared";
 import { HttpError } from "../middleware/error-handler.js";
-import { projectSourceRegions } from "../providers/document-extraction/content-understanding/index.js";
+import {
+  originalExtraction,
+  projectSourceRegions,
+} from "../providers/document-extraction/content-understanding/index.js";
 import { authenticated } from "../middleware/require-auth.js";
-import { PayslipRepository } from "../repositories/payslips.js";
+import { PayslipRepository, type PayslipDetailState } from "../repositories/payslips.js";
 import { STALE_EXTRACTION_MS, type ExtractionRunner } from "../services/payslip-extraction.js";
 import {
   SOURCE_URL_TTL_SECONDS,
@@ -20,8 +26,10 @@ import {
   downloadSource,
   sourceObjectPath,
 } from "../storage/payslip-sources.js";
+import { TABLE_FIELDS, editedFields } from "../validation/edited.js";
 
 const idSchema = z.uuid();
+const EDITABLE_STATUSES: readonly string[] = EDITABLE_PAYSLIP_STATUSES;
 
 export function createPayslipsRouter(extraction: ExtractionRunner): Router {
   const router = Router();
@@ -77,7 +85,7 @@ export function createPayslipsRouter(extraction: ExtractionRunner): Router {
       const id = idSchema.safeParse(req.params["id"]);
       if (!id.success) throw new HttpError(400, "invalid_request");
 
-      const source = await new PayslipRepository(auth.client, auth.userId).findRegionSource(
+      const source = await new PayslipRepository(auth.client, auth.userId).findRetainedResponses(
         id.data,
       );
       if (source === null) throw new HttpError(404, "not_found");
@@ -119,16 +127,89 @@ export function createPayslipsRouter(extraction: ExtractionRunner): Router {
       const bytes = await downloadSource(auth.client, sourceObjectPath(auth.userId, id.data));
 
       const retried = await repository.beginRetry(id.data);
-      if (retried === null) throw new HttpError(409, "retry_not_allowed");
+      if (!retried) throw new HttpError(409, "retry_not_allowed");
 
       void extraction.enqueue({
-        payslipId: retried.id,
+        payslipId: id.data,
         repository,
         bytes,
         contentType: source.contentType,
       });
-      const body: RetryPayslipResponse = { id: retried.id, status: retried.status };
+      const body: RetryPayslipResponse = { id: id.data, status: "processing" };
       res.status(202).json(body);
+    }),
+  );
+
+  /**
+   * PRD §10.6. Merges the changed keys; a line-item table is replaced whole. The edited paths are
+   * computed against the original machine extraction, re-mapped from the retained responses
+   * (Task 09 D4), over the full merged state, so typing an original value back clears its mark.
+   * Warnings are computed on read, so the response carries them recomputed.
+   *
+   * The checks here are fast refusals; `update_payslip_fields` enforces them again atomically, in
+   * case the tables pass lands between this read and the write (D10).
+   */
+  router.patch(
+    "/:id",
+    authenticated(async (req, res, auth) => {
+      const id = idSchema.safeParse(req.params["id"]);
+      if (!id.success) throw new HttpError(400, "invalid_request");
+      const patch = updatePayslipRequestSchema.safeParse(req.body);
+      if (!patch.success) throw new HttpError(400, "invalid_request");
+
+      const repository = new PayslipRepository(auth.client, auth.userId);
+      const retained = await repository.findRetainedResponses(id.data);
+      if (retained === null) throw new HttpError(404, "not_found");
+      const touchesTables = TABLE_FIELDS.some((table) => table in patch.data);
+      const refusal = (state: { status: string; tablesStatus: string }) =>
+        !EDITABLE_STATUSES.includes(state.status)
+          ? new HttpError(409, "edit_not_allowed")
+          : touchesTables && state.tablesStatus === "pending"
+            ? new HttpError(409, "tables_pending")
+            : null;
+      const refused = refusal(retained);
+      if (refused !== null) throw refused;
+
+      const edited = editedFields(
+        { ...retained.fields, ...patch.data },
+        originalExtraction(retained.rawProviderResult),
+      );
+      if (!(await repository.updateFields(id.data, patch.data, edited))) {
+        // The state changed since the read. One re-read says why.
+        const now = await repository.findDetailState(id.data);
+        if (now === null) throw new HttpError(404, "not_found");
+        throw (
+          refusal({ status: now.payslip.status, tablesStatus: now.payslip.tablesStatus }) ??
+          new HttpError(409, "edit_not_allowed")
+        );
+      }
+
+      const state = await repository.findDetailState(id.data);
+      if (state === null) throw new HttpError(404, "not_found");
+      res.json(detailBody(state));
+    }),
+  );
+
+  /**
+   * PRD §10.7. `review` → `confirmed`, refused while the tables pass is pending (Task 05). A
+   * missing critical field or a warning never blocks it. Idempotent: confirming again answers 200
+   * with the first `confirmedAt`.
+   */
+  router.post(
+    "/:id/confirm",
+    authenticated(async (req, res, auth) => {
+      const id = idSchema.safeParse(req.params["id"]);
+      if (!id.success) throw new HttpError(400, "invalid_request");
+
+      const repository = new PayslipRepository(auth.client, auth.userId);
+      if ((await repository.findDetailState(id.data)) === null) {
+        throw new HttpError(404, "not_found");
+      }
+      const confirmedAt = await repository.confirm(id.data);
+      if (confirmedAt === null) throw new HttpError(409, "confirm_not_allowed");
+
+      const body: ConfirmPayslipResponse = { id: id.data, status: "confirmed", confirmedAt };
+      res.json(body);
     }),
   );
 
@@ -149,16 +230,7 @@ export function createPayslipsRouter(extraction: ExtractionRunner): Router {
       await repository.failStaleExtractions(new Date(Date.now() - STALE_EXTRACTION_MS));
       const state = await repository.findDetailState(id.data);
       if (state === null) throw new HttpError(404, "not_found");
-
-      const body: PayslipDetailResponse = {
-        ...state.payslip,
-        lowConfidenceFields: state.lowConfidenceFields,
-        unreadableFields: state.unreadableFields,
-        ungroundableFields: state.ungroundableFields,
-        editedFields: state.editedFields,
-        failureReason: state.failureReason,
-      };
-      res.json(body);
+      res.json(detailBody(state));
     }),
   );
 
@@ -170,10 +242,22 @@ export function createPayslipsRouter(extraction: ExtractionRunner): Router {
       if (!id.success) throw new HttpError(400, "invalid_request");
 
       const deleted = await new PayslipRepository(auth.client, auth.userId).softDelete(id.data);
-      if (deleted === null) throw new HttpError(404, "not_found");
+      if (!deleted) throw new HttpError(404, "not_found");
       res.status(204).end();
     }),
   );
 
   return router;
+}
+
+/** PRD §10.5's shape, shared by `GET /:id` and `PATCH /:id`. */
+function detailBody(state: PayslipDetailState): PayslipDetailResponse {
+  return {
+    ...state.payslip,
+    lowConfidenceFields: state.lowConfidenceFields,
+    unreadableFields: state.unreadableFields,
+    ungroundableFields: state.ungroundableFields,
+    editedFields: state.editedFields,
+    failureReason: state.failureReason,
+  };
 }

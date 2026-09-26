@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import {
   MAX_PAYSLIPS_PER_SESSION,
+  confirmPayslipResponseSchema,
   createPayslipResponseSchema,
   createSessionResponseSchema,
   listPayslipsResponseSchema,
@@ -18,6 +19,7 @@ import { createApp } from "../app.js";
 import { config } from "../config.js";
 import type { Database } from "../database.types.js";
 import {
+  mappedPass,
   regionsPassBody,
   rows,
   sourced,
@@ -194,7 +196,9 @@ describe("sessions and payslips against the hosted project", () => {
     );
   });
 
-  // The API never writes these columns, but the user's own grant does, straight to PostgREST.
+  // The API never writes these columns, but the user's own grant did, straight to PostgREST. Until
+  // Task 09's migration 2 the cap trigger refuses these (`session_full`); after it, the missing
+  // UPDATE grant does (a permission error). Either way the write is refused, which is what counts.
   it.each([
     ["restoring a soft-deleted payslip", () => fullSessionPayslipIds[0]!, { deleted_at: null }],
     ["moving a live payslip in", () => pdfPayslipId, () => ({ session_id: fullSessionId })],
@@ -204,7 +208,7 @@ describe("sessions and payslips against the hosted project", () => {
       .update(typeof change === "function" ? change() : change)
       .eq("id", id());
 
-    expect(error?.message).toBe("session_full");
+    expect(error).not.toBeNull();
     const detail = sessionDetailResponseSchema.parse(
       (await getAsA(`/api/sessions/${fullSessionId}`)).body,
     );
@@ -284,6 +288,8 @@ describe("another user", () => {
       request(app).get(`/api/payslips/${jpegPayslipId}/regions`),
       request(app).delete(`/api/payslips/${jpegPayslipId}`),
       request(app).post(`/api/payslips/${jpegPayslipId}/retry`),
+      request(app).patch(`/api/payslips/${jpegPayslipId}`).send({ netoPlaca: "1.00" }),
+      request(app).post(`/api/payslips/${jpegPayslipId}/confirm`),
     ];
 
     for (const attempt of attempts) {
@@ -303,12 +309,12 @@ describe("another user", () => {
     expect(detail.payslips.map((payslip) => payslip.id)).toEqual([jpegPayslipId, pdfPayslipId]);
   });
 
-  it("cannot update the first user's payslip through the repository", async () => {
-    const updated = await new PayslipRepository(userB, userBId).update(jpegPayslipId, {
-      deletedAt: new Date().toISOString(),
-    });
+  it("cannot write to the first user's payslip through the repository's functions", async () => {
+    const intruder = new PayslipRepository(userB, userBId);
 
-    expect(updated).toBeNull();
+    expect(await intruder.softDelete(jpegPayslipId)).toBe(false);
+    expect(await intruder.updateFields(jpegPayslipId, { netoPlaca: "1.00" }, [])).toBe(false);
+    expect(await intruder.confirm(jpegPayslipId)).toBeNull();
     expect((await getAsA(`/api/payslips/${jpegPayslipId}`)).status).toBe(200);
   });
 
@@ -780,6 +786,165 @@ describe("source regions (Task 08)", () => {
   });
 });
 
+describe("editing and confirming (Task 09)", () => {
+  let editSessionId = "";
+  const repositoryA = () => new PayslipRepository(userA, userAId);
+  // Fixture bodies mapped by the real mapper, so the stored fields are what `originalExtraction`
+  // re-maps from the retained body and an untouched value is never marked edited.
+  const scalarsBody = regionsPassBody({
+    employerName: cell("Poslodavac d.o.o."),
+    employeeName: cell("Ana Horvat"),
+    employeeOib: cell("00000000010"),
+    period: cell("03/2025"),
+    brutoPlaca: cell("1.300,00"),
+    doprinosiIzPlace: cell("260,00"),
+    dohodak: cell("1.040,00"),
+    netoPlaca: cell("1.040,00"),
+  });
+  const tablesBody = regionsPassBody({
+    // Row 0's amount is low confidence; row 1's cannot be read.
+    obustave: rows(
+      { naziv: cell("KREDIT"), iznos: cell("100,00", 0.2) },
+      { naziv: cell("SINDIKAT"), iznos: cell("abc") },
+    ),
+  });
+
+  beforeAll(async () => {
+    // Its own session: the others are near the ten-payslip cap.
+    const created = await request(app)
+      .post("/api/sessions")
+      .set("Authorization", `Bearer ${tokenA}`);
+    editSessionId = createSessionResponseSchema.parse(created.body).id;
+  });
+
+  /** A payslip whose scalars pass has landed, and its tables pass too unless `pending`. */
+  async function extracted(tables: "ready" | "pending" | "processing" = "ready"): Promise<string> {
+    const { data, error } = await userA
+      .from("payslips")
+      .insert({
+        session_id: editSessionId,
+        user_id: userAId,
+        original_filename: "edit.pdf",
+        content_type: "application/pdf",
+        page_count: 1,
+      })
+      .select("id")
+      .single();
+    if (error) throw new Error("Could not insert a payslip to edit.");
+    if (tables === "processing") return data.id;
+
+    const scalars = mappedPass(scalarsBody, "scalars");
+    expect(await repositoryA().completeExtractionPass(data.id, "scalars", scalars)).toBe(true);
+    if (tables === "ready") {
+      const landed = mappedPass(tablesBody, "tables");
+      expect(await repositoryA().completeExtractionPass(data.id, "tables", landed)).toBe(true);
+    }
+    return data.id;
+  }
+
+  const patch = (id: string, body: object) =>
+    request(app).patch(`/api/payslips/${id}`).set("Authorization", `Bearer ${tokenA}`).send(body);
+  const confirm = (id: string) =>
+    request(app).post(`/api/payslips/${id}/confirm`).set("Authorization", `Bearer ${tokenA}`);
+  const detailOf = async (id: string) =>
+    payslipDetailResponseSchema.parse((await getAsA(`/api/payslips/${id}`)).body);
+
+  it("stores an edited scalar, marks it edited, recomputes warnings, and clears the mark on revert", async () => {
+    const id = await extracted();
+    const before = await detailOf(id);
+    expect(before.editedFields).toEqual([]);
+    expect(before.ungroundableFields).toContain("dohodak");
+    expect(codes(before)).not.toContain("dohodak_mismatch");
+
+    const edited = await patch(id, { dohodak: "1040.01" });
+    expect(edited.status).toBe(200);
+    const after = payslipDetailResponseSchema.parse(edited.body);
+    expect(after).toMatchObject({ dohodak: "1040.01", editedFields: ["dohodak"] });
+    expect(codes(after)).toContain("dohodak_mismatch");
+    // Task 09 D6: the edited value drops its machine signals.
+    expect(after.ungroundableFields).not.toContain("dohodak");
+
+    const reverted = payslipDetailResponseSchema.parse(
+      (await patch(id, { dohodak: "1040.00" })).body,
+    );
+    expect(reverted.editedFields).toEqual([]);
+    expect(codes(reverted)).not.toContain("dohodak_mismatch");
+  });
+
+  it("marks a removed row's successors edited and drops that table's machine signals", async () => {
+    const id = await extracted();
+    const before = await detailOf(id);
+    expect(before.lowConfidenceFields).toContain("obustave.0.iznos");
+    expect(before.unreadableFields).toContain("obustave.1.iznos");
+
+    const response = await patch(id, { obustave: [{ naziv: "SINDIKAT", iznos: null }] });
+    expect(response.status).toBe(200);
+    const after = payslipDetailResponseSchema.parse(response.body);
+    expect(after.editedFields).toEqual([
+      "obustave.0.naziv",
+      "obustave.0.vjerovnik",
+      "obustave.0.iznos",
+      "obustave.0.ostatakSalda",
+      "obustave.0.brojRata",
+    ]);
+    const signals = [...after.lowConfidenceFields, ...after.unreadableFields];
+    expect(signals.filter((path) => path.startsWith("obustave."))).toEqual([]);
+  });
+
+  it("refuses a table edit while the tables pass is pending, in the route and the function", async () => {
+    const id = await extracted("pending");
+
+    const response = await patch(id, { obustave: [] });
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({ error: { code: "tables_pending" } });
+    expect(await repositoryA().updateFields(id, { obustave: [] }, [])).toBe(false);
+    expect((await detailOf(id)).obustave).toBeUndefined();
+
+    // A scalar edit is still allowed while pending.
+    expect((await patch(id, { netoPlaca: "1.00" })).status).toBe(200);
+  });
+
+  it("refuses a body with a key the user may not set", async () => {
+    const response = await patch(await extracted(), { userId: userBId });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual({ error: { code: "invalid_request" } });
+  });
+
+  it("refuses an edit to a payslip still processing", async () => {
+    const response = await patch(await extracted("processing"), { netoPlaca: "1.00" });
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({ error: { code: "edit_not_allowed" } });
+  });
+
+  it("refuses to confirm while the tables pass is pending", async () => {
+    const response = await confirm(await extracted("pending"));
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({ error: { code: "confirm_not_allowed" } });
+  });
+
+  it("confirms once, idempotently, and stays confirmed through a later edit", async () => {
+    const id = await extracted();
+
+    const first = await confirm(id);
+    expect(first.status).toBe(200);
+    const confirmed = confirmPayslipResponseSchema.parse(first.body);
+    expect(confirmed).toMatchObject({ id, status: "confirmed" });
+
+    const second = confirmPayslipResponseSchema.parse((await confirm(id)).body);
+    expect(second.confirmedAt).toBe(confirmed.confirmedAt);
+
+    const edited = await patch(id, { employerName: "Drugi poslodavac d.o.o." });
+    expect(edited.status).toBe(200);
+    expect(payslipDetailResponseSchema.parse(edited.body)).toMatchObject({
+      status: "confirmed",
+      editedFields: ["employerName"],
+    });
+  });
+});
+
 describe("soft delete", () => {
   it("removes the payslip from every list and read, and a second delete is 404", async () => {
     const deleted = await request(app)
@@ -803,6 +968,15 @@ describe("soft delete", () => {
     expect(again.status).toBe(404);
   });
 });
+
+/** A fixture field with a source on page 1 and the given confidence. */
+function cell(value: string, confidence = 0.9) {
+  return { ...sourced(value, "D(1,1,1,2,1,2,2,1,2)"), confidence };
+}
+
+function codes(detail: { warnings: { code: string }[] }): string[] {
+  return detail.warnings.map((warning) => warning.code);
+}
 
 /** One extraction pass's write, with minimal metadata. */
 function extractionPass(fields: object, metadata: object = {}) {

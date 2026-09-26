@@ -1,6 +1,7 @@
 import {
   HEALTH_PATH,
   apiErrorResponseSchema,
+  confirmPayslipResponseSchema,
   createPayslipResponseSchema,
   createSessionResponseSchema,
   payslipDetailResponseSchema,
@@ -8,6 +9,7 @@ import {
   sessionDetailResponseSchema,
   sourceDocumentResponseSchema,
   sourceRegionsResponseSchema,
+  type ConfirmPayslipResponse,
   type CreatePayslipResponse,
   type CreateSessionResponse,
   type HealthResponse,
@@ -16,6 +18,7 @@ import {
   type SessionDetailResponse,
   type SourceDocumentResponse,
   type SourceRegionsResponse,
+  type UpdatePayslipRequest,
 } from "@payslip/shared";
 import { supabase } from "../lib/supabase";
 
@@ -168,6 +171,31 @@ export async function retryPayslip(id: string): Promise<RetryPayslipResponse> {
     method: "POST",
   });
   return await parseResponse(retryPayslipResponseSchema, response, "POST /api/payslips/:id/retry");
+}
+
+/** PRD §10.6: saves the changed fields and answers with the recomputed detail. */
+export async function updatePayslip(
+  id: string,
+  body: UpdatePayslipRequest,
+): Promise<PayslipDetailResponse> {
+  const response = await request(`/api/payslips/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return await parseResponse(payslipDetailResponseSchema, response, "PATCH /api/payslips/:id");
+}
+
+/** PRD §10.7: idempotent, so a second confirm answers with the first `confirmedAt`. */
+export async function confirmPayslip(id: string): Promise<ConfirmPayslipResponse> {
+  const response = await request(`/api/payslips/${encodeURIComponent(id)}/confirm`, {
+    method: "POST",
+  });
+  return await parseResponse(
+    confirmPayslipResponseSchema,
+    response,
+    "POST /api/payslips/:id/confirm",
+  );
 }
 
 export async function getPayslipSource(id: string): Promise<SourceDocumentResponse> {

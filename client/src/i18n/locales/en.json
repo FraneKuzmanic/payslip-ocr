@@ -95,8 +95,35 @@
     "imageUnavailable": "This browser cannot show this image. Open it in a new tab or view it on another device.",
     "errors": {
       "load": "The payslip could not be loaded. Try again.",
-      "refresh": "The highlights could not be updated, so some may be missing. Try again."
-    }
+      "refresh": "The highlights could not be updated, so some may be missing. Try again.",
+      "amount": "Enter an amount, such as 1234.56.",
+      "quantity": "Enter a number, such as 176.5.",
+      "date": "Enter a date as YYYY-MM-DD.",
+      "period": "Enter a period as YYYY-MM.",
+      "save": "Your changes could not be saved. Try again.",
+      "confirm": "The payslip could not be confirmed. Try again.",
+      "tablesPending": "The line items are still being read, so they cannot be changed yet.",
+      "editNotAllowed": "This payslip can no longer be edited. Reload the page.",
+      "confirmNotAllowed": "This payslip cannot be confirmed yet."
+    },
+    "save": "Save changes",
+    "saving": "Saving…",
+    "saved": "Changes saved.",
+    "unsaved": "Unsaved changes",
+    "confirm": "Confirm payslip",
+    "confirming": "Confirming…",
+    "confirmed": "Payslip confirmed.",
+    "confirmBlockedDirty": "Save your changes before confirming.",
+    "confirmBlockedPending": "You can confirm once the line items have been read.",
+    "tablesFailed": "The line items could not be read. Add them by hand if you need them.",
+    "addRow": "Add row",
+    "removeRow": "Remove row {{row}}",
+    "rowLabel": "{{section}} row {{row}}",
+    "invalidForm": "Some values could not be read. Fix the marked fields, then save.",
+    "discardTitle": "Discard unsaved changes?",
+    "discardDescription": "Your changes to this payslip will be lost.",
+    "discard": "Discard changes",
+    "keepEditing": "Keep editing"
   },
   "auth": {
     "signIn": "Sign in",
@@ -170,7 +197,9 @@
     "loadError": "The session could not be loaded.",
     "retryError": "The retry could not be started. Check your connection and try again.",
     "showDocument": "Show document",
-    "hideDocument": "Hide document"
+    "hideDocument": "Hide document",
+    "review": "Review",
+    "hideReview": "Hide review"
   },
   "payslipStatus": {
     "processing": "Reading the payslip",
@@ -187,5 +216,16 @@
     "unreadable_document": "The document could not be read. Try a sharper photo.",
     "provider_rejected": "The extraction service refused this document.",
     "provider_unavailable": "The extraction service was unavailable. Try again."
+  },
+  "warnings": {
+    "missing_critical_field": "This value is missing. Check whether the payslip prints it.",
+    "unparseable_amount": "An amount is printed here, but it could not be read. Enter it by hand.",
+    "unparseable_date": "A date is printed here, but it could not be read. Enter it by hand.",
+    "oib_checksum_failed": "This OIB fails its check digit, so a digit is probably misread.",
+    "dohodak_mismatch": "Gross pay minus contributions from pay does not equal Dohodak.",
+    "porezna_osnovica_mismatch": "Dohodak minus the personal allowance does not equal the taxable base.",
+    "neto_mismatch": "Dohodak minus income tax does not equal net pay.",
+    "isplata_mismatch": "Net pay plus non-taxable payments minus obustave does not equal the amount paid out.",
+    "pay_components_sum_mismatch": "The pay components do not add up to gross pay."
   }
 }

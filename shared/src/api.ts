@@ -135,10 +135,11 @@ export const payslipDetailResponseSchema = payslipSchema
      */
     ungroundableFields: z.array(z.string()),
     /**
-     * Scalar canonical fields whose current value differs from the original machine extraction,
-     * so the review UI can mark an outline as "this was corrected" rather than implying it still
-     * matches the document. Never includes the line-item tables: row indices shift when the user
-     * adds or removes a row, which would make a per-index comparison misleading.
+     * Canonical paths whose current value differs from the original machine extraction, so the
+     * review UI can mark an outline as "this was corrected" rather than implying it still matches
+     * the document (Task 09 D5). Scalars, and table cells by position (`obustave.2.iznos`). When
+     * a row is added or removed, every cell of every row from the first one that differs counts
+     * as edited: those rows no longer line up with the document.
      */
     editedFields: z.array(z.string()),
     failureReason: extractionFailureReasonSchema.nullable().optional(),

@@ -190,6 +190,9 @@ describe("PayslipRepository.create", () => {
 });
 
 describe("PayslipRepository.findDetailState", () => {
+  /** One obustave row, so signals on `obustave.0.*` point at a row that exists (Task 09 D6). */
+  const withObustava = { employeeName: "Ana Horvat", obustave: [{ naziv: "KREDIT", iznos: null }] };
+
   it.each([
     ["null metadata", null, []],
     [
@@ -207,7 +210,7 @@ describe("PayslipRepository.findDetailState", () => {
     ],
   ])("reads unreadableFields from %s", async (_name, metadata, expected) => {
     const repository = new PayslipRepository(
-      singleRow(payslipRow({ extraction_metadata: metadata })),
+      singleRow(payslipRow({ canonical_data: withObustava, extraction_metadata: metadata })),
       USER_ID,
     );
 
@@ -232,7 +235,7 @@ describe("PayslipRepository.findDetailState", () => {
       },
     };
     const repository = new PayslipRepository(
-      singleRow(payslipRow({ extraction_metadata: metadata })),
+      singleRow(payslipRow({ canonical_data: withObustava, extraction_metadata: metadata })),
       USER_ID,
     );
 
@@ -276,7 +279,7 @@ describe("PayslipRepository.findDetailState", () => {
   });
 });
 
-describe("PayslipRepository.findRegionSource (Task 08 D7)", () => {
+describe("PayslipRepository.findRetainedResponses (Task 08 D7, Task 09 D4)", () => {
   const raw = { scalars: { id: "op" } };
 
   it.each(["review", "confirmed"] as const)("returns the retained bodies in %s", async (status) => {
@@ -285,7 +288,12 @@ describe("PayslipRepository.findRegionSource (Task 08 D7)", () => {
       USER_ID,
     );
 
-    expect(await repository.findRegionSource(PAYSLIP_ID)).toEqual({ rawProviderResult: raw });
+    expect(await repository.findRetainedResponses(PAYSLIP_ID)).toEqual({
+      status,
+      tablesStatus: "ready",
+      fields: { employeeName: "Ana Horvat", period: "2025-03", netoPlaca: "1234.56" },
+      rawProviderResult: raw,
+    });
   });
 
   it.each(["processing", "failed"] as const)("withholds the bodies in %s", async (status) => {
@@ -294,52 +302,177 @@ describe("PayslipRepository.findRegionSource (Task 08 D7)", () => {
       USER_ID,
     );
 
-    expect(await repository.findRegionSource(PAYSLIP_ID)).toEqual({ rawProviderResult: null });
+    expect(await repository.findRetainedResponses(PAYSLIP_ID)).toMatchObject({
+      rawProviderResult: null,
+    });
   });
 
   it("returns null when the row is absent", async () => {
     const repository = new PayslipRepository(singleRow(null), USER_ID);
 
-    expect(await repository.findRegionSource(PAYSLIP_ID)).toBeNull();
+    expect(await repository.findRetainedResponses(PAYSLIP_ID)).toBeNull();
+  });
+
+  it("rejects malformed canonical data as invalid_data", async () => {
+    const repository = new PayslipRepository(
+      singleRow(payslipRow({ canonical_data: { brutto: "1.00" } })),
+      USER_ID,
+    );
+
+    await expect(repository.findRetainedResponses(PAYSLIP_ID)).rejects.toMatchObject({
+      code: "invalid_data",
+    });
   });
 });
 
-describe("PayslipRepository.beginRetry (Task 07 D8)", () => {
-  it("resets to a fresh extraction, only from a live, owned, retryable failure", async () => {
-    const { client, calls } = recordingUpdate(
-      payslipRow({ status: "processing", tables_status: "pending", canonical_data: {} }),
-    );
+describe("PayslipRepository writes go through functions (Task 09 D2)", () => {
+  const CUTOFF = new Date("2026-09-26T08:00:00.000Z");
 
-    const payslip = await new PayslipRepository(client, USER_ID).beginRetry(PAYSLIP_ID);
+  it.each([
+    [
+      "updateFields",
+      (r: PayslipRepository) => r.updateFields(PAYSLIP_ID, { netoPlaca: "1.00" }, ["netoPlaca"]),
+      "update_payslip_fields",
+      { p_payslip_id: PAYSLIP_ID, p_fields: { netoPlaca: "1.00" }, p_edited_fields: ["netoPlaca"] },
+      true,
+      true,
+    ],
+    [
+      "softDelete",
+      (r: PayslipRepository) => r.softDelete(PAYSLIP_ID),
+      "soft_delete_payslip",
+      { p_payslip_id: PAYSLIP_ID },
+      true,
+      true,
+    ],
+    [
+      "beginRetry",
+      (r: PayslipRepository) => r.beginRetry(PAYSLIP_ID),
+      "begin_payslip_retry",
+      { p_payslip_id: PAYSLIP_ID, p_retryable_reasons: ["provider_unavailable"] },
+      true,
+      true,
+    ],
+    [
+      "failExtraction",
+      (r: PayslipRepository) => r.failExtraction(PAYSLIP_ID, "unreadable_document"),
+      "fail_payslip_extraction",
+      { p_payslip_id: PAYSLIP_ID, p_reason: "unreadable_document" },
+      true,
+      true,
+    ],
+    [
+      "failTablesExtraction",
+      (r: PayslipRepository) => r.failTablesExtraction(PAYSLIP_ID),
+      "fail_payslip_tables",
+      { p_payslip_id: PAYSLIP_ID },
+      true,
+      true,
+    ],
+    [
+      "failStaleExtractions",
+      (r: PayslipRepository) => r.failStaleExtractions(CUTOFF),
+      "fail_stale_payslip_extractions",
+      { p_cutoff: "2026-09-26T08:00:00.000Z" },
+      2,
+      2,
+    ],
+    [
+      "confirm",
+      (r: PayslipRepository) => r.confirm(PAYSLIP_ID),
+      "confirm_payslip",
+      { p_payslip_id: PAYSLIP_ID },
+      "2026-09-26 10:00:00.5+02",
+      "2026-09-26T08:00:00.500Z",
+    ],
+  ] as const)(
+    "%s calls %s with exactly its parameters",
+    async (_name, call, fn, args, data, result) => {
+      const { client, calls } = recordingRpc(data);
 
-    expect(payslip).toMatchObject({ status: "processing", tablesStatus: "pending" });
-    expect(calls).toEqual([
-      [
-        "update",
-        {
-          status: "processing",
-          tables_status: "pending",
-          failure_reason: null,
-          canonical_data: {},
-          extraction_metadata: null,
-          raw_provider_result: null,
-          edited_fields: [],
-          updated_at: expect.any(String),
-        },
-      ],
-      ["eq", "id", PAYSLIP_ID],
-      ["eq", "user_id", USER_ID],
-      ["eq", "status", "failed"],
-      ["in", "failure_reason", ["provider_unavailable"]],
-      ["is", "deleted_at", null],
-      ["select", expect.not.stringContaining("raw_provider_result")],
-    ]);
+      expect(await call(new PayslipRepository(client, USER_ID))).toEqual(result);
+      expect(calls).toEqual([[fn, args]]);
+    },
+  );
+
+  it.each([
+    ["updateFields", (r: PayslipRepository) => r.updateFields(PAYSLIP_ID, {}, []), false, false],
+    ["softDelete", (r: PayslipRepository) => r.softDelete(PAYSLIP_ID), false, false],
+    ["beginRetry", (r: PayslipRepository) => r.beginRetry(PAYSLIP_ID), false, false],
+    ["confirm", (r: PayslipRepository) => r.confirm(PAYSLIP_ID), null, null],
+    ["failStaleExtractions", (r: PayslipRepository) => r.failStaleExtractions(new Date()), 0, 0],
+  ] as const)("%s reports a write that matched nothing", async (_name, call, data, result) => {
+    expect(await call(new PayslipRepository(recordingRpc(data).client, USER_ID))).toEqual(result);
   });
 
-  it("returns null when no row matched: not retryable now, or a concurrent retry won", async () => {
-    const { client } = recordingUpdate(null);
+  it("maps a function error to query_failed", async () => {
+    const { client } = recordingRpc(null, { code: "42501", message: "permission denied" });
 
-    expect(await new PayslipRepository(client, USER_ID).beginRetry(PAYSLIP_ID)).toBeNull();
+    await expect(
+      new PayslipRepository(client, USER_ID).softDelete(PAYSLIP_ID),
+    ).rejects.toMatchObject({ code: "query_failed" });
+  });
+});
+
+describe("edited values drop their machine signals (Task 09 D6)", () => {
+  const metadata = {
+    scalars: {
+      unreadableFields: ["brutoPlaca"],
+      ungroundableFields: ["netoPlaca"],
+      fields: {
+        netoPlaca: { confidence: 0.1, source: "model" },
+        employerOib: { confidence: 0.2, source: "model" },
+      },
+    },
+    tables: {
+      unreadableFields: ["obustave.1.iznos"],
+      ungroundableFields: ["obustave.0.naziv"],
+      fields: { "obustave.1.naziv": { confidence: 0.1, source: "model" } },
+    },
+  };
+  const canonicalData = {
+    employeeName: "Ana Horvat",
+    netoPlaca: "1.00",
+    brutoPlaca: "2.00",
+    obustave: [{ naziv: "KREDIT", iznos: "5.00" }],
+  };
+
+  it("drops edited paths and paths to removed rows from all three lists", async () => {
+    const repository = new PayslipRepository(
+      singleRow(
+        payslipRow({
+          canonical_data: canonicalData,
+          extraction_metadata: metadata,
+          edited_fields: ["netoPlaca", "brutoPlaca"],
+        }),
+      ),
+      USER_ID,
+    );
+
+    expect(await repository.findDetailState(PAYSLIP_ID)).toMatchObject({
+      editedFields: ["netoPlaca", "brutoPlaca"],
+      unreadableFields: [],
+      lowConfidenceFields: ["employerOib"],
+      ungroundableFields: ["obustave.0.naziv"],
+    });
+  });
+
+  it("raises no unparseable_amount for an unreadable cell of a removed row", () => {
+    // Both unreadable values still null, so each would raise `unparseable_amount` while live.
+    const row = payslipRow({
+      canonical_data: { ...canonicalData, brutoPlaca: null },
+      extraction_metadata: metadata,
+      edited_fields: ["brutoPlaca"],
+    });
+
+    expect(mapPayslipRow(row).warnings).not.toContainEqual(
+      expect.objectContaining({ code: "unparseable_amount" }),
+    );
+    expect(
+      mapPayslipRow({ ...row, edited_fields: [] }).warnings.filter(
+        (warning) => warning.code === "unparseable_amount",
+      ),
+    ).toEqual([{ code: "unparseable_amount", field: "brutoPlaca" }]);
   });
 });
 
@@ -354,24 +487,16 @@ function singleRow(row: PayslipRow | null): SupabaseClient<Database> {
   return { from: () => chain } as unknown as SupabaseClient<Database>;
 }
 
-/** The `from().update()…maybeSingle()` chain `beginRetry` uses, recording every call. */
-function recordingUpdate(row: PayslipRow | null) {
+/** An `rpc` client recording each function name and its arguments. */
+function recordingRpc(data: unknown, error: { code: string; message: string } | null = null) {
   const calls: unknown[][] = [];
-  const record =
-    (name: string) =>
-    (...args: unknown[]) => {
-      calls.push([name, ...args]);
-      return chain;
-    };
-  const chain = {
-    update: record("update"),
-    eq: record("eq"),
-    in: record("in"),
-    is: record("is"),
-    select: record("select"),
-    maybeSingle: () => Promise.resolve({ data: row, error: null }),
-  };
-  return { client: { from: () => chain } as unknown as SupabaseClient<Database>, calls };
+  const client = {
+    rpc: (fn: string, args: unknown) => {
+      calls.push([fn, args]);
+      return Promise.resolve({ data, error });
+    },
+  } as unknown as SupabaseClient<Database>;
+  return { client, calls };
 }
 
 /** The minimal `from().insert().select().single()` chain `create` uses, resolving to an error. */

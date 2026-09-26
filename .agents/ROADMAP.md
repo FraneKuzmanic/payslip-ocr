@@ -92,7 +92,7 @@ investigation and is recorded with its reasoning.
 | 06 | Warnings & validation engine | ✅ complete → [`history/06`](./history/06-warnings-validation-engine.md) |
 | 07 | Capture & multi-upload UI | ✅ complete, reviewed and validated; M3 core journey passed, sub-steps pending → [`history/07`](./history/07-capture-multi-upload.md) |
 | 08 | Source regions & document preview with highlighting | ✅ complete, reviewed and validated; M1 spot-check pending → [`history/08`](./history/08-source-regions-preview.md) |
-| 09 | Review form & two-way linking | ⬜ not started |
+| 09 | Review form & two-way linking | ✅ implemented, reviewed and validated; migration 2 pending (step P) → [`history/09`](./history/09-review-form-two-way-linking.md) |
 | 10 | Session navigation & phone layout | ⬜ not started |
 | 11 | Merge payslips | ⬜ not started |
 | 12 | Export & history | ⬜ not started |
@@ -549,15 +549,37 @@ place on the page.
   the outlines are `aria-hidden` and pointer-only; field → region linking is their keyboard path.
   Decide both when the popover gains Edit (history/08 review, findings 7–8).
 
+- Added in planning (plan 09):
+  - server writes and the form stay one task (D1);
+  - every payslip write goes through a `security definer` function filtering on `auth.uid()` (D2);
+    the functions are applied now and the `revoke update` after the push (D3, step P);
+  - "edited" is measured against the original extraction re-mapped from the retained response,
+    stored in `edited_fields` (D4), for scalars and positional cells (D5);
+  - an edited value, and a removed row, drop their machine signals (D6);
+  - `period`/`paymentDate` count as low confidence only when also ungroundable (D7);
+  - tables failed shows a notice and manual rows, and confirm is allowed; no tables-only retry
+    (D8);
+  - popover on a phone, focus at `lg`, Escape closes the popover (D9);
+  - a table key while pending is `409 tables_pending` (D10);
+  - the list on top, form beside a sticky source at `lg`, a preview disclosure on a phone (D11);
+  - inputs in the UI language's form, normalised on save (D12);
+  - a discard prompt before switching and on unload (D13);
+  - a sticky action bar (D14);
+  - line breaks joined, and only changed keys sent (D17);
+  - one attention note per field; format errors use `aria-invalid` (D18).
+
 **Not in this task:** navigation between payslips (10), export (12).
 
 **Definition of done**
 
-- [ ] Every canonical field is visible and editable, including all three tables.
-- [ ] Focusing any field scrolls and highlights its region; clicking any region focuses its input.
-- [ ] Editing a value marks it edited and dashes its outline; saving recomputes warnings.
-- [ ] A payslip with a missing critical field is still fully usable and confirmable.
-- [ ] Line-item validation errors are **visible** — the pre-existing receipt-ocr gap where a bad
+- [x] Every canonical field is visible and editable, including all three tables.
+- [x] Focusing any field scrolls and highlights its region; clicking any region focuses its input.
+      Journey 9.8 (review session): both ways at `lg`, a page-2 field switches page, Edit on a phone. On a phone the preview can be
+      scrolled away while editing lower fields; Task 10's source strip completes that half (D11).
+- [x] Editing a value marks it edited and dashes its outline; saving recomputes warnings. Proven on
+      the hosted project, and in the browser by journey 9.8 (review session).
+- [x] A payslip with a missing critical field is still fully usable and confirmable.
+- [x] Line-item validation errors are **visible** — the pre-existing receipt-ocr gap where a bad
       item amount blocked submission with no message must not be inherited.
 
 ---
@@ -583,6 +605,12 @@ the software keyboard open.
   `visualViewport.resize` fallback for Chrome on iOS which does not support it. Focusing a field
   collapses the preview to a 44 px source strip showing that field's region.
 - Every rail control ≥48 CSS px. Selection never indicated by colour alone.
+- Browser Back while the review is dirty loses the edits (Task 09 D13): `<BrowserRouter>` has no
+  `useBlocker`. Draft preservation closes it.
+- From the Task 09 review: at 1440 px the line-item text columns are ~90 px wide, so names are
+  cut off ("SINDIKAL…"); and Tab reaches the preview's controls before the form, because the
+  source `<aside>` comes first in the DOM (history/09 deviation 5). Settle both with the
+  three-zone layout.
 
 **Not in this task:** merge (11).
 
@@ -709,6 +737,7 @@ each is run separately and its result recorded in the owning task's history file
 | **Hand-written rule creep** — a Croatian parser growing beneath a generic model | Watch | A growing count of deterministic post-processing rules is the signal to revisit the engine, not progress |
 | **Phone layout has no prior art** — every document-AI review UI found is desktop-only | Open | Task 10; first thing to put in front of a real user |
 | **Inherited gaps** — no password reset, unverified emails, Render cold starts | Accepted | Documented, not fixed. CI exists since Task 01b |
-| **Direct-write gap** — a signed-in user can update their own payslip's `status` or `canonical_data` through PostgREST, bypassing the API | Open | Task 09, where confirm and PATCH land: server-side writes plus `revoke update`. Task 07's retry route is one more server write that must keep working (a `security invoker` function, or the same columns) |
+| **Direct-write gap** — a signed-in user can update their own payslip's `status` or `canonical_data` through PostgREST, bypassing the API | Closing: functions applied (Task 09); revoke pending step P | Every write, retry included, goes through a `security definer` function. The migration revoking `update`, and narrowing `insert` to the six upload columns (Task 09 review), is written and applied once the new API is live on Render (plan 09 step P) |
+| **Service source on the wrong text** — D01's `paymentDate` carries a service source on the employer address and is outlined there faithfully (history/08). Grounding checks the whole page, not the region | Open (Task 09 D15) | Needs its own measurement over the recordings: whether the OCR words inside each region contain the printed value |
 | **In-memory extraction queue** — upload bytes wait in process memory; a redeploy drops in-flight work | Accepted for a demo | Lost jobs fail on the next read after 15 min and are retryable (Task 04 D3). Worst case 10 × 10 MB per session on a 512 MB instance; Task 07's downscale shrinks images |
 | **Background writes use the upload's token** — a token near expiry at upload can fail the completion write | Mitigated (Task 07 D5) | The client refreshes the session before each upload batch, giving every write about the full token lifetime. If it still happens, the row is failed by the stale reaper and is retryable |

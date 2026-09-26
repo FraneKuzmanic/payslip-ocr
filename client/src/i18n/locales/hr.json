@@ -95,8 +95,35 @@
     "imageUnavailable": "Ovaj preglednik ne može prikazati ovu sliku. Otvorite je u novoj kartici ili na drugom uređaju.",
     "errors": {
       "load": "Nije moguće učitati platnu listu. Pokušajte ponovno.",
-      "refresh": "Oznake nije bilo moguće osvježiti pa neke možda nedostaju. Pokušajte ponovno."
-    }
+      "refresh": "Oznake nije bilo moguće osvježiti pa neke možda nedostaju. Pokušajte ponovno.",
+      "amount": "Upišite iznos, npr. 1234,56.",
+      "quantity": "Upišite broj, npr. 176,5.",
+      "date": "Upišite datum kao DD.MM.GGGG.",
+      "period": "Upišite razdoblje kao MM/GGGG.",
+      "save": "Promjene nije bilo moguće spremiti. Pokušajte ponovno.",
+      "confirm": "Platnu listu nije bilo moguće potvrditi. Pokušajte ponovno.",
+      "tablesPending": "Stavke se još učitavaju pa ih zasad nije moguće mijenjati.",
+      "editNotAllowed": "Ovu platnu listu više nije moguće uređivati. Osvježite stranicu.",
+      "confirmNotAllowed": "Ovu platnu listu još nije moguće potvrditi."
+    },
+    "save": "Spremi promjene",
+    "saving": "Spremanje…",
+    "saved": "Promjene su spremljene.",
+    "unsaved": "Nespremljene promjene",
+    "confirm": "Potvrdi platnu listu",
+    "confirming": "Potvrđivanje…",
+    "confirmed": "Platna lista je potvrđena.",
+    "confirmBlockedDirty": "Spremite promjene prije potvrde.",
+    "confirmBlockedPending": "Potvrditi možete kad se stavke učitaju.",
+    "tablesFailed": "Stavke nije bilo moguće očitati. Po potrebi ih dodajte ručno.",
+    "addRow": "Dodaj redak",
+    "removeRow": "Ukloni redak {{row}}",
+    "rowLabel": "{{section}}, redak {{row}}",
+    "invalidForm": "Neke vrijednosti nije moguće pročitati. Ispravite označena polja pa spremite.",
+    "discardTitle": "Odbaciti nespremljene promjene?",
+    "discardDescription": "Vaše promjene na ovoj platnoj listi bit će izgubljene.",
+    "discard": "Odbaci promjene",
+    "keepEditing": "Nastavi uređivati"
   },
   "auth": {
     "signIn": "Prijava",
@@ -172,7 +199,9 @@
     "loadError": "Sesiju nije moguće učitati.",
     "retryError": "Ponovni pokušaj nije pokrenut. Provjerite vezu i pokušajte ponovno.",
     "showDocument": "Prikaži dokument",
-    "hideDocument": "Sakrij dokument"
+    "hideDocument": "Sakrij dokument",
+    "review": "Pregledaj",
+    "hideReview": "Sakrij pregled"
   },
   "payslipStatus": {
     "processing": "Očitavanje u tijeku",
@@ -189,5 +218,16 @@
     "unreadable_document": "Dokument nije moguće pročitati. Pokušajte s oštrijom fotografijom.",
     "provider_rejected": "Servis za očitavanje odbio je ovaj dokument.",
     "provider_unavailable": "Servis za očitavanje nije bio dostupan. Pokušajte ponovno."
+  },
+  "warnings": {
+    "missing_critical_field": "Ova vrijednost nedostaje. Provjerite je li otisnuta na platnoj listi.",
+    "unparseable_amount": "Iznos je otisnut, ali ga nije bilo moguće pročitati. Upišite ga ručno.",
+    "unparseable_date": "Datum je otisnut, ali ga nije bilo moguće pročitati. Upišite ga ručno.",
+    "oib_checksum_failed": "Kontrolna znamenka ovog OIB-a ne odgovara pa je neka znamenka vjerojatno krivo pročitana.",
+    "dohodak_mismatch": "Bruto plaća umanjena za doprinose iz plaće nije jednaka dohotku.",
+    "porezna_osnovica_mismatch": "Dohodak umanjen za osobni odbitak nije jednak poreznoj osnovici.",
+    "neto_mismatch": "Dohodak umanjen za porez na dohodak nije jednak neto plaći.",
+    "isplata_mismatch": "Neto plaća uvećana za neoporezive primitke i umanjena za obustave nije jednaka iznosu za isplatu.",
+    "pay_components_sum_mismatch": "Zbroj primitaka nije jednak bruto plaći."
   }
 }

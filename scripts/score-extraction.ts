@@ -152,7 +152,10 @@ function signals(passes: readonly Mapped[]) {
     actual: fields,
     warnings: computeWarnings({ fields, unreadableFields, tablesStatus: "ready" }),
     lowConfidenceFields: lowConfidenceFields(
-      passes.map((pass) => ({ fields: pass.fieldMetadata })),
+      passes.map((pass) => ({
+        fields: pass.fieldMetadata,
+        ungroundableFields: pass.ungroundableFields,
+      })),
     ),
     ungroundableFields: passes.flatMap((pass) => pass.ungroundableFields),
   };

@@ -126,6 +126,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      begin_payslip_retry: {
+        Args: { p_payslip_id: string; p_retryable_reasons: string[] }
+        Returns: boolean
+      }
       complete_extraction_pass: {
         Args: {
           p_fields: Json
@@ -133,6 +137,25 @@ export type Database = {
           p_pass: string
           p_payslip_id: string
           p_raw: Json
+        }
+        Returns: boolean
+      }
+      confirm_payslip: { Args: { p_payslip_id: string }; Returns: string }
+      fail_payslip_extraction: {
+        Args: { p_payslip_id: string; p_reason: string }
+        Returns: boolean
+      }
+      fail_payslip_tables: { Args: { p_payslip_id: string }; Returns: boolean }
+      fail_stale_payslip_extractions: {
+        Args: { p_cutoff: string }
+        Returns: number
+      }
+      soft_delete_payslip: { Args: { p_payslip_id: string }; Returns: boolean }
+      update_payslip_fields: {
+        Args: {
+          p_edited_fields: string[]
+          p_fields: Json
+          p_payslip_id: string
         }
         Returns: boolean
       }

@@ -27,11 +27,14 @@ export const SECTION_COLOURS: Record<Section, string> = {
   neoporeziviPrimici: "#a16207",
 };
 
-type TableField = "payComponents" | "obustave" | "neoporeziviPrimici";
+export type TableField = "payComponents" | "obustave" | "neoporeziviPrimici";
 export type ScalarField = Exclude<keyof CanonicalPayslipFields, TableField>;
 
-/** Typed over the canonical keys, so a new scalar is a type error until it is placed. */
-const SCALAR_SECTIONS: Record<ScalarField, Section> = {
+/**
+ * Typed over the canonical keys, so a new scalar is a type error until it is placed. Its order is
+ * the review form's field order (Task 09).
+ */
+export const SCALAR_SECTIONS: Record<ScalarField, Section> = {
   employerName: "employer",
   employerAddress: "employer",
   employerOib: "employer",
@@ -60,7 +63,7 @@ const SCALAR_SECTIONS: Record<ScalarField, Section> = {
 };
 
 // Literal key records, so `t(key)` stays compile-checked (PRD §7.13).
-const SCALAR_LABEL_KEYS = {
+export const SCALAR_LABEL_KEYS = {
   employerName: "review.fields.employerName",
   employerAddress: "review.fields.employerAddress",
   employerOib: "review.fields.employerOib",
@@ -88,7 +91,7 @@ const SCALAR_LABEL_KEYS = {
   ukupanTrosakRada: "review.fields.ukupanTrosakRada",
 } as const satisfies Record<ScalarField, string>;
 
-const COLUMN_LABEL_KEYS = {
+export const COLUMN_LABEL_KEYS = {
   payComponents: {
     naziv: "review.columns.payComponents.naziv",
     sati: "review.columns.payComponents.sati",

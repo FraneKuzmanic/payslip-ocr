@@ -1,21 +1,36 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useEffect } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PayslipDetailResponse, SourceRegionsResponse } from "@payslip/shared";
-import "../i18n";
-import { getPayslipDetail, getPayslipRegions } from "../api/client";
-import { PayslipPreview, fieldValuesOf } from "./PayslipPreview";
+import { getPayslipDetail, getPayslipRegions, updatePayslip } from "../api/client";
+import { ToastProvider } from "../components/Toast";
+import i18n from "../i18n";
+import { PayslipReview, fieldValuesOf, liveRegions } from "./PayslipReview";
 
-vi.mock("../api/client", () => ({ getPayslipDetail: vi.fn(), getPayslipRegions: vi.fn() }));
+vi.mock("../api/client", async (importActual) => ({
+  ...(await importActual<typeof import("../api/client")>()),
+  getPayslipDetail: vi.fn(),
+  getPayslipRegions: vi.fn(),
+  updatePayslip: vi.fn(),
+}));
 
 const mounts = vi.fn();
 
-// A stub that prints its props, and counts mounts so a refetch can be shown not to remount it.
+// A stub that prints its props, counts mounts so a refetch can be shown not to remount it, and
+// exposes `onSelect` as a button, standing in for a click on an outline.
 vi.mock("./SourceDocumentPanel", () => ({
   SourceDocumentPanel: (props: Record<string, unknown>) => {
     useEffect(() => mounts(), []);
-    return <pre data-testid="panel">{JSON.stringify(props)}</pre>;
+    const onSelect = props["onSelect"] as ((path: string) => void) | undefined;
+    return (
+      <>
+        <pre data-testid="panel">{JSON.stringify(props)}</pre>
+        <button type="button" onClick={() => onSelect?.("netoPlaca")}>
+          outline
+        </button>
+      </>
+    );
   },
 }));
 
@@ -47,15 +62,43 @@ function panelProps() {
   return JSON.parse(screen.getByTestId("panel").textContent ?? "{}") as Record<string, unknown>;
 }
 
-beforeEach(() => {
+function stubWide(wide: boolean) {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn(() => ({ matches: wide, addEventListener: vi.fn(), removeEventListener: vi.fn() })),
+  );
+}
+
+function review(tablesStatus: "pending" | "ready" = "pending") {
+  return (
+    <ToastProvider>
+      <PayslipReview
+        payslipId="payslip-1"
+        tablesStatus={tablesStatus}
+        onDirtyChange={vi.fn()}
+        onChanged={onChanged}
+      />
+    </ToastProvider>
+  );
+}
+
+const onChanged = vi.fn();
+
+beforeEach(async () => {
+  await i18n.changeLanguage("en");
   vi.clearAllMocks();
+  stubWide(false);
   vi.mocked(getPayslipDetail).mockResolvedValue(detail());
   vi.mocked(getPayslipRegions).mockResolvedValue(regions);
 });
 
-describe("PayslipPreview", () => {
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe("PayslipReview", () => {
   it("passes the flattened values and every attention signal to the panel", async () => {
-    render(<PayslipPreview payslipId="payslip-1" tablesStatus="pending" />);
+    render(review());
 
     await screen.findByTestId("panel");
     expect(panelProps()).toMatchObject({
@@ -70,11 +113,72 @@ describe("PayslipPreview", () => {
       editedFields: [],
       showTitle: false,
     });
-    expect(panelProps()).not.toHaveProperty("onSelect");
+  });
+
+  it("focuses outlines' inputs directly at lg", async () => {
+    stubWide(true);
+    render(review());
+
+    await screen.findByTestId("panel");
+    expect(panelProps()).toMatchObject({ interaction: "focus" });
+  });
+
+  it("focuses a selected region's input", async () => {
+    render(review());
+    await screen.findByTestId("panel");
+
+    await userEvent.click(screen.getByRole("button", { name: "outline" }));
+
+    expect(document.getElementById("review-field-netoPlaca")).toHaveFocus();
+    expect(panelProps()).toMatchObject({ activeField: "netoPlaca" });
+  });
+
+  it("makes a focused field's region the active one", async () => {
+    render(review());
+    await screen.findByTestId("panel");
+
+    await userEvent.click(document.getElementById("review-field-brutoPlaca")!);
+
+    expect(panelProps()).toMatchObject({ activeField: "brutoPlaca" });
+  });
+
+  it("hides the source on a phone without unmounting it", async () => {
+    render(review());
+    await screen.findByTestId("panel");
+    const toggle = screen.getByRole("button", { name: "Hide document" });
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(toggle).toHaveAttribute("aria-controls", "payslip-source");
+
+    await userEvent.click(toggle);
+
+    expect(screen.getByRole("button", { name: "Show document" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(document.getElementById("payslip-source")).toHaveClass("hidden");
+    expect(screen.getByTestId("panel")).toBeInTheDocument();
+    expect(mounts).toHaveBeenCalledOnce();
+  });
+
+  it("gives the panel the saved edits after a save", async () => {
+    vi.mocked(getPayslipDetail).mockResolvedValue(detail({ tablesStatus: "ready" }));
+    vi.mocked(updatePayslip).mockResolvedValue(
+      detail({ tablesStatus: "ready", netoPlaca: "1.00", editedFields: ["netoPlaca"] }),
+    );
+    render(review("ready"));
+    await screen.findByTestId("panel");
+
+    const neto = document.getElementById("review-field-netoPlaca")!;
+    await userEvent.clear(neto);
+    await userEvent.type(neto, "1.00");
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(panelProps()).toMatchObject({ editedFields: ["netoPlaca"] }));
+    expect(onChanged).toHaveBeenCalledOnce();
   });
 
   it("reloads when the tables pass lands, without remounting the panel", async () => {
-    const { rerender } = render(<PayslipPreview payslipId="payslip-1" tablesStatus="pending" />);
+    const { rerender } = render(review("pending"));
     await screen.findByTestId("panel");
 
     vi.mocked(getPayslipDetail).mockResolvedValue(
@@ -83,7 +187,7 @@ describe("PayslipPreview", () => {
         payComponents: [{ naziv: "REDOVAN RAD", sati: null, koeficijent: null, iznos: "1200.00" }],
       }),
     );
-    rerender(<PayslipPreview payslipId="payslip-1" tablesStatus="ready" />);
+    rerender(review("ready"));
 
     await waitFor(() =>
       expect(panelProps()["fieldValues"]).toHaveProperty(["payComponents.0.iznos"], "1200.00"),
@@ -97,7 +201,7 @@ describe("PayslipPreview", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.mocked(getPayslipRegions).mockRejectedValueOnce(new Error("offline"));
     const user = userEvent.setup();
-    render(<PayslipPreview payslipId="payslip-1" tablesStatus="ready" />);
+    render(review("ready"));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "The payslip could not be loaded. Try again.",
@@ -108,14 +212,14 @@ describe("PayslipPreview", () => {
     expect(getPayslipRegions).toHaveBeenCalledTimes(2);
   });
 
-  it("keeps the preview when a refetch fails, says so, and retries", async () => {
+  it("keeps the review when a refetch fails, says so, and retries", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const user = userEvent.setup();
-    const { rerender } = render(<PayslipPreview payslipId="payslip-1" tablesStatus="pending" />);
+    const { rerender } = render(review("pending"));
     await screen.findByTestId("panel");
 
     vi.mocked(getPayslipRegions).mockRejectedValueOnce(new Error("offline"));
-    rerender(<PayslipPreview payslipId="payslip-1" tablesStatus="ready" />);
+    rerender(review("ready"));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "The highlights could not be updated, so some may be missing. Try again.",
@@ -153,5 +257,40 @@ describe("fieldValuesOf", () => {
       "obustave.0.iznos": "50.00",
       "obustave.0.brojRata": "10/120",
     });
+  });
+});
+
+function region(...fields: string[]) {
+  return {
+    fields,
+    page: 1,
+    corners: [
+      { x: 0, y: 0 },
+      { x: 1, y: 0 },
+      { x: 1, y: 1 },
+      { x: 0, y: 1 },
+    ],
+    origin: "model" as const,
+  };
+}
+
+describe("liveRegions", () => {
+  it("drops the outlines of table rows the saved payslip no longer has", () => {
+    const row = {
+      naziv: "KREDIT",
+      vjerovnik: null,
+      iznos: "50.00",
+      ostatakSalda: null,
+      brojRata: null,
+    };
+    const withRemovedRow: SourceRegionsResponse = {
+      pages: [{ page: 1, aspectRatio: 0.7 }],
+      regions: [region("netoPlaca"), region("obustave.0.iznos"), region("obustave.1.iznos")],
+    };
+
+    expect(liveRegions(withRemovedRow, detail({ obustave: [row] })).regions).toEqual([
+      region("netoPlaca"),
+      region("obustave.0.iznos"),
+    ]);
   });
 });

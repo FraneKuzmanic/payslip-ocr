@@ -6,9 +6,20 @@
  */
 export const LOW_CONFIDENCE_THRESHOLD = 0.5;
 
-/** One extraction pass's per-path confidences, as its metadata stores them. */
+/**
+ * Paths whose low confidence counts only when the same pass also could not ground them (Task 09
+ * D7, a per-field rule the product owner chose knowingly). The service reports `period` and
+ * `paymentDate` below 0.5 on most payslips even when they are right: 49 of the 68 scalar flags
+ * measured in Task 06. The only wrong `period` in any recording (`production` B01) is already
+ * marked by `unparseable_date`. `period` is ungroundable by design and so never in
+ * `ungroundableFields`, which means it is never marked for confidence alone.
+ */
+export const GROUNDING_GATED_FIELDS: readonly string[] = ["period", "paymentDate"];
+
+/** One extraction pass's per-path confidences and ungroundable paths, as its metadata stores them. */
 export interface PassFieldConfidence {
   readonly fields: Readonly<Record<string, { readonly confidence: number | null }>>;
+  readonly ungroundableFields: readonly string[];
 }
 
 /**
@@ -19,7 +30,11 @@ export interface PassFieldConfidence {
 export function lowConfidenceFields(passes: readonly PassFieldConfidence[]): string[] {
   const paths = passes.flatMap((pass) =>
     Object.entries(pass.fields).flatMap(([path, { confidence }]) =>
-      confidence !== null && confidence < LOW_CONFIDENCE_THRESHOLD ? [path] : [],
+      confidence !== null &&
+      confidence < LOW_CONFIDENCE_THRESHOLD &&
+      (!GROUNDING_GATED_FIELDS.includes(path) || pass.ungroundableFields.includes(path))
+        ? [path]
+        : [],
     ),
   );
   return [...new Set(paths)];

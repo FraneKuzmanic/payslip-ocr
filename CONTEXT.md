@@ -146,6 +146,13 @@ _Avoid_: Phase, stage, job
 A value the system read from a Payslip, always a draft. It is never authoritative until the
 user has reviewed it; low confidence marks a value for attention but never suppresses it.
 
+**Edited field**:
+A value the user changed from the machine extraction, measured against the original read from the
+retained provider response. Table cells count by position, so every cell of a row shifted by an
+added or removed row is edited too. An edited field drops its machine attention signals and its
+outline is drawn dashed.
+_Avoid_: Modified, overridden, corrected
+
 **Critical field**:
 One of the seven fields whose absence makes a Payslip not worth exporting — employer name,
 employee name, employee OIB, period, bruto plaća, neto plaća, iznos za isplatu. Critical fields

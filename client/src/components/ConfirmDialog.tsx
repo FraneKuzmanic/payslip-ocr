@@ -83,7 +83,7 @@ export function ConfirmDialog({
           ref={cancelRef}
           onClick={onCancel}
           aria-disabled={busy}
-          className="min-h-11 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-100 aria-disabled:text-slate-400"
+          className="min-h-12 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-100 aria-disabled:text-slate-400"
         >
           {cancelLabel}
         </button>
@@ -93,7 +93,7 @@ export function ConfirmDialog({
             if (!busy) onConfirm();
           }}
           aria-disabled={busy}
-          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-red-700 px-4 text-sm font-semibold text-white hover:bg-red-800 aria-disabled:bg-red-400"
+          className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-red-700 px-4 text-sm font-semibold text-white hover:bg-red-800 aria-disabled:bg-red-400"
         >
           {busy ? <Spinner label={false} /> : null}
           {confirmLabel}

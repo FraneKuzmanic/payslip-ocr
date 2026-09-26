@@ -523,7 +523,18 @@ Since Task 08: a value printed across several lines has one outline per line. Ev
 
 **Requirements.** Sections mirroring the canonical schema — employer, employee, period, the reconciliation chain, pay components, obustave, neoporezivi primici — each with a coloured legend dot matching its outlines. Every input keeps a stable id so a region click can focus it. Saving is explicit, never debounced: locale-formatted values normalise on save, not mid-typing. Line-item tables render as a real table at `lg` and as condensed cards on phone, chosen once by a layout hook so both never reach the accessibility tree.
 
-**Rules.** A field needing attention gets an amber border, an icon and a visible explanation. `aria-invalid` is deliberately never used — an uncertain but plausible extraction is not a validation failure. Editing is permitted in `review` and `confirmed`; confirming is disabled while the form is dirty and is idempotent thereafter.
+**Rules.** A field needing attention gets an amber border, an icon and a visible explanation. `aria-invalid` is deliberately never used for attention — an uncertain but plausible extraction is not a validation failure. Editing is permitted in `review` and `confirmed`; confirming is disabled while the form is dirty and is idempotent thereafter.
+
+Settled in Task 09:
+
+- **Edited values.** A saved change dashes its outline: scalars and table cells, cells by position. Once a row is added or removed, every cell from the first differing row down counts as edited, because those rows no longer line up with the document.
+- **Input formats follow the UI language.** `hr` shows `2298,97`, `0,135`, `10.07.2025` and `07/2025`; `en` shows the stored `2298.97`, `0.135`, `2025-07-10` and `2025-07`. No grouping separators, so a value always parses back. Both forms parse in either language.
+- **Line breaks** in a stored value are joined into a space in its single-line input. Only changed fields are sent on save, so an untouched value keeps its breaks.
+- **Line items by tables status.** While the tables pass is `pending`, the three tables are a read-only skeleton, because that pass would overwrite an earlier edit; once `failed`, each says so and rows can be added by hand.
+- **Unsaved edits** prompt before switching to another payslip or closing the review, and the browser prompts on reload. The browser Back button is not covered until Task 10.
+- **A sticky action bar** holds the unsaved indicator, Save, and Confirm with the visible reason it is unavailable. Controls are at least 48 px.
+- **Format errors** (text that will not parse on save) are validation failures: red text under the input, `aria-invalid`, and a form-level alert on a failed save. They are visible in both the table and the card layout.
+- **Region interaction.** At `lg`, clicking an outline focuses its input; on a phone it opens the popover, whose Edit does. Escape closes the popover.
 
 ### 7.8 Merge
 
@@ -553,6 +564,11 @@ Since Task 08: a value printed across several lines has one outline per line. Ev
 **Rules.** Arithmetic compares absolutely, never relatively: values must **agree to the cent**, so a difference of one cent or more is a mismatch — doc-guard's identities were correct but compared to nine significant figures, which no OCR'd cent value survives. `poreznaOsnovica` floors at zero, because a payslip whose `osobni odbitak` exceeds `dohodak` legitimately prints `0,00`. An identity with a null operand is skipped, except that `isplata_mismatch` takes a null `neoporeziviPrimiciUkupno` or `obustaveUkupno` as zero (an absent section contributes nothing). `pay_components_sum_mismatch` sums amounts only, never hours, and is checked only once `tablesStatus` is `ready` and at least one row has an amount. An unreadable field raises `unparseable_*` instead of `missing_critical_field` while its value is still null. **Warnings never block confirmation or export.**
 
 Two further attention signals ride with the warnings on the detail response: `lowConfidenceFields` (confidence below a global 0.5, measured in Task 06) and `ungroundableFields` (the printed value, or a printed form of its canonical value, is not among the page's OCR words). Like warnings, they mark a value and never suppress it.
+
+Task 09 narrowed both:
+
+- **An edited value drops its machine signals.** A path the user edited leaves `lowConfidenceFields`, `ungroundableFields` and `unreadableFields`, and so does every table path whose row no longer exists, so no `unparseable_*` warning points at a shifted or deleted row. Warnings are still computed from the current values, so an edit that breaks an identity still raises it.
+- **`period` and `paymentDate` count as low confidence only when also ungroundable.** The service reports both below 0.5 on most payslips even when correct. The rule dropped about half of all flagged scalars and no wrong one (history/09). `period` is never ungroundable by design, so warnings are what mark it.
 
 ### 7.10 History
 
@@ -656,6 +672,8 @@ Two further attention signals ride with the warnings on the detail response: `lo
 
 Supabase email/password. Every `/api/sessions` and `/api/payslips` route sits behind an auth guard applied to the **path prefix**, not to individual routes, so a route added later is protected by construction and an unknown path answers `401` rather than `404`. The proven user id is passed to handlers as an argument, never read off the request object, so a handler is structurally incapable of using an unproven identity. A resource belonging to another user returns **404, never 403** — it falls out of the owner-scoped query rather than a separate check.
 
+Every payslip write goes through a `security definer` SQL function that enforces the API's own rule and filters on `user_id = auth.uid()` (Task 09). `authenticated` can then lose its direct `update` grant, so a signed-in user cannot set their own payslip's `status` or `canonical_data` through PostgREST. The functions are applied; the revoke is applied once the API that uses them is deployed (Task 09 step P).
+
 ### 9.2 Secrets and configuration
 
 One `.env` at the prototype root, validated at startup with all problems reported at once. `.env.example` is committed with **names only**.
@@ -713,13 +731,13 @@ All routes under `/api/sessions` and `/api/payslips` require `Authorization: Bea
 → `200 {id, createdAt, payslips: [{id, status, tablesStatus, period, employeeName, pageCount, failureReason, warningCount, originalFilename}]}`. `originalFilename` identifies a payslip before extraction has read a name (Task 07).
 
 **10.5** `GET /api/payslips/:id`
-→ `200` canonical payslip (including `tablesStatus`) + `lowConfidenceFields`, `unreadableFields`, `ungroundableFields`, `warnings`, `editedFields`, `failureReason`
+→ `200` canonical payslip (including `tablesStatus`) + `lowConfidenceFields`, `unreadableFields`, `ungroundableFields`, `warnings`, `editedFields`, `failureReason`. `editedFields` holds scalars and table cells (`obustave.2.iznos`) (Task 09).
 
 **10.6** `PATCH /api/payslips/:id`
-Body is the canonical field schema, partial and strict. Recomputes warnings. Never changes status.
-→ `200` detail shape · `409 edit_not_allowed` outside `review`/`confirmed`
+Body is the canonical field schema, partial and strict, carrying only the changed keys; a line-item table is replaced whole. Recomputes warnings. Never changes status. `editedFields` is recomputed over the full merged state against the original extraction, re-mapped from the retained response, so setting a value back clears its mark (Task 09).
+→ `200` detail shape · `409 edit_not_allowed` outside `review`/`confirmed` · `409 tables_pending` for a table key while `tablesStatus` is `pending`
 
-**10.7** `POST /api/payslips/:id/confirm` → `200 {id, status, confirmedAt}`; idempotent · `409 confirm_not_allowed`, also while `tablesStatus` is `pending` (Task 05), so export waits for both passes
+**10.7** `POST /api/payslips/:id/confirm` → `200 {id, status, confirmedAt}`; idempotent, keeping the first `confirmedAt` · `409 confirm_not_allowed`, also while `tablesStatus` is `pending` (Task 05), so export waits for both passes
 
 **10.8** `POST /api/payslips/:id/retry` → `202 {id, status}` · `409 retry_not_allowed` if not failed, or the failure is non-retryable
 A retry is a full reset to a fresh extraction: status `processing`, `tablesStatus` `pending`, and the canonical data, metadata and raw response cleared, then both passes re-run over the stored source. The reset is one conditional update, so a concurrent second retry gets `409` and only one analysis is paid for (Task 07).
@@ -863,6 +881,9 @@ $0.045–0.051 two-pass (~1.5×).
 > **Status, 2026-09-25:** the region projection, the regions endpoint and the overlay with its
 > aspect-ratio guard landed in Task 08, shown from the session page. The form, linking and
 > navigation are Tasks 09 and 10.
+>
+> **Status, 2026-09-26:** the review form, two-way linking, PATCH and confirm landed in Task 09,
+> pending its review session. Navigation and the phone keyboard strip are Task 10.
 
 ### Phase 4 — Merge, export and polish
 
