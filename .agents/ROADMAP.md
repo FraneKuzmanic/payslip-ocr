@@ -99,7 +99,7 @@ investigation and is recorded with its reasoning.
 | 10 | Session navigation & phone layout | ✅ implemented and reviewed; M2 (Android, plan 13 D5) in the Task 13 sitting → [`history/10`](./history/10-session-navigation-phone-layout.md) |
 | 11 | Merge payslips | ✅ complete, reviewed and validated; journey 9.10 passed → [`history/11`](./history/11-merge-payslips.md) |
 | 12 | Export & history | ✅ complete, reviewed and validated; journey 9.11 passed → [`history/12`](./history/12-export-history.md) |
-| 13 | Deploy & end-to-end verification | 🟡 implemented, reviewed and validated; commit, deploy, journey 9.12 (deployed) and device sitting pending → [`history/13`](./history/13-deploy-end-to-end.md) |
+| 13 | Deploy & end-to-end verification | 🟡 reviewed, validated and deployed; journey 9.12 passed; device sitting pending → [`history/13`](./history/13-deploy-end-to-end.md) |
 
 ---
 

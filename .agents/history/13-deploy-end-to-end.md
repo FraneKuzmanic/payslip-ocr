@@ -7,8 +7,8 @@ bundle, and the live bundle scans clean. Two cold starts took 22.4 s. PRD §11.4
 target is **missed** on the deployed API (73.3 / 32.4 / 73.2 s against ≤ 25 s), while accuracy there
 is within the noise band. The session header counts confirmed payslips separately. The README
 exists, and the device sitting's checklist is ready.
-**Status: implemented, reviewed and validated (review session, 2026-09-26, below); commit, deploy,
-journey 9.12's deployed variant and the device sitting pending.**
+**Status: implemented, reviewed, validated, committed (`5ef0325`) and deployed; journey 9.12 passed
+on the deployed stack. The device sitting is pending.**
 
 Following plan 13 D11 and the standing session split, this session did not run `/code-review`,
 `/validate` or any browser journey, and did not commit. Paid runs: **one hosted quads run, 12 two-pass analyses plus the blank page, about $0.68** (plan 13 D2 budget ~$0.65). No re-run.
@@ -234,6 +234,22 @@ paid analysis was run.
 | 9.6–9.11 | **Not re-run.** Paid journeys for Tasks 07–12, each passed in its own review session; this diff touches none of their flows except the session header, which 9.12 covers |
 | 9.12 local | Seeded review + confirmed. "1 of 2 ready to review · 1 of 2 confirmed" / "1 od 2 spremno za pregled · 1 od 2 potvrđena" at 375 px; after Confirm "2 od 2 potvrđene" / "2 of 2 confirmed"; `hr` History with the export aborted: "Izvoz nije moguće izraditi. Pokušajte ponovno.", detail in the console. Account deleted, orphan query clean |
 
+### Commit, deploy and journey 9.12 (deployed)
+
+Committed as `5ef0325` and subtree-pushed to `payslip-github` (`main` → `e69fe3f`). CI passed, including
+`check:secrets`: Render deploys only after it, and the client's entry chunk changed from
+`index-BNfLvqi2.js` to `index-Ch9rshF-.js` 80 s after the push (`gh` is not installed here, so the
+new bundle is the evidence).
+
+| Step | Result |
+| --- | --- |
+| 1 `check:secrets -- --url` | ok: 6 files, 7 markers, 4 secret values; the live chunk carries the `confirmedCount` copy |
+| 2 Seed | Throwaway account, one `review` and one `confirmed` payslip, no sources |
+| 3 Header at 375 px | "1 of 2 ready to review · 1 of 2 confirmed" / "1 od 2 spremno za pregled · 1 od 2 potvrđena" |
+| 4 After Confirm | "2 od 2 potvrđene" / "2 of 2 confirmed" |
+| 5 `hr` History, export aborted | "Izvoz nije moguće izraditi. Pokušajte ponovno." |
+| 6 Clean-up | Account deleted; orphan query lists only the D12 kept account |
+
 ## Device sitting (product owner, after the deploy)
 
 Run **after** the Task 13 commit is deployed. First check that the session header shows two counts
@@ -325,10 +341,9 @@ Signed in as the kept account above ("Kept account (D12)"). Verdict: pass / misp
 
 1. ~~`/code-review` over the uncommitted diff against `9e66da4`, and `/validate`, including journey
    **9.12's local variant**~~ — done, see "Review session" above.
-2. Commit and subtree push, on the product owner's go-ahead. `.agents/plans/13-deploy-end-to-end.md`
-   is still untracked and belongs in the commit.
-3. CI passes, including the new `check:secrets` step, and Render deploys.
-4. Journey 9.12 against the deployed stack.
+2. ~~Commit and subtree push~~ — `5ef0325`, plan 13 included.
+3. ~~CI passes and Render deploys~~ — done.
+4. ~~Journey 9.12 against the deployed stack~~ — passed, see "Commit, deploy and journey 9.12".
 5. The device sitting above.
 6. D12 clean-up, each deletion approved by the product owner: the kept account below and its
    storage objects, and `m1-review-08@example.test` if it still exists. The M5 phone data only if
