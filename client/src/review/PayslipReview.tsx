@@ -13,6 +13,8 @@ import { useWideLayout } from "../history/useWideLayout";
 import { PayslipForm } from "./PayslipForm";
 import { fieldId } from "./ReviewField";
 import { SourceDocumentPanel } from "./SourceDocumentPanel";
+import { useUnsavedEdits } from "./unsaved/useUnsavedEdits";
+import { useSoftKeyboard } from "./useSoftKeyboard";
 
 const TABLES = ["payComponents", "obustave", "neoporeziviPrimici"] as const;
 
@@ -20,7 +22,6 @@ interface PayslipReviewProps {
   payslipId: string;
   /** A change reloads detail and regions, so the tables fill in once their pass lands (Task 08 D7). */
   tablesStatus: TablesStatus;
-  onDirtyChange: (dirty: boolean) => void;
   /** After a save or confirm, so the session page refreshes the payslip's row. */
   onChanged: () => void;
 }
@@ -34,20 +35,24 @@ interface PayslipReviewProps {
  * form; on a phone it is a disclosure above the form that hides rather than unmounts, so a PDF is
  * never rendered twice (D11).
  */
-export function PayslipReview({
-  payslipId,
-  tablesStatus,
-  onDirtyChange,
-  onChanged,
-}: PayslipReviewProps) {
+export function PayslipReview({ payslipId, tablesStatus, onChanged }: PayslipReviewProps) {
   const { t } = useTranslation();
   const wide = useWideLayout();
+  const edits = useUnsavedEdits();
+  // Initializers may run twice in StrictMode. Read without consuming until the form mounts.
+  const [initialEdits] = useState(() => edits.peek(payslipId));
   const [detail, setDetail] = useState<PayslipDetailResponse | null>(null);
   const [regions, setRegions] = useState<SourceRegionsResponse | null>(null);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [activeField, setActiveField] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(true);
+  const [focusedPath, setFocusedPath] = useState<string | null>(null);
+  const keyboard = useSoftKeyboard(wide ? null : focusedPath);
+  const formReady = detail !== null && regions !== null;
+  useEffect(() => {
+    if (formReady) edits.take(payslipId);
+  }, [formReady, edits.take, payslipId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -90,22 +95,49 @@ export function PayslipReview({
   }
 
   return (
-    <div className="flex flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-start lg:gap-6">
-      {/* First in the DOM, so a phone shows the source above the form; placed right at `lg`. */}
+    <div className="flex flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start lg:gap-6">
+      <div className="min-w-0 lg:col-start-1 lg:row-start-1">
+        <PayslipForm
+          detail={detail}
+          initialEdits={initialEdits}
+          onClose={(kept) => edits.keep(payslipId, kept)}
+          onSaved={(next) => {
+            edits.keep(payslipId, null);
+            setDetail(next);
+            onChanged();
+          }}
+          onConfirmed={(next) => {
+            setDetail((current) =>
+              current === null
+                ? current
+                : { ...current, status: next.status, confirmedAt: next.confirmedAt },
+            );
+            onChanged();
+          }}
+          onDirtyChange={(dirty) => edits.markUnsaved(payslipId, dirty)}
+          onFieldFocus={(path) => {
+            setActiveField(path);
+            setFocusedPath(path);
+          }}
+        />
+      </div>
+      {/* Form first in Tab order; CSS puts the source above it on a phone (Task 10 D8). */}
       <aside
         aria-label={t("review.sourceTitle")}
-        className="flex min-w-0 flex-col gap-3 lg:sticky lg:top-20 lg:col-start-2 lg:row-start-1"
+        className="order-first flex min-w-0 flex-col gap-3 lg:order-none lg:sticky lg:top-20 lg:col-start-2 lg:row-start-1"
       >
-        <button
-          type="button"
-          onClick={() => setPreviewOpen((open) => !open)}
-          aria-expanded={previewOpen}
-          aria-controls="payslip-source"
-          className="flex min-h-12 items-center justify-center self-start rounded-lg border border-slate-300 bg-white px-4 font-semibold text-slate-700 hover:bg-slate-100 lg:hidden"
-        >
-          {previewOpen ? t("session.hideDocument") : t("session.showDocument")}
-        </button>
-        <div id="payslip-source" className={previewOpen ? "" : "hidden lg:block"}>
+        {keyboard ? null : (
+          <button
+            type="button"
+            onClick={() => setPreviewOpen((open) => !open)}
+            aria-expanded={previewOpen}
+            aria-controls="payslip-source"
+            className="flex min-h-12 items-center justify-center self-start rounded-lg border border-slate-300 bg-white px-4 font-semibold text-slate-700 hover:bg-slate-100 lg:hidden"
+          >
+            {previewOpen ? t("session.hideDocument") : t("session.showDocument")}
+          </button>
+        )}
+        <div id="payslip-source" className={previewOpen || keyboard ? "" : "hidden lg:block"}>
           {/* The poll has stopped by the time a refetch fails, so nothing else would try again. */}
           {failed ? (
             <div className="mb-3">
@@ -117,6 +149,7 @@ export function PayslipReview({
           ) : null}
           {/* Outlines, dashes and signals follow the saved detail, not keystrokes. */}
           <SourceDocumentPanel
+            strip={keyboard}
             payslipId={payslipId}
             regions={liveRegions(regions, detail)}
             activeField={activeField}
@@ -131,26 +164,6 @@ export function PayslipReview({
           />
         </div>
       </aside>
-
-      <div className="min-w-0 lg:col-start-1 lg:row-start-1">
-        <PayslipForm
-          detail={detail}
-          onSaved={(next) => {
-            setDetail(next);
-            onChanged();
-          }}
-          onConfirmed={(next) => {
-            setDetail((current) =>
-              current === null
-                ? current
-                : { ...current, status: next.status, confirmedAt: next.confirmedAt },
-            );
-            onChanged();
-          }}
-          onDirtyChange={onDirtyChange}
-          onFieldFocus={setActiveField}
-        />
-      </div>
     </div>
   );
 }

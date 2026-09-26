@@ -512,10 +512,10 @@ Since Task 08: a value printed across several lines has one outline per line. Ev
 
 **Requirements.** Two controls, deliberately not one — established document-review practice splits document selection from page navigation, and the two levels are semantically different (payslips are alternatives to each other; pages are sequential parts of one thing).
 
-- **Payslips:** a horizontal scroll-snap chip rail on phone, a vertical list at `lg`. Each chip carries a letterhead-cropped thumbnail, the period, and a status dot. Implemented as a `tablist` with **manual activation**, since the panel swaps a rendered preview and a whole form. A truncated rail shows a `+N` badge on the last visible chip, and the next chip peeks ~24 px.
+- **Payslips:** a horizontal scroll-snap chip rail below `xl`, a vertical list at `xl`. Each chip carries its position, period (or filename), status icon with text, and an unsaved-edits mark when needed. No thumbnails: letterheads within a session look alike. Implemented as a `tablist` with **manual activation**, since the panel swaps a rendered preview and a whole form. A truncated rail shows a `+N` badge on the last visible chip, and the next chip peeks ~24 px.
 - **Pages:** a pager pill inside the preview (`‹ Stranica 2 od 3 ›`) that opens a thumbnail sheet on tap; at `lg`, a 72 px vertical page rail inside the source panel. Marked up as a `<nav>` with `aria-current="page"`, never a tablist nested inside a tabpanel.
 
-**Rules.** Every rail control has a hit box of at least 48 CSS px. Selection is never indicated by colour alone. No page is reachable *only* by horizontal scroll — the preview scrolls continuously through the current payslip's pages.
+**Rules.** Every rail control has a hit box of at least 48 CSS px. Selection is never indicated by colour alone. The preview displays one page at a time; every page is reachable from the pager, sheet or rail, none only by horizontal scroll. Single-page payslips show no page navigator.
 
 ### 7.7 Review form
 
@@ -531,7 +531,8 @@ Settled in Task 09:
 - **Input formats follow the UI language.** `hr` shows `2298,97`, `0,135`, `10.07.2025` and `07/2025`; `en` shows the stored `2298.97`, `0.135`, `2025-07-10` and `2025-07`. No grouping separators, so a value always parses back. Both forms parse in either language.
 - **Line breaks** in a stored value are joined into a space in its single-line input. Only changed fields are sent on save, so an untouched value keeps its breaks.
 - **Line items by tables status.** While the tables pass is `pending`, the three tables are a read-only skeleton, because that pass would overwrite an earlier edit; once `failed`, each says so and rows can be added by hand.
-- **Unsaved edits** prompt before switching to another payslip or closing the review, and the browser prompts on reload. The browser Back button is not covered until Task 10.
+- **Unsaved edits** are kept per payslip in the tab while the user switches payslips, goes Back or leaves the session; the browser prompts on reload. They are not persisted across reload or sign-out.
+- **Phone keyboard layout (Task 10).** While typing on a coarse-pointer device below `lg`, a fixed 64 px source strip shows the active field's first safe region, or an explicit no-outline note. The bottom navigation and action bar hide until focus leaves the input. `interactive-widget=resizes-content` and `visualViewport` offsets support keyboard resizing; real-iPhone verification remains M2.
 - **A sticky action bar** holds the unsaved indicator, Save, and Confirm with the visible reason it is unavailable. Controls are at least 48 px.
 - **Format errors** (text that will not parse on save) are validation failures: red text under the input, `aria-invalid`, and a form-level alert on a failed save. They are visible in both the table and the card layout.
 - **Region interaction.** At `lg`, clicking an outline focuses its input; on a phone it opens the popover, whose Edit does. Escape closes the popover.
@@ -884,6 +885,9 @@ $0.045–0.051 two-pass (~1.5×).
 >
 > **Status, 2026-09-26:** the review form, two-way linking, PATCH and confirm landed in Task 09,
 > pending its review session. Navigation and the phone keyboard strip are Task 10.
+>
+> **Status, 2026-09-26:** Task 10 navigation, unsaved-edit preservation and the phone keyboard
+> strip are implemented; pending review; M2 pending.
 
 ### Phase 4 — Merge, export and polish
 

@@ -39,6 +39,11 @@
     outline-offset: 2px;
   }
 
+  /* Task 10 D5: leave the visible area for the source strip, focused input and attention note. */
+  html[data-keyboard="open"] {
+    scroll-padding-top: 5rem;
+  }
+
   button:not(:disabled):not([aria-disabled="true"]),
   label:has(> input[type="file"]),
   select,
@@ -51,4 +56,9 @@
   button[aria-disabled="true"] {
     cursor: not-allowed;
   }
+}
+
+/* Unlayered so Tailwind's display utilities cannot override keyboard mode (Task 10 D5). */
+html[data-keyboard="open"] [data-hide-with-keyboard] {
+  display: none;
 }

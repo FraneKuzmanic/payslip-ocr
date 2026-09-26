@@ -1,12 +1,15 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useEffect } from "react";
+import { StrictMode, useEffect } from "react";
+import { Link, MemoryRouter, Outlet, Route, Routes, useNavigate, useParams } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PayslipDetailResponse, SourceRegionsResponse } from "@payslip/shared";
 import { getPayslipDetail, getPayslipRegions, updatePayslip } from "../api/client";
 import { ToastProvider } from "../components/Toast";
 import i18n from "../i18n";
 import { PayslipReview, fieldValuesOf, liveRegions } from "./PayslipReview";
+import { UnsavedEditsProvider } from "./unsaved/UnsavedEditsProvider";
+import { useUnsavedEdits } from "./unsaved/useUnsavedEdits";
 
 vi.mock("../api/client", async (importActual) => ({
   ...(await importActual<typeof import("../api/client")>()),
@@ -62,22 +65,36 @@ function panelProps() {
   return JSON.parse(screen.getByTestId("panel").textContent ?? "{}") as Record<string, unknown>;
 }
 
-function stubWide(wide: boolean) {
+function stubWide(wide: boolean, coarse = false) {
   vi.stubGlobal(
     "matchMedia",
-    vi.fn(() => ({ matches: wide, addEventListener: vi.fn(), removeEventListener: vi.fn() })),
+    vi.fn((query: string) => ({
+      matches: query === "(pointer: coarse)" ? coarse : wide,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
   );
 }
 
 function review(tablesStatus: "pending" | "ready" = "pending") {
   return (
     <ToastProvider>
-      <PayslipReview
-        payslipId="payslip-1"
-        tablesStatus={tablesStatus}
-        onDirtyChange={vi.fn()}
-        onChanged={onChanged}
-      />
+      <MemoryRouter>
+        <Routes>
+          <Route element={<UnsavedEditsProvider />}>
+            <Route
+              index
+              element={
+                <PayslipReview
+                  payslipId="payslip-1"
+                  tablesStatus={tablesStatus}
+                  onChanged={onChanged}
+                />
+              }
+            />
+          </Route>
+        </Routes>
+      </MemoryRouter>
     </ToastProvider>
   );
 }
@@ -96,7 +113,105 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+function OpenReview() {
+  const { id = "a" } = useParams();
+  return <PayslipReview key={id} payslipId={id} tablesStatus="ready" onChanged={vi.fn()} />;
+}
+
+function Controls() {
+  const navigate = useNavigate();
+  const { unsaved } = useUnsavedEdits();
+  return (
+    <>
+      <Link to="/review/a">open a</Link>
+      <Link to="/review/b">open b</Link>
+      <Link to="/">leave</Link>
+      <button onClick={() => navigate(-1)}>back</button>
+      <button onClick={() => navigate(1)}>forward</button>
+      <p data-testid="unsaved">{[...unsaved].join(",")}</p>
+    </>
+  );
+}
+
+function Journey() {
+  return (
+    <>
+      <Controls />
+      <Outlet />
+    </>
+  );
+}
+
+const input = () => document.getElementById("review-field-netoPlaca")!;
+
 describe("PayslipReview", () => {
+  it("places the form before the source in DOM order", async () => {
+    const { container } = render(review());
+    await screen.findByTestId("panel");
+    const form = container.querySelector("form")!;
+    expect(form.compareDocumentPosition(container.querySelector("aside")!)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
+  it.each([
+    [false, true, true],
+    [false, false, false],
+    [true, true, false],
+  ])("uses the strip for wide=%s coarse=%s: %s", async (wide, coarse, strip) => {
+    stubWide(wide, coarse);
+    render(review());
+    await screen.findByTestId("panel");
+    await userEvent.click(document.getElementById("review-field-netoPlaca")!);
+    expect(panelProps()["strip"]).toBe(strip);
+    expect(document.documentElement.hasAttribute("data-keyboard")).toBe(strip);
+    await userEvent.click(document.body);
+    expect(panelProps()["strip"]).toBe(false);
+  });
+
+  it("keeps edits across selections, Back/Forward and route departure in StrictMode", async () => {
+    vi.mocked(getPayslipDetail).mockImplementation(async (id) =>
+      detail({ id, tablesStatus: "ready" }),
+    );
+    vi.mocked(updatePayslip).mockImplementation(async (id, patch) =>
+      detail({ id, tablesStatus: "ready", ...patch }),
+    );
+    render(
+      <StrictMode>
+        <ToastProvider>
+          <MemoryRouter initialEntries={["/review/a"]}>
+            <Routes>
+              <Route element={<UnsavedEditsProvider />}>
+                <Route element={<Journey />}>
+                  <Route path="/review/:id" element={<OpenReview />} />
+                  <Route index element={<p>away</p>} />
+                </Route>
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </ToastProvider>
+      </StrictMode>,
+    );
+    await screen.findByTestId("panel");
+    await userEvent.clear(input());
+    await userEvent.type(input(), "42.00");
+    await userEvent.click(screen.getByText("open b"));
+    await waitFor(() => expect(panelProps()["payslipId"]).toBe("b"));
+    expect(screen.getByTestId("unsaved")).toHaveTextContent("a");
+    await userEvent.click(screen.getByText("back"));
+    await waitFor(() => expect(input()).toHaveValue("42.00"));
+    await userEvent.click(screen.getByText("forward"));
+    await waitFor(() => expect(panelProps()["payslipId"]).toBe("b"));
+    await userEvent.click(screen.getByText("open a"));
+    await waitFor(() => expect(input()).toHaveValue("42.00"));
+    await userEvent.click(screen.getByText("leave"));
+    expect(screen.getByText("away")).toBeInTheDocument();
+    await userEvent.click(screen.getByText("open a"));
+    await waitFor(() => expect(input()).toHaveValue("42.00"));
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(updatePayslip).toHaveBeenCalledWith("a", { netoPlaca: "42.00" }));
+    await waitFor(() => expect(screen.getByTestId("unsaved")).toBeEmptyDOMElement());
+  });
   it("passes the flattened values and every attention signal to the panel", async () => {
     render(review());
 

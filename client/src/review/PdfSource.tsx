@@ -1,8 +1,9 @@
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
 import type { SourceRegionsResponse } from "@payslip/shared";
 import { Spinner } from "../components/Spinner";
+import { useWideLayout } from "../history/useWideLayout";
+import { PageNavigator } from "./PageNavigator";
+import { SourceStrip } from "./SourceStrip";
 import {
   isRenderCancellation,
   loadPdfDocument,
@@ -23,6 +24,7 @@ import { ZoomableSourceViewport, type RegionInteraction } from "./ZoomableSource
 const RATIO_TOLERANCE = 0.01;
 
 interface PdfSourceProps {
+  strip?: boolean;
   url: string;
   regions: SourceRegionsResponse | null;
   activeField: string | null;
@@ -49,10 +51,14 @@ export function PdfSource({
   editedFields,
   onSelect,
   onUnavailable,
+  strip = false,
 }: PdfSourceProps) {
+  const wide = useWideLayout();
   const [document, setDocument] = useState<LoadedPdf | null>(null);
   const [page, setPage] = useState(1);
-  const [pageViewport, setPageViewport] = useState<PdfPageViewport | null>(null);
+  const [pageViewport, setPageViewport] = useState<(PdfPageViewport & { page: number }) | null>(
+    null,
+  );
   const host = useRef<HTMLDivElement | null>(null);
   const [visible, setVisible] = useState(false);
 
@@ -108,7 +114,7 @@ export function PdfSource({
     document
       .viewportOf(page)
       .then((next) => {
-        if (current) setPageViewport(next);
+        if (current) setPageViewport({ ...next, page });
       })
       .catch((error: unknown) => {
         console.error("[review] could not measure a PDF page", error);
@@ -127,10 +133,27 @@ export function PdfSource({
 
   // The host box is always rendered, even while loading — it is what the observer above watches,
   // so it has to exist before there is anything to show inside it.
-  if (document === null || pageViewport === null)
+  if (document === null)
     return (
       <div ref={host}>
         <Spinner />
+      </div>
+    );
+
+  if (pageViewport === null || pageViewport.page !== page)
+    return strip ? (
+      <div ref={host}>
+        <Spinner />
+      </div>
+    ) : (
+      <div ref={host} className={wide ? "flex min-w-0 gap-2" : ""}>
+        {wide ? <PageNavigator document={document} page={page} onChange={setPage} wide /> : null}
+        <div className="min-w-0 flex-1">
+          <Spinner />
+          {wide ? null : (
+            <PageNavigator document={document} page={page} onChange={setPage} wide={false} />
+          )}
+        </div>
       </div>
     );
 
@@ -138,43 +161,68 @@ export function PdfSource({
   const declared = regions?.pages.find((entry) => entry.page === page)?.aspectRatio;
   const overlaySafe = declared !== undefined && Math.abs(rendered - declared) < RATIO_TOLERANCE;
 
+  if (strip)
+    return (
+      <div ref={host}>
+        <SourceStrip
+          ratio={rendered}
+          overlaySafe={overlaySafe}
+          regions={regions?.regions ?? []}
+          page={page}
+          activeField={activeField}
+          editedFields={editedFields}
+        >
+          {(width) => (
+            <PdfCanvas
+              document={document}
+              page={page}
+              pageWidth={pageViewport.width}
+              viewport={{ width, height: width / rendered }}
+              onFailed={onUnavailable}
+            />
+          )}
+        </SourceStrip>
+      </div>
+    );
+
   return (
-    <div ref={host}>
-      <ZoomableSourceViewport
-        // The painted page's own ratio, never the API's: the box must fit what is actually drawn, so
-        // a disagreement costs the outlines rather than distorting the document.
-        ratio={rendered}
-        overlaySafe={overlaySafe}
-        regions={regions?.regions ?? []}
-        page={page}
-        activeField={activeField}
-        interaction={interaction}
-        fieldValues={fieldValues}
-        lowConfidenceFields={lowConfidenceFields}
-        ungroundableFields={ungroundableFields}
-        unreadableFields={unreadableFields}
-        editedFields={editedFields}
-        onSelect={onSelect}
-        // Only reachable once the page is measured, so the note never shows while loading (D10).
-        outlinesWithheld={
-          !overlaySafe && (regions?.regions.some((region) => region.page === page) ?? false)
-        }
-        footer={
-          document.numPages > 1 ? (
-            <Pager page={page} total={document.numPages} onChange={(next) => setPage(next)} />
-          ) : null
-        }
-      >
-        {(viewport) => (
-          <PdfCanvas
-            document={document}
-            page={page}
-            pageWidth={pageViewport.width}
-            viewport={viewport}
-            onFailed={onUnavailable}
-          />
+    <div ref={host} className={wide ? "flex min-w-0 gap-2" : ""}>
+      {wide ? <PageNavigator document={document} page={page} onChange={setPage} wide /> : null}
+      <div className="min-w-0 flex-1">
+        <ZoomableSourceViewport
+          // The painted page's own ratio, never the API's: the box must fit what is actually drawn, so
+          // a disagreement costs the outlines rather than distorting the document.
+          ratio={rendered}
+          overlaySafe={overlaySafe}
+          regions={regions?.regions ?? []}
+          page={page}
+          activeField={activeField}
+          interaction={interaction}
+          fieldValues={fieldValues}
+          lowConfidenceFields={lowConfidenceFields}
+          ungroundableFields={ungroundableFields}
+          unreadableFields={unreadableFields}
+          editedFields={editedFields}
+          onSelect={onSelect}
+          // Only reachable once the page is measured, so the note never shows while loading (D10).
+          outlinesWithheld={
+            !overlaySafe && (regions?.regions.some((region) => region.page === page) ?? false)
+          }
+        >
+          {(viewport) => (
+            <PdfCanvas
+              document={document}
+              page={page}
+              pageWidth={pageViewport.width}
+              viewport={viewport}
+              onFailed={onUnavailable}
+            />
+          )}
+        </ZoomableSourceViewport>
+        {wide ? null : (
+          <PageNavigator document={document} page={page} onChange={setPage} wide={false} />
         )}
-      </ZoomableSourceViewport>
+      </div>
     </div>
   );
 }
@@ -187,7 +235,7 @@ interface PdfCanvasProps {
   onFailed: () => void;
 }
 
-function PdfCanvas({ document, page, pageWidth, viewport, onFailed }: PdfCanvasProps) {
+export function PdfCanvas({ document, page, pageWidth, viewport, onFailed }: PdfCanvasProps) {
   const canvas = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
@@ -209,62 +257,4 @@ function PdfCanvas({ document, page, pageWidth, viewport, onFailed }: PdfCanvasP
   // CSS sizes the element while `pdfDocument` sizes the bitmap, exactly as the image path lets the
   // box size an `<img>` whose intrinsic pixels are larger.
   return <canvas ref={canvas} className="block size-full" />;
-}
-
-function Pager({
-  page,
-  total,
-  onChange,
-}: {
-  page: number;
-  total: number;
-  onChange: (page: number) => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div className="flex items-center justify-center gap-2 text-sm">
-      <PagerButton
-        onClick={() => onChange(page - 1)}
-        disabled={page <= 1}
-        label={t("review.pdfPreviousPage")}
-      >
-        <ChevronLeft aria-hidden="true" className="size-5" />
-      </PagerButton>
-      <span aria-live="polite" className="tabular-nums text-slate-600">
-        {t("review.pdfPage", { current: page, total })}
-      </span>
-      <PagerButton
-        onClick={() => onChange(page + 1)}
-        disabled={page >= total}
-        label={t("review.pdfNextPage")}
-      >
-        <ChevronRight aria-hidden="true" className="size-5" />
-      </PagerButton>
-    </div>
-  );
-}
-
-function PagerButton({
-  onClick,
-  disabled,
-  label,
-  children,
-}: {
-  onClick: () => void;
-  disabled: boolean;
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={label}
-      title={label}
-      className="inline-flex size-12 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 disabled:text-slate-300 disabled:hover:bg-white"
-    >
-      {children}
-    </button>
-  );
 }

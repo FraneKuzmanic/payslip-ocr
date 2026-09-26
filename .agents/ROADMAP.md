@@ -93,7 +93,7 @@ investigation and is recorded with its reasoning.
 | 07 | Capture & multi-upload UI | ✅ complete, reviewed and validated; M3 core journey passed, sub-steps pending → [`history/07`](./history/07-capture-multi-upload.md) |
 | 08 | Source regions & document preview with highlighting | ✅ complete, reviewed and validated; M1 spot-check pending → [`history/08`](./history/08-source-regions-preview.md) |
 | 09 | Review form & two-way linking | ✅ complete, reviewed and validated; migration 2 applied (step P) → [`history/09`](./history/09-review-form-two-way-linking.md) |
-| 10 | Session navigation & phone layout | ⬜ not started |
+| 10 | Session navigation & phone layout | ✅ implemented and reviewed; M2 pending |
 | 11 | Merge payslips | ⬜ not started |
 | 12 | Export & history | ⬜ not started |
 | 13 | Deploy & end-to-end verification | ⬜ not started |
@@ -593,20 +593,20 @@ the software keyboard open.
 
 **Scope**
 
-- **Payslip selector**: horizontal scroll-snap chip rail on phone, vertical list at `lg`. Chip =
-  letterhead-cropped thumbnail + period + status dot. `tablist` with **manual activation**, since
+- **Payslip selector**: horizontal scroll-snap chip rail below `xl`, vertical list at `xl`. Chip =
+  position + period/filename + status icon and text (thumbnails superseded by plan 10 D2). `tablist` with **manual activation**, since
   the panel swaps a rendered preview and a whole form. Truncated rail shows `+N`; the next chip
   peeks ~24 px.
 - **Page navigator**: a pager pill inside the preview opening a thumbnail sheet on phone; a 72 px
   vertical page rail inside the source panel at `lg`. Marked up as `<nav>` with
   `aria-current="page"` — **never a tablist nested inside a tabpanel**.
-- Desktop three-zone layout: payslip list, sticky source `<aside>`, scrolling form.
+- Desktop three-zone layout: payslip list, scrolling form, sticky source `<aside>`.
 - **The keyboard problem**: `interactive-widget=resizes-content` in the viewport meta, plus a
   `visualViewport.resize` fallback for Chrome on iOS which does not support it. Focusing a field
-  collapses the preview to a 44 px source strip showing that field's region.
+  collapses the preview to a 64 px source strip showing that field's region (plan 10 D5).
 - Every rail control ≥48 CSS px. Selection never indicated by colour alone.
 - Browser Back while the review is dirty loses the edits (Task 09 D13): `<BrowserRouter>` has no
-  `useBlocker`. Draft preservation closes it.
+  `useBlocker`. Unsaved-edit preservation closes it.
 - From the Task 09 review: at 1440 px the line-item text columns are ~90 px wide, so names are
   cut off ("SINDIKAL…"); and Tab reaches the preview's controls before the form, because the
   source `<aside>` comes first in the DOM (history/09 deviation 5). Settle both with the
@@ -614,15 +614,31 @@ the software keyboard open.
 
 **Not in this task:** merge (11).
 
+**Added in planning (plan 10)**
+
+- D1: Keep unsaved edits per payslip in tab memory across switching and route navigation.
+- D2: Chips show position, period/filename and status, without letterhead thumbnails.
+- D3: One source page at a time, with a phone sheet and desktop page rail.
+- D4: Vertical payslip list at `xl`, 3:2 form/source split at `lg`, fixed numeric columns.
+- D5: A 64 px strip while typing, hidden bottom controls and visual viewport tracking.
+- D6: Pure, bounded strip geometry; existing source ratio guard and zoom code retained.
+- D7: Select the first payslip with URL replacement; chip changes push history.
+- D8: Form before source in DOM order; CSS ordering places the phone preview above it.
+
 **Definition of done**
 
-- [ ] Switching payslips preserves unsaved edits on the one being left.
-- [ ] A two-page payslip navigates and highlights across both pages; single-page payslips show no
-      pager.
-- [ ] Keyboard navigation works: arrows move within the rail, Enter/Space activates, focus is
-      visible throughout.
-- [ ] Usable at 375 px width with no horizontal page scroll.
+- [x] Switching payslips preserves unsaved edits on the one being left. Tests and browser review
+      cover Back, Forward and leaving/returning; reload prompting remains unchecked in the browser.
+- [x] A two-page payslip navigates and highlights across both pages; single-page payslips show no
+      pager. Browser review confirmed page selection and focus restoration.
+- [x] Keyboard navigation works: arrows move within the rail, Enter/Space activates, focus is
+      visible throughout. Unit tests cover every key; browser review confirmed arrows and Enter.
+- [x] Usable at 375 px width with no horizontal page scroll, checked in Chromium in both locales.
 - [ ] **Real-iPhone keyboard verification recorded** — see §4.
+
+Browser journey 9.9 verified the two-page pager, focus ring, desktop line-item widths, phone
+overflow and simulated touch strip. Its `+N` badge and reload prompt remain browser checks;
+M2 requires a real iPhone. See history/10 for the review evidence.
 
 ---
 
@@ -735,7 +751,7 @@ each is run separately and its result recorded in the owning task's history file
 | **Submit stall** — intermittent ~29 s server-side stall on `:analyzeBinary` | Mitigated, not fixed | Worth an Azure support ticket; the retry costs a duplicate analysis |
 | **Small corpus** — 11 payslips, 7 layouts, no more available | Accepted | Every accuracy figure describes these seven vendors and no eighth |
 | **Hand-written rule creep** — a Croatian parser growing beneath a generic model | Watch | A growing count of deterministic post-processing rules is the signal to revisit the engine, not progress |
-| **Phone layout has no prior art** — every document-AI review UI found is desktop-only | Open | Task 10; first thing to put in front of a real user |
+| **Phone layout has no prior art** — every document-AI review UI found is desktop-only | Open | Task 10 implemented it; browser review and M2 real-iPhone verification remain the test |
 | **Inherited gaps** — no password reset, unverified emails, Render cold starts | Accepted | Documented, not fixed. CI exists since Task 01b |
 | **Direct-write gap** — a signed-in user can update their own payslip's `status` or `canonical_data` through PostgREST, bypassing the API | **Closed** (Task 09 step P, 2026-09-26) | Every write, retry included, goes through a `security definer` function. `update` is revoked and `insert` narrowed to the six upload columns (migration `20260926081337`); `direct-writes.integration.ts` proves both on every run. The functions still accept any `jsonb`, so a direct RPC can store fields that fail the canonical schema, on the caller's own payslip only |
 | **Service source on the wrong text** — D01's `paymentDate` carries a service source on the employer address and is outlined there faithfully (history/08). Grounding checks the whole page, not the region | Open (Task 09 D15) | Needs its own measurement over the recordings: whether the OCR words inside each region contain the printed value |

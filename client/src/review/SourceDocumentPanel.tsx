@@ -5,6 +5,7 @@ import { getPayslipSource } from "../api/client";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { Spinner } from "../components/Spinner";
 import { PdfSource } from "./PdfSource";
+import { SourceStrip } from "./SourceStrip";
 import { ZoomableSourceViewport, type RegionInteraction } from "./ZoomableSourceViewport";
 
 export type { RegionInteraction };
@@ -22,6 +23,7 @@ interface SourceDocumentPanelProps {
   onSelect?: (field: string) => void;
   /** False where the page already names the document in its own heading (Task 08). */
   showTitle?: boolean;
+  strip?: boolean;
 }
 
 export function SourceDocumentPanel({
@@ -36,6 +38,7 @@ export function SourceDocumentPanel({
   editedFields,
   onSelect,
   showTitle = true,
+  strip = false,
 }: SourceDocumentPanelProps) {
   const { t } = useTranslation();
   const [source, setSource] = useState<Awaited<ReturnType<typeof getPayslipSource>> | null>(null);
@@ -79,28 +82,42 @@ export function SourceDocumentPanel({
   const page = regions?.pages[0];
 
   return (
-    <section className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3">
-      {showTitle ? <h2 className="font-semibold">{t("review.sourceTitle")}</h2> : null}
+    <section
+      className={
+        strip
+          ? "pointer-events-none fixed inset-x-0 z-40 h-16 overflow-hidden border-b border-slate-200 bg-white"
+          : "flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3"
+      }
+      style={strip ? { top: "var(--visual-top, 0px)" } : undefined}
+    >
+      {showTitle && !strip ? <h2 className="font-semibold">{t("review.sourceTitle")}</h2> : null}
       {isPdf && pdfUnavailable ? (
-        <>
-          <object
-            data={source.url}
-            type="application/pdf"
-            className="min-h-96 w-full rounded border border-slate-200"
-          >
-            <a
-              href={source.url}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex min-h-12 items-center underline"
+        strip ? (
+          <p aria-hidden="true" className="px-3 text-sm text-slate-600">
+            {t("review.stripNoOutline")}
+          </p>
+        ) : (
+          <>
+            <object
+              data={source.url}
+              type="application/pdf"
+              className="min-h-96 w-full rounded border border-slate-200"
             >
-              {t("review.openSource")}
-            </a>
-          </object>
-          <p className="text-sm text-slate-600">{t("review.highlightsUnavailablePdf")}</p>
-        </>
+              <a
+                href={source.url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex min-h-12 items-center underline"
+              >
+                {t("review.openSource")}
+              </a>
+            </object>
+            <p className="text-sm text-slate-600">{t("review.highlightsUnavailablePdf")}</p>
+          </>
+        )
       ) : isPdf ? (
         <PdfSource
+          strip={strip}
           url={source.url}
           regions={regions}
           activeField={activeField}
@@ -114,9 +131,12 @@ export function SourceDocumentPanel({
           onUnavailable={() => setPdfUnavailable(true)}
         />
       ) : imageUnavailable ? (
-        <p className="text-sm text-slate-600">{t("review.imageUnavailable")}</p>
+        <p aria-hidden={strip || undefined} className="text-sm text-slate-600">
+          {t(strip ? "review.stripNoOutline" : "review.imageUnavailable")}
+        </p>
       ) : (
         <ImageSource
+          strip={strip}
           url={source.url}
           aspectRatio={page?.aspectRatio}
           regions={regions}
@@ -141,21 +161,24 @@ export function SourceDocumentPanel({
           alt={t("review.sourceAlt")}
         />
       )}
-      <div className="flex flex-wrap items-center gap-3 text-sm">
-        <a
-          href={source.url}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex min-h-12 items-center underline"
-        >
-          {t("review.openSource")}
-        </a>
-      </div>
+      {strip ? null : (
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          <a
+            href={source.url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex min-h-12 items-center underline"
+          >
+            {t("review.openSource")}
+          </a>
+        </div>
+      )}
     </section>
   );
 }
 
 interface ImageSourceProps {
+  strip: boolean;
   url: string;
   aspectRatio: number | undefined;
   regions: SourceRegionsResponse | null;
@@ -185,6 +208,7 @@ function ImageSource({
   onSelect,
   onRetry,
   alt,
+  strip,
 }: ImageSourceProps) {
   // "pending" until the image has loaded, so the withheld note never flashes during load (D10).
   const [ratio, setRatio] = useState<"pending" | "agrees" | "disagrees">("pending");
@@ -193,6 +217,52 @@ function ImageSource({
   useEffect(() => {
     setRatio("pending");
   }, [url]);
+
+  function loaded(image: HTMLImageElement) {
+    const renderedRatio = image.naturalWidth / image.naturalHeight;
+    setRatio(
+      aspectRatio !== undefined && Math.abs(renderedRatio - aspectRatio) < 0.01
+        ? "agrees"
+        : "disagrees",
+    );
+  }
+
+  if (strip)
+    return (
+      <>
+        {/* A never-opened preview still needs its image measured before the strip may draw it. */}
+        {ratio === "pending" ? (
+          <img
+            src={url}
+            alt=""
+            aria-hidden="true"
+            className="hidden"
+            onLoad={(event) => loaded(event.currentTarget)}
+            onError={onRetry}
+          />
+        ) : null}
+        <SourceStrip
+          ratio={aspectRatio ?? 1}
+          overlaySafe={ratio === "agrees" && page !== undefined}
+          regions={regions?.regions ?? []}
+          page={1}
+          activeField={activeField}
+          editedFields={editedFields}
+        >
+          {(width) => (
+            <img
+              src={url}
+              alt={alt}
+              draggable={false}
+              className="block size-full"
+              style={{ width }}
+              onLoad={(event) => loaded(event.currentTarget)}
+              onError={onRetry}
+            />
+          )}
+        </SourceStrip>
+      </>
+    );
 
   return (
     <ZoomableSourceViewport
@@ -218,15 +288,7 @@ function ImageSource({
           alt={alt}
           draggable={false}
           className="block size-full"
-          onLoad={(event) => {
-            const renderedRatio =
-              event.currentTarget.naturalWidth / event.currentTarget.naturalHeight;
-            setRatio(
-              aspectRatio !== undefined && Math.abs(renderedRatio - aspectRatio) < 0.01
-                ? "agrees"
-                : "disagrees",
-            );
-          }}
+          onLoad={(event) => loaded(event.currentTarget)}
           onError={onRetry}
         />
       )}

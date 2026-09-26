@@ -1,5 +1,5 @@
 import { CheckCircle2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import type { ConfirmPayslipResponse, PayslipDetailResponse } from "@payslip/shared";
@@ -27,6 +27,7 @@ import {
   type ReviewFormValues,
 } from "./reviewForm";
 import { SectionLegend } from "./SectionLegend";
+import type { UnsavedEdits } from "./unsaved/UnsavedEditsContext";
 
 const SCALAR_SECTION_ORDER = ["employer", "employee", "period", "reconciliation"] as const;
 
@@ -58,6 +59,8 @@ interface PayslipFormProps {
   onSaved: (next: PayslipDetailResponse) => void;
   onConfirmed: (next: ConfirmPayslipResponse) => void;
   onDirtyChange: (dirty: boolean) => void;
+  initialEdits?: UnsavedEdits;
+  onClose: (edits: UnsavedEdits | null) => void;
   /** The focused input's canonical path, or null once focus leaves the form (D9). */
   onFieldFocus: (path: string | null) => void;
 }
@@ -73,6 +76,8 @@ export function PayslipForm({
   onSaved,
   onConfirmed,
   onDirtyChange,
+  initialEdits,
+  onClose,
   onFieldFocus,
 }: PayslipFormProps) {
   const { t, i18n } = useTranslation();
@@ -81,21 +86,51 @@ export function PayslipForm({
   const values = useMemo(() => toFormValues(detail, language), [detail, language]);
   // `values` re-formats untouched fields on a language switch and fills the tables when they land;
   // `keepDirtyValues` keeps whatever the user is typing through both (D12, D19).
-  const { register, control, handleSubmit, reset, formState } = useForm<ReviewFormValues>({
-    values,
-    resetOptions: { keepDirtyValues: true },
-  });
+  const { register, control, handleSubmit, reset, getValues, formState } =
+    useForm<ReviewFormValues>({
+      values,
+      resetOptions: { keepDirtyValues: true },
+    });
   const { isDirty, dirtyFields, errors } = formState;
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const latest = useRef({ isDirty, dirtyFields, onClose, onDirtyChange });
+  latest.current = { isDirty, dirtyFields, onClose, onDirtyChange };
+
+  // Restore only the changed top-level keys; fresh tables can have arrived while away (Task 10 D1).
+  useEffect(() => {
+    if (initialEdits === undefined) return;
+    const picked = Object.fromEntries(
+      initialEdits.dirtyKeys.map((key) => [key, initialEdits.values[key]]),
+    );
+    // reset also restores field-array length; setValue alone leaves removed rows mounted.
+    reset({ ...getValues(), ...picked }, { keepDefaultValues: true });
+  }, []);
 
   useEffect(() => {
     onDirtyChange(isDirty);
   }, [isDirty, onDirtyChange]);
 
-  // A review closed without switching (browser Back) must not leave the page dirty (D13).
-  useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
+  // Clear the mounted form first, then keep its snapshot: the closed payslip must stay marked
+  // unsaved. Callback changes during typing must never run this cleanup (Task 10 D1).
+  useEffect(
+    () => () => {
+      const current = latest.current;
+      current.onDirtyChange(false);
+      current.onClose(
+        current.isDirty
+          ? {
+              values: getValues(),
+              dirtyKeys: (Object.keys(current.dirtyFields) as (keyof ReviewFormValues)[]).filter(
+                (key) => hasDirtyLeaf(current.dirtyFields[key]),
+              ),
+            }
+          : null,
+      );
+    },
+    [],
+  );
 
   const signals: AttentionSignals = {
     warnings: detail.warnings,
@@ -191,7 +226,10 @@ export function PayslipForm({
       ))}
 
       {/* Pinned above the phone's bottom navigation, whose height the toast offset also uses (D14). */}
-      <div className="sticky bottom-[calc(4rem+env(safe-area-inset-bottom))] z-10 -mx-4 flex flex-col gap-2 border-t border-slate-200 bg-white px-4 py-3 lg:bottom-0 lg:mx-0 lg:px-0">
+      <div
+        data-hide-with-keyboard
+        className="sticky bottom-[calc(4rem+env(safe-area-inset-bottom))] z-10 -mx-4 flex flex-col gap-2 border-t border-slate-200 bg-white px-4 py-3 lg:bottom-0 lg:mx-0 lg:px-0"
+      >
         {error ? (
           <p role="alert" className="text-sm text-red-700">
             {error}
@@ -237,4 +275,9 @@ export function PayslipForm({
       </div>
     </form>
   );
+}
+
+function hasDirtyLeaf(value: unknown): boolean {
+  if (value === true) return true;
+  return value !== null && typeof value === "object" && Object.values(value).some(hasDirtyLeaf);
 }

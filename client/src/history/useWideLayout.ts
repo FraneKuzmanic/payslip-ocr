@@ -1,15 +1,15 @@
 import { useEffect, useState } from "react";
 
 /**
- * `lg`, the same 1024px line the shell already uses to swap the bottom tab bar for the sidebar.
- * The app therefore has one definition of "desktop" rather than two.
+ * `lg` remains the default; Task 10's three-zone session layout starts at `xl`.
  */
-const WIDE = "(min-width: 1024px)";
+export const LG = "(min-width: 1024px)";
+export const XL = "(min-width: 1280px)";
 
-function wide(): boolean {
+function wide(query: string): boolean {
   // No matchMedia (jsdom, very old browsers): fall back to the card list, which is the layout
   // that works at any width. A table rendered blind into a narrow viewport would not.
-  return window.matchMedia?.(WIDE).matches ?? false;
+  return window.matchMedia?.(query).matches ?? false;
 }
 
 /**
@@ -17,18 +17,18 @@ function wide(): boolean {
  * hiding one with CSS would put two copies of every row in the accessibility tree and duplicate
  * every row's action menu, so the choice is made once, here.
  */
-export function useWideLayout(): boolean {
-  const [isWide, setIsWide] = useState(wide);
+export function useWideLayout(query: string = LG): boolean {
+  const [isWide, setIsWide] = useState(() => wide(query));
 
   useEffect(() => {
-    const query = window.matchMedia?.(WIDE);
-    if (!query) return;
+    const media = window.matchMedia?.(query);
+    if (!media) return;
 
-    const update = () => setIsWide(query.matches);
+    const update = () => setIsWide(media.matches);
     update();
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
-  }, []);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, [query]);
 
   return isWide;
 }

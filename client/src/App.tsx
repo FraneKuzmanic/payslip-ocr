@@ -7,6 +7,7 @@ import { NotFoundPage } from "./routes/NotFoundPage";
 import { RegisterPage } from "./routes/RegisterPage";
 import { SessionPage } from "./routes/SessionPage";
 import { UploadBatchProvider } from "./upload/UploadBatchProvider";
+import { UnsavedEditsProvider } from "./review/unsaved/UnsavedEditsProvider";
 
 export function App() {
   return (
@@ -20,9 +21,12 @@ export function App() {
         <Route element={<ProtectedRoute />}>
           {/* Above both pages: a batch keeps uploading after the capture page navigates away. */}
           <Route element={<UploadBatchProvider />}>
-            <Route index element={<HomePage />} />
-            <Route path="sessions/:sessionId" element={<SessionPage />} />
-            <Route path="*" element={<NotFoundPage />} />
+            {/* Inside ProtectedRoute so signing out drops unsaved edits (Task 10 D1). */}
+            <Route element={<UnsavedEditsProvider />}>
+              <Route index element={<HomePage />} />
+              <Route path="sessions/:sessionId" element={<SessionPage />} />
+              <Route path="*" element={<NotFoundPage />} />
+            </Route>
           </Route>
         </Route>
       </Route>

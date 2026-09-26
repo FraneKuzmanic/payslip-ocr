@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router";
+import { MemoryRouter, Route, Routes, useLocation, useNavigationType } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PayslipSummary, SessionDetailResponse } from "@payslip/shared";
 import { getSessionDetail, retryPayslip } from "../api/client";
@@ -23,23 +23,13 @@ vi.mock("../api/client", () => {
 let batchItems: readonly BatchItem[] = [];
 const dismiss = vi.fn();
 
-// The review reports unsaved edits through `onDirtyChange`; the stub offers it as a button.
+const unsaved = new Set<string>();
+vi.mock("../review/unsaved/useUnsavedEdits", () => ({
+  useUnsavedEdits: () => ({ unsaved }),
+}));
 vi.mock("../review/PayslipReview", () => ({
-  PayslipReview: ({
-    payslipId,
-    tablesStatus,
-    onDirtyChange,
-  }: {
-    payslipId: string;
-    tablesStatus: string;
-    onDirtyChange: (dirty: boolean) => void;
-  }) => (
-    <>
-      <p data-testid="preview">{`${payslipId} ${tablesStatus}`}</p>
-      <button type="button" onClick={() => onDirtyChange(true)}>
-        make dirty
-      </button>
-    </>
+  PayslipReview: ({ payslipId, tablesStatus }: { payslipId: string; tablesStatus: string }) => (
+    <p data-testid="preview">{payslipId + " " + tablesStatus}</p>
   ),
 }));
 
@@ -74,7 +64,13 @@ function session(...payslips: PayslipSummary[]): SessionDetailResponse {
 
 function LocationProbe() {
   const location = useLocation();
-  return <p data-testid="location">{location.search}</p>;
+  const navigation = useNavigationType();
+  return (
+    <>
+      <p data-testid="location">{location.search}</p>
+      <p data-testid="navigation">{navigation}</p>
+    </>
+  );
 }
 
 function renderPage(search = "") {
@@ -102,48 +98,45 @@ const tick = () =>
     await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
   });
 const rows = () => within(screen.getByRole("list")).getAllByRole("listitem");
+const tabs = () => screen.getAllByRole("tab");
 
 beforeEach(async () => {
   await i18n.changeLanguage("en");
   vi.useFakeTimers();
   batchItems = [];
+  unsaved.clear();
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   mockedDetail.mockReset();
   mockedRetry.mockReset();
   dismiss.mockReset();
 });
 
 describe("SessionPage", () => {
-  it("lists payslips in server order with position, filename, status and details", async () => {
+  it("lists every payslip as a tab in server order with its period or filename and status", async () => {
     mockedDetail.mockResolvedValue(
       session(
-        summary("first", {
-          status: "review",
-          tablesStatus: "pending",
-          employeeName: "Ana Horvat",
-          period: "2025-03",
-        }),
+        summary("first", { status: "review", period: "2025-03" }),
         summary("second", { status: "failed", failureReason: "unreadable_document" }),
       ),
     );
     renderPage();
     await flush();
-
-    const [first, second] = rows();
-    expect(first).toHaveTextContent("Payslip 1");
-    expect(first).toHaveTextContent("first.jpg");
-    expect(first).toHaveTextContent("Ana Horvat · 2025-03");
-    expect(first).toHaveTextContent("Ready to review");
-    expect(first).toHaveTextContent("Line items still loading");
-    expect(second).toHaveTextContent("Payslip 2");
-    expect(second).toHaveTextContent("Failed");
-    expect(second).toHaveTextContent("The document could not be read. Try a sharper photo.");
-    expect(within(second!).queryByRole("button")).toBeNull();
+    expect(tabs()[0]).toHaveTextContent("2025-03");
+    expect(tabs()[0]).toHaveTextContent("Ready to review");
+    expect(tabs()[1]).toHaveTextContent("second.jpg");
+    expect(tabs()[1]).toHaveTextContent("Failed");
+    fireEvent.click(tabs()[1]!);
+    await flush();
+    expect(screen.getByRole("tabpanel")).toHaveTextContent(
+      "The document could not be read. Try a sharper photo.",
+    );
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
     expect(mockedDetail).toHaveBeenCalledWith(SESSION_ID, expect.any(AbortSignal));
   });
 
@@ -157,7 +150,7 @@ describe("SessionPage", () => {
 
     await tick();
     expect(mockedDetail).toHaveBeenCalledTimes(2);
-    expect(screen.getByText("Line items ready")).toBeInTheDocument();
+    expect(screen.getByTestId("preview")).toHaveTextContent("a ready");
 
     await tick();
     await tick();
@@ -188,9 +181,10 @@ describe("SessionPage", () => {
     renderPage();
     await flush();
 
-    const [first, second, third] = rows();
-    expect(rows()).toHaveLength(3);
-    expect(first).toHaveTextContent("a.jpg");
+    const [second, third] = rows();
+    expect(rows()).toHaveLength(2);
+    expect(tabs()).toHaveLength(1);
+    expect(tabs()[0]).toHaveTextContent("a.jpg");
     expect(second).toHaveTextContent("b.pdf");
     expect(second).toHaveTextContent(
       "This PDF has too many pages. Upload a document of up to 10 pages.",
@@ -222,17 +216,20 @@ describe("SessionPage", () => {
     mockedRetry.mockResolvedValue({ id: "a", status: "processing" });
     renderPage();
     await flush();
-    const [first, second] = rows();
-    expect(within(second!).queryByRole("button", { name: "Try again" })).toBeNull();
+    fireEvent.click(tabs()[1]!);
+    await flush();
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+    fireEvent.click(tabs()[0]!);
+    await flush();
 
     mockedDetail.mockResolvedValue(
       session(summary("a"), summary("b", { status: "failed", failureReason: "provider_rejected" })),
     );
-    fireEvent.click(within(first!).getByRole("button", { name: "Try again" }));
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     await flush();
 
     expect(mockedRetry).toHaveBeenCalledWith("a");
-    expect(rows()[0]).toHaveTextContent("Reading the payslip");
+    expect(tabs()[0]).toHaveTextContent("Reading the payslip");
   });
 
   it("marks the retry button busy while its request is in flight", async () => {
@@ -252,7 +249,7 @@ describe("SessionPage", () => {
     expect(mockedRetry).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps focus on the row once a retry replaces its button", async () => {
+  it("keeps focus on the selected tab once a retry replaces its button", async () => {
     mockedDetail.mockResolvedValue(
       session(summary("a", { status: "failed", failureReason: "provider_unavailable" })),
     );
@@ -265,7 +262,7 @@ describe("SessionPage", () => {
     fireEvent.click(button);
     await flush();
 
-    expect(document.activeElement).toBe(rows()[0]);
+    expect(document.activeElement).toBe(tabs()[0]);
   });
 
   it("on a 409 retry refetches without an error, since another retry already won", async () => {
@@ -281,7 +278,7 @@ describe("SessionPage", () => {
     await flush();
 
     expect(mockedDetail).toHaveBeenCalledTimes(2);
-    expect(rows()[0]).toHaveTextContent("Reading the payslip");
+    expect(tabs()[0]).toHaveTextContent("Reading the payslip");
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
@@ -299,15 +296,16 @@ describe("SessionPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     await flush();
 
-    const [first, second] = rows();
-    expect(within(first!).getByRole("alert")).toHaveTextContent(
+    expect(screen.getByRole("alert")).toHaveTextContent(
       "The retry could not be started. Check your connection and try again.",
     );
-    expect(within(second!).queryByRole("alert")).toBeNull();
-    expect(within(first!).getByRole("button", { name: "Try again" })).not.toHaveAttribute(
+    expect(screen.getByRole("button", { name: "Try again" })).not.toHaveAttribute(
       "aria-disabled",
       "true",
     );
+    fireEvent.click(tabs()[1]!);
+    await flush();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("says the session does not exist on a 404, with a way back", async () => {
@@ -350,7 +348,7 @@ describe("SessionPage", () => {
   });
 });
 
-describe("SessionPage review (Task 08 D1, Task 09 D11)", () => {
+describe("SessionPage navigation (Task 10)", () => {
   const readable = () =>
     session(
       summary("ready", { status: "review", tablesStatus: "ready" }),
@@ -358,180 +356,88 @@ describe("SessionPage review (Task 08 D1, Task 09 D11)", () => {
       summary("broken", { status: "failed", failureReason: "unreadable_document" }),
       summary("done", { status: "confirmed", tablesStatus: "ready" }),
     );
-  const show = { name: "Review" };
 
-  it("offers Review only on payslips with a readable form", async () => {
+  it.each(["", "?payslip=unknown"])(
+    "selects the first payslip by replacement for %s",
+    async (search) => {
+      mockedDetail.mockResolvedValue(readable());
+      renderPage(search);
+      await flush();
+      expect(screen.getByTestId("location")).toHaveTextContent("?payslip=ready");
+      expect(screen.getByTestId("navigation")).toHaveTextContent("REPLACE");
+      expect(tabs()[0]).toHaveAttribute("aria-selected", "true");
+      expect(screen.getByRole("tabpanel")).toHaveAttribute("aria-labelledby", "payslip-tab-ready");
+      expect(screen.getByTestId("preview")).toHaveTextContent("ready ready");
+      expect(document.activeElement).toBe(document.body);
+    },
+  );
+
+  it("keeps a processing payslip selected and opens its form when extraction completes", async () => {
     mockedDetail.mockResolvedValue(readable());
-    renderPage();
+    renderPage("?payslip=busy");
     await flush();
-
-    const [ready, busy, broken, done] = rows();
-    expect(within(ready!).getByRole("button", show)).toHaveAttribute("aria-expanded", "false");
-    expect(within(ready!).getByRole("button", show)).toHaveAttribute(
-      "aria-controls",
-      "payslip-preview",
+    expect(screen.getByRole("tabpanel")).toHaveTextContent("This payslip is still being read.");
+    expect(tabs()[1]).toHaveAttribute("aria-selected", "true");
+    mockedDetail.mockResolvedValue(
+      session(summary("busy", { status: "review", tablesStatus: "ready" })),
     );
-    expect(within(busy!).queryByRole("button", show)).not.toBeInTheDocument();
-    expect(within(broken!).queryByRole("button", show)).not.toBeInTheDocument();
-    expect(within(done!).getByRole("button", show)).toBeInTheDocument();
-    expect(screen.queryByTestId("preview")).not.toBeInTheDocument();
+    await tick();
+    expect(screen.getByTestId("preview")).toHaveTextContent("busy ready");
+    expect(screen.getByTestId("location")).toHaveTextContent("?payslip=busy");
   });
 
-  it("opens the preview through ?payslip=, focuses its heading, and closes it again", async () => {
+  it("switches with a push and no discard dialog, keeping focus on the tab", async () => {
+    unsaved.add("ready");
     mockedDetail.mockResolvedValue(readable());
     renderPage();
     await flush();
-
-    fireEvent.click(within(rows()[0]!).getByRole("button", show));
+    const tab = tabs()[3]!;
+    tab.focus();
+    fireEvent.click(tab);
     await flush();
-
-    expect(screen.getByTestId("location")).toHaveTextContent("?payslip=ready");
-    expect(screen.getByTestId("preview")).toHaveTextContent("ready ready");
-    const heading = screen.getByRole("heading", { name: "Payslip 1 · ready.jpg" });
-    expect(document.activeElement).toBe(heading);
-    const hide = within(rows()[0]!).getByRole("button", { name: "Hide review" });
-    expect(hide).toHaveAttribute("aria-expanded", "true");
-
-    fireEvent.click(hide);
-    await flush();
-
-    expect(screen.getByTestId("location")).toBeEmptyDOMElement();
-    expect(screen.queryByTestId("preview")).not.toBeInTheDocument();
-    expect(within(rows()[0]!).getByRole("button", show)).toHaveAttribute("aria-expanded", "false");
-  });
-
-  it("switches the preview to another payslip", async () => {
-    mockedDetail.mockResolvedValue(readable());
-    renderPage("?payslip=ready");
-    await flush();
-
-    fireEvent.click(within(rows()[3]!).getByRole("button", show));
-    await flush();
-
     expect(screen.getByTestId("location")).toHaveTextContent("?payslip=done");
+    expect(screen.getByTestId("navigation")).toHaveTextContent("PUSH");
     expect(screen.getByTestId("preview")).toHaveTextContent("done ready");
-    expect(within(rows()[0]!).getByRole("button", show)).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(tab).toHaveFocus();
+    expect(tabs()[0]).toHaveTextContent("Unsaved changes");
   });
 
-  it("opens a readable payslip named in the URL, without taking focus", async () => {
+  it("reopens the URL selection without stealing focus", async () => {
     mockedDetail.mockResolvedValue(readable());
     renderPage("?payslip=done");
     await flush();
-
     expect(screen.getByTestId("preview")).toHaveTextContent("done ready");
     expect(screen.getByRole("heading", { name: "Payslip 4 · done.jpg" })).toBeInTheDocument();
     expect(document.activeElement).toBe(document.body);
   });
 
-  it.each(["busy", "broken", "unknown"])(
-    "ignores ?payslip=%s: no preview and no error",
-    async (id) => {
-      mockedDetail.mockResolvedValue(readable());
-      renderPage(`?payslip=${id}`);
-      await flush();
+  it.each([false, true])("sets vertical orientation only at xl: %s", async (xl) => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query === "(min-width: 1280px)" && xl,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }));
+    mockedDetail.mockResolvedValue(readable());
+    renderPage();
+    await flush();
+    expect(screen.getByRole("tablist")).toHaveAttribute(
+      "aria-orientation",
+      xl ? "vertical" : "horizontal",
+    );
+  });
 
-      expect(screen.queryByTestId("preview")).not.toBeInTheDocument();
-      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    },
-  );
-
-  it("passes the polled tables status through to the open preview", async () => {
+  it("passes the polled tables status through to the open form", async () => {
     mockedDetail.mockResolvedValue(
       session(summary("ready", { status: "review", tablesStatus: "pending" })),
     );
     renderPage("?payslip=ready");
     await flush();
     expect(screen.getByTestId("preview")).toHaveTextContent("ready pending");
-
     mockedDetail.mockResolvedValue(
       session(summary("ready", { status: "review", tablesStatus: "ready" })),
     );
     await tick();
-
     expect(screen.getByTestId("preview")).toHaveTextContent("ready ready");
-  });
-});
-
-/** Whether the page asked the browser to confirm leaving. */
-function unload(): boolean {
-  const event = new Event("beforeunload", { cancelable: true });
-  window.dispatchEvent(event);
-  return event.defaultPrevented;
-}
-
-describe("SessionPage unsaved edits (Task 09 D13)", () => {
-  const two = () =>
-    session(
-      summary("ready", { status: "review", tablesStatus: "ready" }),
-      summary("done", { status: "confirmed", tablesStatus: "ready" }),
-    );
-  const review = { name: "Review" };
-
-  it("asks before switching away from a dirty review; Keep editing stays", async () => {
-    mockedDetail.mockResolvedValue(two());
-    renderPage("?payslip=ready");
-    await flush();
-    fireEvent.click(screen.getByRole("button", { name: "make dirty" }));
-
-    fireEvent.click(within(rows()[1]!).getByRole("button", review));
-    await flush();
-
-    const dialog = screen.getByRole("dialog", { name: "Discard unsaved changes?" });
-    expect(dialog).toHaveTextContent("Your changes to this payslip will be lost.");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Keep editing" }));
-    await flush();
-
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByTestId("location")).toHaveTextContent("?payslip=ready");
-  });
-
-  it("switches once the user discards", async () => {
-    mockedDetail.mockResolvedValue(two());
-    renderPage("?payslip=ready");
-    await flush();
-    fireEvent.click(screen.getByRole("button", { name: "make dirty" }));
-
-    fireEvent.click(within(rows()[1]!).getByRole("button", review));
-    await flush();
-    fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
-    await flush();
-
-    expect(screen.getByTestId("location")).toHaveTextContent("?payslip=done");
-    expect(screen.getByTestId("preview")).toHaveTextContent("done ready");
-  });
-
-  it("asks before closing a dirty review too", async () => {
-    mockedDetail.mockResolvedValue(two());
-    renderPage("?payslip=ready");
-    await flush();
-    fireEvent.click(screen.getByRole("button", { name: "make dirty" }));
-
-    fireEvent.click(within(rows()[0]!).getByRole("button", { name: "Hide review" }));
-    await flush();
-
-    expect(screen.getByRole("dialog", { name: "Discard unsaved changes?" })).toBeInTheDocument();
-    expect(screen.getByTestId("preview")).toBeInTheDocument();
-  });
-
-  it("switches without asking while the review is clean", async () => {
-    mockedDetail.mockResolvedValue(two());
-    renderPage("?payslip=ready");
-    await flush();
-
-    fireEvent.click(within(rows()[1]!).getByRole("button", review));
-    await flush();
-
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByTestId("location")).toHaveTextContent("?payslip=done");
-  });
-
-  it("guards reload and closing the tab only while dirty", async () => {
-    mockedDetail.mockResolvedValue(two());
-    renderPage("?payslip=ready");
-    await flush();
-    expect(unload()).toBe(false);
-    fireEvent.click(screen.getByRole("button", { name: "make dirty" }));
-    await flush();
-    expect(unload()).toBe(true);
   });
 });

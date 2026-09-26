@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SourceRegionsResponse } from "@payslip/shared";
 import "../i18n";
@@ -28,20 +28,24 @@ const regions: SourceRegionsResponse = {
   ],
 };
 
-function renderPanel() {
-  return render(
+function panel(strip = false) {
+  return (
     <SourceDocumentPanel
+      strip={strip}
       payslipId="payslip-1"
       regions={regions}
-      activeField={null}
+      activeField="netoPlaca"
       interaction="popover"
       fieldValues={{ netoPlaca: "2298.97" }}
       lowConfidenceFields={[]}
       ungroundableFields={[]}
       unreadableFields={[]}
       editedFields={[]}
-    />,
+    />
   );
+}
+function renderPanel(strip = false) {
+  return render(panel(strip));
 }
 
 /** jsdom never decodes an image, so its natural size is defined by hand before `load`. */
@@ -66,6 +70,29 @@ afterEach(() => {
 });
 
 describe("SourceDocumentPanel image path", () => {
+  it("measures a never-opened image before drawing its strip, then returns to the preview without fetching again", async () => {
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(343);
+    const { container, rerender } = renderPanel(true);
+    await waitFor(() => expect(container.querySelector("img")).not.toBeNull());
+    expect(container.querySelector("polygon")).toBeNull();
+    loadImage(container.querySelector("img")!, 800, 1600);
+    expect(container.querySelectorAll("polygon")).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "Zoom in" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Open in a new tab" })).toBeNull();
+    rerender(panel(false));
+    expect(screen.getByRole("button", { name: "Zoom in" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open in a new tab" })).toBeInTheDocument();
+    expect(getPayslipSource).toHaveBeenCalledOnce();
+  });
+
+  it("withholds the image strip when its measured ratio disagrees", async () => {
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(343);
+    const { container } = renderPanel(true);
+    await waitFor(() => expect(container.querySelector("img")).not.toBeNull());
+    loadImage(container.querySelector("img")!, 1600, 800);
+    expect(container.querySelector("polygon")).toBeNull();
+    expect(screen.getByText("This value has no highlight on the payslip.")).toBeInTheDocument();
+  });
   it("shows no note and no outline before the image has loaded (D10)", async () => {
     const { container } = renderPanel();
     await screen.findByRole("img");

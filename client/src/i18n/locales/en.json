@@ -23,6 +23,11 @@
     "pdfPage": "Page {{current}} of {{total}}",
     "pdfPreviousPage": "Previous page",
     "pdfNextPage": "Next page",
+    "pages": "Pages",
+    "pageThumbnail": "Page {{page}}",
+    "choosePage": "Choose a page",
+    "closePages": "Close",
+    "stripNoOutline": "This value has no highlight on the payslip.",
     "lowConfidence": "This value may need extra checking.",
     "zoomIn": "Zoom in",
     "zoomOut": "Zoom out",
@@ -119,11 +124,7 @@
     "addRow": "Add row",
     "removeRow": "Remove row {{row}}",
     "rowLabel": "{{section}} row {{row}}",
-    "invalidForm": "Some values could not be read. Fix the marked fields, then save.",
-    "discardTitle": "Discard unsaved changes?",
-    "discardDescription": "Your changes to this payslip will be lost.",
-    "discard": "Discard changes",
-    "keepEditing": "Keep editing"
+    "invalidForm": "Some values could not be read. Fix the marked fields, then save."
   },
   "auth": {
     "signIn": "Sign in",
@@ -184,6 +185,9 @@
     "sessionError": "The upload could not start. Try again."
   },
   "session": {
+    "payslips": "Payslips",
+    "unsaved": "Unsaved changes",
+    "processingPanel": "This payslip is still being read. Its form opens here when it is ready.",
     "title": "Your payslips",
     "progress": "{{ready}} of {{total}} ready to review",
     "position": "Payslip {{index}}",
@@ -197,9 +201,7 @@
     "loadError": "The session could not be loaded.",
     "retryError": "The retry could not be started. Check your connection and try again.",
     "showDocument": "Show document",
-    "hideDocument": "Hide document",
-    "review": "Review",
-    "hideReview": "Hide review"
+    "hideDocument": "Hide document"
   },
   "payslipStatus": {
     "processing": "Reading the payslip",

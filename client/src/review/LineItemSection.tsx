@@ -125,19 +125,33 @@ export function LineItemSection<T extends TableField>({
   ) {
     const kind = columnKind(table, cell.column);
     const flagged = cell.attention !== null || cell.error !== undefined;
-    return (
-      <input
-        {...register(cell.path as InputPath, { validate: validatorFor(kind) })}
-        id={fieldId(cell.path)}
-        type="text"
-        autoComplete="off"
-        inputMode={kind === "amount" || kind === "quantity" ? "decimal" : undefined}
-        className={inputClass(cell.attention !== null, cell.error !== undefined)}
-        aria-label={ariaLabel}
-        {...(flagged ? { "aria-describedby": noteId } : {})}
-        {...(cell.error === undefined ? {} : { "aria-invalid": true })}
-      />
-    );
+    const props = {
+      ...register(cell.path as InputPath, { validate: validatorFor(kind) }),
+      id: fieldId(cell.path),
+      autoComplete: "off",
+      className: inputClass(cell.attention !== null, cell.error !== undefined),
+      "aria-label": ariaLabel,
+      ...(flagged ? { "aria-describedby": noteId } : {}),
+      ...(cell.error === undefined ? {} : { "aria-invalid": true }),
+    };
+    // Without `field-sizing` (Firefox, older Safari) a one-row textarea would hide its wrapped
+    // second line, which is worse than an input's horizontal scroll.
+    if (wide && kind === "text" && (globalThis.CSS?.supports?.("field-sizing", "content") ?? false))
+      return (
+        <textarea
+          {...props}
+          rows={1}
+          style={{ fieldSizing: "content" }}
+          className={`${props.className} resize-none overflow-hidden py-3`}
+          // Still a single-line value (Task 09 D17): Enter saves, as it does in every input.
+          onKeyDown={(event) => {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            event.currentTarget.form?.requestSubmit();
+          }}
+        />
+      );
+    return <input {...props} type="text" inputMode={kind === "text" ? undefined : "decimal"} />;
   }
 
   function removeButton(index: number) {
@@ -216,6 +230,15 @@ export function LineItemSection<T extends TableField>({
       {failedNotice}
       {rows.fields.length > 0 ? (
         <table className="w-full table-fixed border-collapse">
+          <colgroup>
+            {columns.map((column) => (
+              <col
+                key={column}
+                className={columnKind(table, column) === "text" ? undefined : "w-28"}
+              />
+            ))}
+            <col className="w-14" />
+          </colgroup>
           <thead>
             <tr className="text-left text-sm text-slate-600">
               {columns.map((column) => (
@@ -224,7 +247,7 @@ export function LineItemSection<T extends TableField>({
                 </th>
               ))}
               {/* The removal column needs no header: each button names its row. */}
-              <td className="w-14" />
+              <td />
             </tr>
           </thead>
           <tbody>

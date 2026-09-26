@@ -153,6 +153,11 @@ added or removed row is edited too. An edited field drops its machine attention 
 outline is drawn dashed.
 _Avoid_: Modified, overridden, corrected
 
+**Unsaved edits**:
+Changes typed into a Payslip's review form and not yet saved. They are kept per Payslip in the
+browser tab while the user moves between Payslips, and lost on reload.
+_Avoid_: Draft (every Extracted value is already a draft)
+
 **Critical field**:
 One of the seven fields whose absence makes a Payslip not worth exporting — employer name,
 employee name, employee OIB, period, bruto plaća, neto plaća, iznos za isplatu. Critical fields

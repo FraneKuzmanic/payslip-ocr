@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle2, Clock, Loader2, X } from "lucide-react";
+import { AlertCircle, Clock, Loader2, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useParams, useSearchParams } from "react-router";
@@ -8,9 +8,11 @@ import {
   type SessionDetailResponse,
 } from "@payslip/shared";
 import { ApiError, getSessionDetail, retryPayslip } from "../api/client";
-import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Spinner } from "../components/Spinner";
+import { useWideLayout, XL } from "../history/useWideLayout";
+import { PayslipRail } from "../review/PayslipRail";
 import { PayslipReview } from "../review/PayslipReview";
+import { useUnsavedEdits } from "../review/unsaved/useUnsavedEdits";
 import type { BatchItem } from "../upload/UploadBatchContext";
 import { useUploadBatch } from "../upload/useUploadBatch";
 
@@ -38,14 +40,15 @@ function isReadable(payslip: PayslipSummary): boolean {
 }
 
 /**
- * The landing route after upload (Task 07 D2): every payslip of one session with its live status,
- * and below the list the selected one's review, its form beside its highlighted source (Task 09
- * D11). Deliberately plain; Task 10 replaces the list with the chip rail.
+ * A session's manual-activation payslip rail and selected review (Task 10 D7).
+ * The upload batch and unsaved edits live above this route, so navigation cannot discard either.
  */
 export function SessionPage() {
   const { t } = useTranslation();
   const { sessionId = "" } = useParams();
   const { itemsFor, dismiss } = useUploadBatch();
+  const xl = useWideLayout(XL);
+  const { unsaved } = useUnsavedEdits();
   const [detail, setDetail] = useState<SessionDetailResponse | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [refreshKey, setRefreshKey] = useState(0);
@@ -54,12 +57,6 @@ export function SessionPage() {
   // The selection lives in the URL, so it survives a reload and the back button (D1).
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get("payslip");
-  const previewHeading = useRef<HTMLHeadingElement | null>(null);
-  // Set only by a button press: a preview opened from the URL on load does not steal focus.
-  const focusPreview = useRef(false);
-  // Unsaved edits on the open review (D13), and the switch waiting on the discard prompt.
-  const [dirty, setDirty] = useState(false);
-  const [pendingToggle, setPendingToggle] = useState<string | null>(null);
 
   const items = itemsFor(sessionId);
   const unsent = items.some(isUnsent);
@@ -132,9 +129,8 @@ export function SessionPage() {
               ),
             },
       );
-      // The retry button is gone once the row shows processing; keep focus on the row rather than
-      // letting it fall to the page body.
-      document.getElementById(rowId(id))?.focus();
+      // The status panel loses its retry button; its tab remains throughout extraction.
+      document.getElementById(`payslip-tab-${id}`)?.focus();
       setRefreshKey((key) => key + 1);
     } catch (error) {
       // 409: another retry already won, or the payslip moved on. The next read shows which.
@@ -149,45 +145,13 @@ export function SessionPage() {
     }
   }
 
-  const selectedIndex =
-    detail?.payslips.findIndex((payslip) => payslip.id === selectedId && isReadable(payslip)) ?? -1;
+  const selectedIndex = detail?.payslips.findIndex((payslip) => payslip.id === selectedId) ?? -1;
   const selected = selectedIndex === -1 ? null : (detail?.payslips[selectedIndex] ?? null);
 
   useEffect(() => {
-    if (selected === null || !focusPreview.current) return;
-    focusPreview.current = false;
-    const heading = previewHeading.current;
-    heading?.focus();
-    // On a phone the preview can be ten rows below the button. jsdom has no `scrollIntoView`.
-    heading?.scrollIntoView?.({ block: "start", behavior: "smooth" });
-  }, [selected?.id]);
-
-  // Reload and closing the tab while dirty (D13). Browsers ignore custom text here. The Back
-  // button changing `?payslip=` is not covered: `<BrowserRouter>` has no `useBlocker` (Task 10).
-  useEffect(() => {
-    if (!dirty) return;
-    function onBeforeUnload(event: BeforeUnloadEvent) {
-      event.preventDefault();
-    }
-    window.addEventListener("beforeunload", onBeforeUnload);
-    return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [dirty]);
-
-  function togglePreview(id: string) {
-    // Leaving a review with unsaved edits asks first (D13).
-    if (dirty) {
-      setPendingToggle(id);
-      return;
-    }
-    switchPreview(id);
-  }
-
-  function switchPreview(id: string) {
-    const open = selected?.id === id;
-    focusPreview.current = !open;
-    setDirty(false);
-    setSearchParams(open ? {} : { payslip: id });
-  }
+    const first = detail?.payslips[0];
+    if (selected === null && first) setSearchParams({ payslip: first.id }, { replace: true });
+  }, [detail, selectedId, setSearchParams]);
 
   if (loadState === "loading") {
     return (
@@ -224,7 +188,7 @@ export function SessionPage() {
   return (
     <section
       className={`mx-auto flex w-full max-w-xl flex-col gap-5 px-4 py-8 ${
-        selected === null ? "" : "lg:max-w-6xl"
+        payslips.length === 0 ? "" : "lg:max-w-6xl xl:max-w-7xl"
       }`}
     >
       <div className="flex flex-col gap-2">
@@ -247,140 +211,115 @@ export function SessionPage() {
         </div>
       ) : null}
 
-      <ol className="flex flex-col gap-3">
-        {payslips.map((payslip, index) => (
-          <Row
-            key={payslip.id}
-            id={rowId(payslip.id)}
-            position={index + 1}
-            name={payslip.originalFilename}
-            detail={
-              payslip.employeeName || payslip.period
-                ? [payslip.employeeName, payslip.period].filter(Boolean).join(" · ")
-                : null
-            }
-            icon={statusIcon(payslip)}
-            status={t(`payslipStatus.${payslip.status}`)}
-          >
-            {payslip.status === "review" ? (
-              <p className="text-slate-600">{t(`tablesStatus.${payslip.tablesStatus}`)}</p>
-            ) : null}
-            {payslip.status === "failed" && payslip.failureReason ? (
-              <p className="text-red-800">{t(`failureReason.${payslip.failureReason}`)}</p>
-            ) : null}
-            {retryFailed.has(payslip.id) ? (
-              <p role="alert" className="text-red-800">
-                {t("session.retryError")}
-              </p>
-            ) : null}
-            {payslip.status === "failed" &&
-            payslip.failureReason &&
-            isRetryableFailure(payslip.failureReason) ? (
-              <button
-                type="button"
-                onClick={() => void retry(payslip.id)}
-                aria-disabled={retrying.has(payslip.id)}
-                className="flex min-h-12 items-center gap-2 self-start rounded-lg bg-accent px-4 font-semibold text-white hover:bg-accent-hover aria-disabled:bg-slate-400"
-              >
-                {retrying.has(payslip.id) ? <Spinner label={false} className="size-5" /> : null}
-                {t("session.retry")}
-              </button>
-            ) : null}
-            {isReadable(payslip) ? (
-              <button
-                type="button"
-                onClick={() => togglePreview(payslip.id)}
-                aria-expanded={selected?.id === payslip.id}
-                aria-controls="payslip-preview"
-                className={`${linkClass} self-start`}
-              >
-                {selected?.id === payslip.id ? t("session.hideReview") : t("session.review")}
-              </button>
-            ) : null}
-          </Row>
-        ))}
-        {pending.map((item, index) => (
-          <Row
-            key={item.localId}
-            position={payslips.length + index + 1}
-            name={item.name}
-            detail={null}
-            icon={batchIcon(item)}
-            status={
-              item.state === "waiting"
-                ? t("session.waiting")
-                : item.state === "rejected"
-                  ? item.errorCode === undefined || item.errorCode === "network"
-                    ? t("session.uploadNetworkError")
-                    : t(`upload.${item.errorCode}`)
-                  : item.state === "uploading"
-                    ? t("session.uploading")
-                    : t("payslipStatus.processing")
-            }
-          >
-            {item.state === "rejected" ? (
-              <button
-                type="button"
-                onClick={() => dismiss(sessionId, item.localId)}
-                aria-label={t("session.dismiss", { name: item.name })}
-                className="grid min-h-12 min-w-12 place-items-center self-start rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-              >
-                <X aria-hidden="true" className="size-5" />
-              </button>
-            ) : null}
-          </Row>
-        ))}
-      </ol>
+      {payslips.length > 0 ? (
+        <div className="flex min-w-0 flex-col gap-5 xl:grid xl:grid-cols-[13rem_minmax(0,1fr)] xl:items-start xl:gap-6">
+          <div className="min-w-0 xl:sticky xl:top-20">
+            <PayslipRail
+              payslips={payslips}
+              selectedId={selected?.id ?? null}
+              unsaved={unsaved}
+              orientation={xl ? "vertical" : "horizontal"}
+              onSelect={(id) => {
+                if (id !== selectedId) setSearchParams({ payslip: id });
+              }}
+            />
+          </div>
+          {selected === null ? null : (
+            <div
+              role="tabpanel"
+              id="payslip-panel"
+              tabIndex={0}
+              aria-labelledby={`payslip-tab-${selected.id}`}
+              className="flex min-w-0 flex-col gap-3"
+            >
+              <h2 className="font-semibold break-all">
+                {t("session.position", { index: selectedIndex + 1 })} · {selected.originalFilename}
+              </h2>
+              {isReadable(selected) ? (
+                <PayslipReview
+                  key={selected.id}
+                  payslipId={selected.id}
+                  tablesStatus={selected.tablesStatus}
+                  onChanged={() => setRefreshKey((key) => key + 1)}
+                />
+              ) : selected.status === "processing" ? (
+                <p role="status" className="text-slate-600">
+                  {t("session.processingPanel")}
+                </p>
+              ) : (
+                <>
+                  {selected.failureReason ? (
+                    <p className="text-red-800">{t(`failureReason.${selected.failureReason}`)}</p>
+                  ) : null}
+                  {retryFailed.has(selected.id) ? (
+                    <p role="alert" className="text-red-800">
+                      {t("session.retryError")}
+                    </p>
+                  ) : null}
+                  {selected.failureReason && isRetryableFailure(selected.failureReason) ? (
+                    <button
+                      type="button"
+                      onClick={() => void retry(selected.id)}
+                      aria-disabled={retrying.has(selected.id)}
+                      className="flex min-h-12 items-center gap-2 self-start rounded-lg bg-accent px-4 font-semibold text-white hover:bg-accent-hover aria-disabled:bg-slate-400"
+                    >
+                      {retrying.has(selected.id) ? (
+                        <Spinner label={false} className="size-5" />
+                      ) : null}
+                      {t("session.retry")}
+                    </button>
+                  ) : null}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      ) : null}
 
-      {/* Below the list, full width: the form and its source side by side at `lg` (D11). */}
-      {selected === null ? null : (
-        <section
-          id="payslip-preview"
-          aria-labelledby="payslip-preview-heading"
-          className="flex flex-col gap-3"
-        >
-          <h2
-            id="payslip-preview-heading"
-            ref={previewHeading}
-            tabIndex={-1}
-            // Clears the 64 px sticky header, which otherwise covers the focused heading.
-            className="scroll-mt-20 font-semibold break-all"
-          >
-            {t("session.position", { index: selectedIndex + 1 })} · {selected.originalFilename}
-          </h2>
-          <PayslipReview
-            key={selected.id}
-            payslipId={selected.id}
-            tablesStatus={selected.tablesStatus}
-            onDirtyChange={setDirty}
-            onChanged={() => setRefreshKey((key) => key + 1)}
-          />
-        </section>
-      )}
+      {pending.length > 0 ? (
+        <ol className="flex flex-col gap-3">
+          {pending.map((item, index) => (
+            <Row
+              key={item.localId}
+              position={payslips.length + index + 1}
+              name={item.name}
+              detail={null}
+              icon={batchIcon(item)}
+              status={
+                item.state === "waiting"
+                  ? t("session.waiting")
+                  : item.state === "rejected"
+                    ? item.errorCode === undefined || item.errorCode === "network"
+                      ? t("session.uploadNetworkError")
+                      : t(`upload.${item.errorCode}`)
+                    : item.state === "uploading"
+                      ? t("session.uploading")
+                      : t("payslipStatus.processing")
+              }
+            >
+              {item.state === "rejected" ? (
+                <button
+                  type="button"
+                  onClick={() => dismiss(sessionId, item.localId)}
+                  aria-label={t("session.dismiss", { name: item.name })}
+                  className="grid min-h-12 min-w-12 place-items-center self-start rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                >
+                  <X aria-hidden="true" className="size-5" />
+                </button>
+              ) : null}
+            </Row>
+          ))}
+        </ol>
+      ) : null}
 
       <Link to="/" className={linkClass}>
         {t("session.scanMore")}
       </Link>
-
-      <ConfirmDialog
-        open={pendingToggle !== null}
-        title={t("review.discardTitle")}
-        description={t("review.discardDescription")}
-        confirmLabel={t("review.discard")}
-        cancelLabel={t("review.keepEditing")}
-        onConfirm={() => {
-          const id = pendingToggle;
-          setPendingToggle(null);
-          if (id !== null) switchPreview(id);
-        }}
-        onCancel={() => setPendingToggle(null)}
-      />
     </section>
   );
 }
 
 interface RowProps {
-  readonly id?: string;
   readonly position: number;
   readonly name: string;
   readonly detail: string | null;
@@ -389,15 +328,11 @@ interface RowProps {
   readonly children?: ReactNode;
 }
 
-function Row({ id, position, name, detail, icon, status, children }: RowProps) {
+function Row({ position, name, detail, icon, status, children }: RowProps) {
   const { t } = useTranslation();
 
   return (
-    <li
-      id={id}
-      tabIndex={id === undefined ? undefined : -1}
-      className="flex flex-col gap-1 rounded-xl border border-slate-200 bg-white p-4 text-sm"
-    >
+    <li className="flex flex-col gap-1 rounded-xl border border-slate-200 bg-white p-4 text-sm">
       <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
         {t("session.position", { index: position })}
       </p>
@@ -413,17 +348,6 @@ function Row({ id, position, name, detail, icon, status, children }: RowProps) {
   );
 }
 
-function statusIcon(payslip: PayslipSummary): ReactNode {
-  switch (payslip.status) {
-    case "processing":
-      return <Loader2 aria-hidden="true" className={`${iconClass} animate-spin text-slate-600`} />;
-    case "failed":
-      return <AlertCircle aria-hidden="true" className={`${iconClass} text-red-700`} />;
-    default:
-      return <CheckCircle2 aria-hidden="true" className={`${iconClass} text-emerald-700`} />;
-  }
-}
-
 function batchIcon(item: BatchItem): ReactNode {
   switch (item.state) {
     case "waiting":
@@ -433,10 +357,6 @@ function batchIcon(item: BatchItem): ReactNode {
     default:
       return <Loader2 aria-hidden="true" className={`${iconClass} animate-spin text-slate-600`} />;
   }
-}
-
-function rowId(payslipId: string): string {
-  return `payslip-row-${payslipId}`;
 }
 
 function without(ids: ReadonlySet<string>, id: string): ReadonlySet<string> {

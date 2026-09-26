@@ -23,6 +23,11 @@
     "pdfPage": "Stranica {{current}} od {{total}}",
     "pdfPreviousPage": "Prethodna stranica",
     "pdfNextPage": "Sljedeća stranica",
+    "pages": "Stranice",
+    "pageThumbnail": "Stranica {{page}}",
+    "choosePage": "Odaberite stranicu",
+    "closePages": "Zatvori",
+    "stripNoOutline": "Ova vrijednost nema oznaku na platnoj listi.",
     "lowConfidence": "Ovu vrijednost dodatno provjerite.",
     "zoomIn": "Približite",
     "zoomOut": "Udaljite",
@@ -119,11 +124,7 @@
     "addRow": "Dodaj redak",
     "removeRow": "Ukloni redak {{row}}",
     "rowLabel": "{{section}}, redak {{row}}",
-    "invalidForm": "Neke vrijednosti nije moguće pročitati. Ispravite označena polja pa spremite.",
-    "discardTitle": "Odbaciti nespremljene promjene?",
-    "discardDescription": "Vaše promjene na ovoj platnoj listi bit će izgubljene.",
-    "discard": "Odbaci promjene",
-    "keepEditing": "Nastavi uređivati"
+    "invalidForm": "Neke vrijednosti nije moguće pročitati. Ispravite označena polja pa spremite."
   },
   "auth": {
     "signIn": "Prijava",
@@ -186,6 +187,9 @@
     "sessionError": "Slanje nije moguće započeti. Pokušajte ponovno."
   },
   "session": {
+    "payslips": "Platne liste",
+    "unsaved": "Nespremljene promjene",
+    "processingPanel": "Ova se platna lista još čita. Obrazac će se otvoriti ovdje kad bude spreman.",
     "title": "Vaše platne liste",
     "progress": "{{ready}} od {{total}} spremno za pregled",
     "position": "Platna lista {{index}}",
@@ -199,9 +203,7 @@
     "loadError": "Sesiju nije moguće učitati.",
     "retryError": "Ponovni pokušaj nije pokrenut. Provjerite vezu i pokušajte ponovno.",
     "showDocument": "Prikaži dokument",
-    "hideDocument": "Sakrij dokument",
-    "review": "Pregledaj",
-    "hideReview": "Sakrij pregled"
+    "hideDocument": "Sakrij dokument"
   },
   "payslipStatus": {
     "processing": "Očitavanje u tijeku",

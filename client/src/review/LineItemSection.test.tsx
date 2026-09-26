@@ -62,9 +62,14 @@ afterEach(() => {
 describe("LineItemSection", () => {
   it("renders a real table at lg, and no cards", () => {
     stubWide(true);
+    vi.stubGlobal("CSS", { supports: () => true });
     render(<Harness />);
 
     const table = screen.getByRole("table");
+    const cols = table.querySelectorAll("col");
+    expect(cols).toHaveLength(5);
+    expect(cols[3]).toHaveClass("w-28");
+    expect(cols[0]).not.toHaveClass("w-28");
     expect(
       within(table)
         .getAllByRole("columnheader")
@@ -73,7 +78,36 @@ describe("LineItemSection", () => {
     expect(screen.getByRole("textbox", { name: "Amount, Pay components row 2" })).toHaveValue(
       "40.00",
     );
+    expect(screen.getByRole("textbox", { name: "Component, Pay components row 1" })).toBeInstanceOf(
+      HTMLTextAreaElement,
+    );
     expect(screen.queryByText("Pay components row 1")).not.toBeInTheDocument();
+  });
+
+  it("keeps a desktop text cell an input where it cannot grow to its content", () => {
+    stubWide(true);
+    vi.stubGlobal("CSS", { supports: () => false });
+    render(<Harness />);
+
+    expect(screen.getByRole("textbox", { name: "Component, Pay components row 1" })).toBeInstanceOf(
+      HTMLInputElement,
+    );
+  });
+
+  it("saves on Enter in a desktop text cell instead of adding a line break", async () => {
+    stubWide(true);
+    vi.stubGlobal("CSS", { supports: () => true });
+    const onSubmit = vi.fn((event: SubmitEvent) => event.preventDefault());
+    render(<Harness />);
+    const form = screen.getByRole("table").closest("form")!;
+    form.addEventListener("submit", onSubmit);
+    form.requestSubmit ??= () => form.dispatchEvent(new Event("submit", { cancelable: true }));
+    const cell = screen.getByRole("textbox", { name: "Component, Pay components row 1" });
+
+    await userEvent.type(cell, "X{Enter}");
+
+    expect(cell).toHaveValue("REDOVAN RADX");
+    expect(onSubmit).toHaveBeenCalled();
   });
 
   it("renders cards on a phone, and no table", () => {
@@ -82,6 +116,9 @@ describe("LineItemSection", () => {
 
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     expect(screen.getByText("Pay components row 1")).toBeInTheDocument();
+    expect(screen.getAllByRole("textbox", { name: "Component" })[0]).toBeInstanceOf(
+      HTMLInputElement,
+    );
     expect(screen.getAllByRole("textbox", { name: "Amount" })).toHaveLength(2);
   });
 

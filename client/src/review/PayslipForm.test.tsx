@@ -6,6 +6,9 @@ import { ApiError, confirmPayslip, updatePayslip } from "../api/client";
 import { ToastProvider } from "../components/Toast";
 import i18n from "../i18n";
 import { PayslipForm } from "./PayslipForm";
+import { toFormValues } from "./reviewForm";
+import type { UnsavedEdits } from "./unsaved/UnsavedEditsContext";
+import { StrictMode } from "react";
 
 vi.mock("../api/client", async (importActual) => ({
   ...(await importActual<typeof import("../api/client")>()),
@@ -56,12 +59,14 @@ function stubWide(wide: boolean) {
   );
 }
 
-function renderForm(detail = payslip()) {
+function renderForm(detail = payslip(), initialEdits?: UnsavedEdits) {
   const props = {
     onSaved: vi.fn(),
     onConfirmed: vi.fn(),
     onDirtyChange: vi.fn(),
     onFieldFocus: vi.fn(),
+    onClose: vi.fn(),
+    initialEdits,
   };
   const view = render(
     <ToastProvider>
@@ -94,7 +99,94 @@ afterEach(() => {
 });
 
 describe("PayslipForm", () => {
-  it("renders an input with a stable id for every scalar and every cell", () => {
+  it("restores a scalar and saves only that key", async () => {
+    const { props } = renderForm(payslip(), {
+      values: toFormValues(payslip({ netoPlaca: "999.99" }), "en"),
+      dirtyKeys: ["netoPlaca"],
+    });
+    expect(byId("netoPlaca")).toHaveValue("999.99");
+    await waitFor(() => expect(props.onDirtyChange).toHaveBeenLastCalledWith(true));
+    await save();
+    expect(mockedUpdate).toHaveBeenCalledWith(ID, { netoPlaca: "999.99" });
+  });
+
+  it("restores removed table rows and sends the whole table", async () => {
+    const row = { naziv: "KREDIT", iznos: "20.00" };
+    renderForm(payslip({ obustave: [row, row] }), {
+      values: toFormValues(payslip({ obustave: [row] }), "en"),
+      dirtyKeys: ["obustave"],
+    });
+    expect(byId("obustave.0.iznos")).toHaveValue("20.00");
+    expect(byId("obustave.1.iznos")).toBeNull();
+    await save();
+    expect(mockedUpdate).toHaveBeenCalledWith(ID, {
+      obustave: [{ ...row, vjerovnik: null, ostatakSalda: null, brojRata: null }],
+    });
+  });
+
+  it("hands over typed values on unmount, without treating callback changes as a close", async () => {
+    const { props, rerender, unmount } = renderForm();
+    await userEvent.type(byId("employeeName"), "x");
+    rerender(payslip());
+    expect(props.onClose).not.toHaveBeenCalled();
+    unmount();
+    expect(props.onClose).toHaveBeenCalledWith(
+      expect.objectContaining({
+        values: expect.objectContaining({ employeeName: "Ana Horvatx" }),
+        dirtyKeys: ["employeeName"],
+      }),
+    );
+  });
+
+  it("closes cleanly after a successful save", async () => {
+    const { props, unmount } = renderForm();
+    await userEvent.type(byId("employeeName"), "x");
+    await save();
+    await waitFor(() => expect(props.onDirtyChange).toHaveBeenLastCalledWith(false));
+    unmount();
+    expect(props.onClose).toHaveBeenLastCalledWith(null);
+  });
+
+  it("keeps restored scalar edits when the tables land", async () => {
+    const { rerender } = renderForm(
+      payslip({ tablesStatus: "pending", payComponents: undefined }),
+      {
+        values: toFormValues(payslip({ netoPlaca: "999.99" }), "en"),
+        dirtyKeys: ["netoPlaca"],
+      },
+    );
+    rerender(payslip());
+    await waitFor(() => expect(byId("payComponents.1.iznos")).toHaveValue("100.00"));
+    expect(byId("netoPlaca")).toHaveValue("999.99");
+  });
+
+  it("restores under StrictMode and marks the action bar for keyboard hiding", async () => {
+    const onDirtyChange = vi.fn();
+    render(
+      <StrictMode>
+        <ToastProvider>
+          <PayslipForm
+            detail={payslip()}
+            initialEdits={{
+              values: toFormValues({ netoPlaca: "999.99" }, "en"),
+              dirtyKeys: ["netoPlaca"],
+            }}
+            onSaved={vi.fn()}
+            onConfirmed={vi.fn()}
+            onDirtyChange={onDirtyChange}
+            onFieldFocus={vi.fn()}
+            onClose={vi.fn()}
+          />
+        </ToastProvider>
+      </StrictMode>,
+    );
+    await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
+    expect(byId("netoPlaca")).toHaveValue("999.99");
+    expect(
+      screen.getByRole("button", { name: "Save changes" }).closest("[data-hide-with-keyboard]"),
+    ).not.toBeNull();
+  });
+  it("renders an editable control with a stable id for every scalar and every cell", () => {
     renderForm();
 
     for (const path of [
@@ -103,11 +195,11 @@ describe("PayslipForm", () => {
       "paymentDate",
       "brutoPlaca",
       "ukupanTrosakRada",
-      "payComponents.0.naziv",
       "payComponents.1.iznos",
     ]) {
       expect(byId(path), path).toBeInstanceOf(HTMLInputElement);
     }
+    expect(byId("payComponents.0.naziv")).toBeInstanceOf(HTMLTextAreaElement);
     expect(byId("netoPlaca")).toHaveValue("1040.00");
   });
 
