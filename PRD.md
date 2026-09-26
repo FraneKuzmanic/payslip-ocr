@@ -545,6 +545,15 @@ Settled in Task 09:
 
 **Rules.** Never merge silently. The merge confirmation shows both documents in upload order with a swap control. Merging **combines the source files into a single PDF and re-extracts** — stitching two independently extracted results would require reconciling two disagreeing `bruto` values with no principled tiebreak. The two source Payslips are soft-deleted and replaced by one. There is no drag affordance: WCAG 2.2 SC 2.5.7 would require a non-dragging equivalent anyway, so only the menu action is built.
 
+Settled in Task 11:
+
+- **The suggestion is computed on the server** and returned as `mergeSuggestions` on the session read, so OIBs never leave the API in the summary. A pair qualifies when both payslips are in `review` or `confirmed` and settled, share a period, and share an employee OIB, or, when either employee OIB is unread, an employer OIB. Two different employee OIBs never match. Every matching pair is returned in upload order, so three pages of one payslip give three pairs.
+- **Dismissing a suggestion** ("Not now") lasts for the browser tab and is lost on reload.
+- **What may be merged:** anything not still extracting. Not `processing`, and not `review` while the tables pass is pending. A failed payslip merges (a page 2 alone is often unreadable), and so does a confirmed one: the dialog says in words that edits, unsaved changes and confirmation on both are replaced by a fresh extraction.
+- **The upload caps apply to the combined PDF:** more than 10 pages is `422 pdf_too_many_pages`, more than 10 MB is `422 file_too_large`, both before anything is stored.
+- **Position:** the merged payslip takes the earlier original's upload time, so it keeps that one's place in the session and nothing renumbers. Its name is both filenames in page order, joined by " + ".
+- **Combining:** a permissions-only PDF (golden-set B01) is decrypted before its pages are copied, or its text would be lost. HEIC is converted to JPEG on the server. A JPEG's EXIF orientation becomes the page's `/Rotate`, which the extraction service applies. An image page's long edge is A4's 842 pt, at full pixel resolution.
+
 ### 7.9 Warnings
 
 **Purpose.** Direct the user's attention to the few fields likely to be wrong.
@@ -628,7 +637,9 @@ Task 09 narrowed both:
 | pino / pino-http | 10 | structured logs, never document contents |
 | helmet, cors | | |
 | file-type | 22 | byte sniffing |
-| pdf-lib | 1 | encryption + page-count checks, and building merged PDFs |
+| @cantoo/pdf-lib | 2 | pdf-lib fork, since Task 11: encryption and page-count checks, and building merged PDFs. It decrypts permissions-only PDFs, which pdf-lib cannot |
+| heic-convert | 2 | HEIC → JPEG for merged PDFs; pure JS, no native build |
+| exifr | 7 | reads a JPEG's EXIF orientation for merged PDFs |
 
 ### Extraction
 
@@ -729,7 +740,7 @@ All routes under `/api/sessions` and `/api/payslips` require `Authorization: Bea
 → `201 {id, sessionId, status, createdAt}` · `413 file_too_large` · `415 unsupported_media_type` · `422 pdf_encrypted | pdf_too_many_pages | pdf_unreadable` · `409 session_full`
 
 **10.4** `GET /api/sessions/:id`
-→ `200 {id, createdAt, payslips: [{id, status, tablesStatus, period, employeeName, pageCount, failureReason, warningCount, originalFilename}]}`. `originalFilename` identifies a payslip before extraction has read a name (Task 07).
+→ `200 {id, createdAt, payslips: [{id, status, tablesStatus, period, employeeName, pageCount, failureReason, warningCount, originalFilename}]}`. `originalFilename` identifies a payslip before extraction has read a name (Task 07). The body also carries `mergeSuggestions: [[id, id], …]`, the pairs that look like pages of one payslip, in upload order (Task 11). A client parses a missing list as empty.
 
 **10.5** `GET /api/payslips/:id`
 → `200` canonical payslip (including `tablesStatus`) + `lowConfidenceFields`, `unreadableFields`, `ungroundableFields`, `warnings`, `editedFields`, `failureReason`. `editedFields` holds scalars and table cells (`obustave.2.iznos`) (Task 09).
@@ -751,7 +762,7 @@ Coordinates are page-relative fractions in `[0,1]`. Returns empty arrays when no
 
 **10.11** `POST /api/sessions/:id/merge`
 Body `{payslipIds: [string, string], order: [string, string]}`. Builds a combined PDF from the sources, creates a new Payslip, re-extracts, soft-deletes the originals.
-→ `202 {id, status}` · `409 merge_not_allowed` if either payslip is not in this session or is already deleted
+→ `202 {id, status: "processing"}` · `400 invalid_request` for a bad id or body · `404 not_found` for a missing, foreign or deleted session · `409 merge_not_allowed` if either payslip is not a live payslip of this session, is still extracting, or was merged or deleted meanwhile · `422 pdf_too_many_pages` or `422 file_too_large` when the combined PDF exceeds an upload cap · `422 merge_source_unreadable` when a source cannot be loaded, converted or embedded. The merged payslip takes the earlier original's position, records `merged_from` in page order, and re-extracts; the originals are soft-deleted and keep their sources (Task 11).
 
 **10.12** `GET /api/payslips?page&limit&status` → `200 {items, page, limit, total}`
 
@@ -897,6 +908,9 @@ $0.045–0.051 two-pass (~1.5×).
 - ✅ JSON and CSV export, both scopes
 - ✅ Retry, failure copy, empty and error states
 - ✅ Deploy to Render; end-to-end journeys on the hosted stack
+
+> **Status, 2026-09-26:** Task 11 merge is implemented, reviewed and validated, journey 9.10
+> included.
 
 **Validation.** The §11.1 journey completed on the deployed app, on a phone.
 

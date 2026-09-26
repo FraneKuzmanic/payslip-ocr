@@ -5,6 +5,7 @@ import type { PayslipSummary, SessionDetailResponse } from "@payslip/shared";
 import { getSessionDetail, retryPayslip } from "../api/client";
 import i18n from "../i18n";
 import type { BatchItem } from "../upload/UploadBatchContext";
+import { resetDismissedSuggestions } from "../session/dismissedSuggestions";
 import { POLL_INTERVAL_MS, SessionPage } from "./SessionPage";
 
 vi.mock("../api/client", () => {
@@ -24,14 +25,37 @@ let batchItems: readonly BatchItem[] = [];
 const dismiss = vi.fn();
 
 const unsaved = new Set<string>();
+const keep = vi.fn();
 vi.mock("../review/unsaved/useUnsavedEdits", () => ({
-  useUnsavedEdits: () => ({ unsaved }),
+  useUnsavedEdits: () => ({ unsaved, keep }),
 }));
-vi.mock("../review/PayslipReview", () => ({
-  PayslipReview: ({ payslipId, tablesStatus }: { payslipId: string; tablesStatus: string }) => (
-    <p data-testid="preview">{payslipId + " " + tablesStatus}</p>
-  ),
+// Its own tests cover the dialog; here only what the page hands it and does with its answer.
+interface DialogProps {
+  open: boolean;
+  pair: readonly [string, string] | null;
+  selectedId: string;
+  onMerged: (id: string, originals: readonly [string, string]) => void;
+  onRefused: () => void;
+}
+let dialogProps: DialogProps | null = null;
+vi.mock("../session/MergeDialog", () => ({
+  MergeDialog: (props: DialogProps) => {
+    dialogProps = props;
+    return props.open ? (
+      <p data-testid="merge-dialog">{props.pair ? props.pair.join(",") : "pick"}</p>
+    ) : null;
+  },
 }));
+vi.mock("../review/PayslipReview", async () => {
+  const { useEffect } = await import("react");
+  return {
+    PayslipReview: ({ payslipId, tablesStatus }: { payslipId: string; tablesStatus: string }) => {
+      // As the real form does: its unsaved edits are handed over when it closes (Task 10 D1).
+      useEffect(() => () => keep(payslipId, { values: {}, dirtyKeys: [] }), [payslipId]);
+      return <p data-testid="preview">{payslipId + " " + tablesStatus}</p>;
+    },
+  };
+});
 
 vi.mock("../upload/useUploadBatch", () => ({
   useUploadBatch: () => ({ startBatch: vi.fn(), itemsFor: () => batchItems, dismiss }),
@@ -59,7 +83,7 @@ function summary(id: string, overrides: Partial<PayslipSummary> = {}): PayslipSu
 }
 
 function session(...payslips: PayslipSummary[]): SessionDetailResponse {
-  return { id: SESSION_ID, createdAt: "2026-09-25T10:00:00.000Z", payslips };
+  return { id: SESSION_ID, createdAt: "2026-09-25T10:00:00.000Z", payslips, mergeSuggestions: [] };
 }
 
 function LocationProbe() {
@@ -115,6 +139,9 @@ afterEach(() => {
   mockedDetail.mockReset();
   mockedRetry.mockReset();
   dismiss.mockReset();
+  keep.mockReset();
+  dialogProps = null;
+  resetDismissedSuggestions();
 });
 
 describe("SessionPage", () => {
@@ -439,5 +466,112 @@ describe("SessionPage navigation (Task 10)", () => {
     );
     await tick();
     expect(screen.getByTestId("preview")).toHaveTextContent("ready ready");
+  });
+});
+
+describe("SessionPage merge (plan 11 D11)", () => {
+  const pair = () => ({
+    ...session(
+      summary("a", { status: "review", tablesStatus: "ready", pageCount: 1 }),
+      summary("b", { status: "failed", failureReason: "unreadable_document", pageCount: 2 }),
+      summary("c"),
+    ),
+    mergeSuggestions: [["a", "b"]] as [string, string][],
+  });
+
+  it("shows a suggestion that opens the dialog at its confirm step with the pair", async () => {
+    mockedDetail.mockResolvedValue(pair());
+    renderPage();
+    await flush();
+
+    expect(
+      screen.getByText("Payslips 1 and 2 look like pages of one payslip."),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Review merge" }));
+
+    expect(screen.getByTestId("merge-dialog")).toHaveTextContent("a,b");
+  });
+
+  it("hides a dismissed suggestion", async () => {
+    mockedDetail.mockResolvedValue(pair());
+    renderPage();
+    await flush();
+
+    fireEvent.click(screen.getByRole("button", { name: "Not now" }));
+
+    expect(screen.queryByText(/look like pages of one payslip/)).toBeNull();
+  });
+
+  it("offers the menu only on a mergeable payslip with a mergeable sibling", async () => {
+    mockedDetail.mockResolvedValue(pair());
+    renderPage("?payslip=a");
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "Payslip actions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Merge with another payslip…" }));
+    expect(screen.getByTestId("merge-dialog")).toHaveTextContent("pick");
+    expect(dialogProps?.selectedId).toBe("a");
+
+    fireEvent.click(tabs()[2]!);
+    await flush();
+    expect(screen.queryByRole("button", { name: "Payslip actions" })).toBeNull();
+  });
+
+  it("has no menu when no other payslip is mergeable", async () => {
+    mockedDetail.mockResolvedValue(
+      session(summary("a", { status: "review", tablesStatus: "ready" }), summary("c")),
+    );
+    renderPage("?payslip=a");
+    await flush();
+
+    expect(screen.queryByRole("button", { name: "Payslip actions" })).toBeNull();
+  });
+
+  it("selects the merged payslip in the earlier one's place by replacement, and drops the originals' edits", async () => {
+    mockedDetail.mockResolvedValue(pair());
+    renderPage("?payslip=a");
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "Review merge" }));
+
+    mockedDetail.mockReturnValue(new Promise(() => {}));
+    keep.mockClear();
+    act(() => dialogProps?.onMerged("merged", ["b", "a"]));
+    await flush();
+
+    expect(screen.getByTestId("location")).toHaveTextContent("?payslip=merged");
+    expect(screen.getByTestId("navigation")).toHaveTextContent("REPLACE");
+    expect(tabs().map((tab) => tab.id)).toEqual(["payslip-tab-merged", "payslip-tab-c"]);
+    expect(screen.getByRole("heading", { name: "Payslip 1 · b.jpg + a.jpg" })).toBeInTheDocument();
+    expect(tabs()[0]).toHaveTextContent("Reading the payslip");
+    expect(screen.queryByTestId("merge-dialog")).toBeNull();
+    expect(tabs()[0]).toHaveFocus();
+    // The closing review kept its edits first; the page discards them after.
+    expect(keep.mock.calls.filter(([id]) => id === "a").map(([, edits]) => edits)).toEqual([
+      { values: {}, dirtyKeys: [] },
+      null,
+    ]);
+    expect(keep).toHaveBeenLastCalledWith("a", null);
+    expect(keep).toHaveBeenCalledWith("b", null);
+  });
+
+  it("reads the session again when the merge is refused, so the list shows why", async () => {
+    mockedDetail.mockResolvedValue(pair());
+    renderPage("?payslip=a");
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "Review merge" }));
+    mockedDetail.mockClear();
+    mockedDetail.mockResolvedValue(
+      session(
+        summary("a", { status: "review", tablesStatus: "ready" }),
+        summary("b", { status: "processing" }),
+        summary("c"),
+      ),
+    );
+
+    act(() => dialogProps?.onRefused());
+    await flush();
+
+    expect(mockedDetail).toHaveBeenCalledTimes(1);
+    expect(tabs()[1]).toHaveTextContent("Reading the payslip");
+    expect(screen.getByTestId("merge-dialog")).toBeInTheDocument();
   });
 });

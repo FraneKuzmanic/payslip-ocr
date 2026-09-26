@@ -211,20 +211,21 @@ function ImageSource({
   strip,
 }: ImageSourceProps) {
   // "pending" until the image has loaded, so the withheld note never flashes during load (D10).
-  const [ratio, setRatio] = useState<"pending" | "agrees" | "disagrees">("pending");
+  // Keyed on the URL it measured, so a new URL reads as "pending" in the same render. A reset
+  // effect could run after an early `load` and discard its measurement.
+  const [measured, setMeasured] = useState<{ url: string; ratio: "agrees" | "disagrees" }>();
+  const ratio = measured?.url === url ? measured.ratio : "pending";
   const page = regions?.pages[0];
-
-  useEffect(() => {
-    setRatio("pending");
-  }, [url]);
 
   function loaded(image: HTMLImageElement) {
     const renderedRatio = image.naturalWidth / image.naturalHeight;
-    setRatio(
-      aspectRatio !== undefined && Math.abs(renderedRatio - aspectRatio) < 0.01
-        ? "agrees"
-        : "disagrees",
-    );
+    setMeasured({
+      url,
+      ratio:
+        aspectRatio !== undefined && Math.abs(renderedRatio - aspectRatio) < 0.01
+          ? "agrees"
+          : "disagrees",
+    });
   }
 
   if (strip)

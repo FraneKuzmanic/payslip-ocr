@@ -150,6 +150,16 @@ export type Database = {
         Args: { p_cutoff: string }
         Returns: number
       }
+      merge_payslips: {
+        Args: {
+          p_new_id: string
+          p_order: string[]
+          p_original_filename: string
+          p_page_count: number
+          p_session_id: string
+        }
+        Returns: boolean
+      }
       soft_delete_payslip: { Args: { p_payslip_id: string }; Returns: boolean }
       update_payslip_fields: {
         Args: {

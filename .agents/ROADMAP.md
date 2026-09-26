@@ -94,7 +94,7 @@ investigation and is recorded with its reasoning.
 | 08 | Source regions & document preview with highlighting | ✅ complete, reviewed and validated; M1 spot-check pending → [`history/08`](./history/08-source-regions-preview.md) |
 | 09 | Review form & two-way linking | ✅ complete, reviewed and validated; migration 2 applied (step P) → [`history/09`](./history/09-review-form-two-way-linking.md) |
 | 10 | Session navigation & phone layout | ✅ implemented and reviewed; M2 pending |
-| 11 | Merge payslips | ⬜ not started |
+| 11 | Merge payslips | ✅ complete, reviewed and validated; journey 9.10 passed → [`history/11`](./history/11-merge-payslips.md) |
 | 12 | Export & history | ⬜ not started |
 | 13 | Deploy & end-to-end verification | ⬜ not started |
 
@@ -662,13 +662,39 @@ M2 requires a real iPhone. See history/10 for the review evidence.
 
 **Not in this task:** page reordering beyond that swap.
 
+**Added in planning (plan 11)**
+
+- D1: `@cantoo/pdf-lib` replaces `pdf-lib` everywhere; merge decrypts a permissions-only PDF first.
+- D2: HEIC is converted to JPEG on the server with `heic-convert`, one source at a time.
+- D3: mergeable means not still extracting; failed and confirmed payslips merge.
+- D4: the upload page cap applies to the combined PDF (`422 pdf_too_many_pages`).
+- D5: suggestions are computed on the server and returned as `mergeSuggestions`.
+- D6: a dismissed suggestion stays dismissed for the tab.
+- D7: the merged payslip takes the earlier original's `created_at`, and so its place.
+- D8: one `security definer` function locks, checks, soft-deletes, then inserts.
+- D9: images become A4-sized pages; JPEG EXIF orientation becomes `/Rotate`.
+- D10: merge error codes, with hr/en copy guarded by a test.
+- D11: banners, an overflow menu, a pick step and a confirm step with a swap.
+- D12: the dialog shows each document's first page.
+
+Added in execution: the upload size cap applies to the combined PDF too
+(`422 file_too_large`), because the storage bucket would otherwise refuse it as a 500.
+
 **Definition of done**
 
-- [ ] Two images of one payslip merge into one payslip with two pages and a re-extracted form.
-- [ ] Merging a PDF with an image produces a valid combined PDF.
-- [ ] The suggestion fires on matching OIB + period and never fires otherwise.
-- [ ] Manual merge works when both OIBs are unreadable.
-- [ ] Source payslips are soft-deleted, not hard-deleted, and disappear from the session.
+- [x] Two images of one payslip merge into one payslip with two pages and a re-extracted form.
+      Images: `payslip-merge.test.ts` and the step 13 probes. Re-extraction, in the browser
+      (journey 9.10): A01's two pages, uploaded as two files, merged into one two-page payslip
+      whose form matches the A01 fixture.
+- [x] Merging a PDF with an image produces a valid combined PDF. Step 13 probes (`B01.pdf +
+      A02.jpg`, `A02.heic + A01.pdf`, `A03-rotate90.pdf + G01.png`), read back with pdf.js.
+- [x] The suggestion fires on matching OIB + period and never fires otherwise. The truth table in
+      `session.test.ts`, the session read in `payslips.integration.ts`, and the banner in journey 9.10.
+- [x] Manual merge works when both OIBs are unreadable. The menu and the route do not consult
+      OIBs; `payslips.integration.ts` merges two payslips without extracted fields, a failed one
+      included, and journey 9.10 merged through the menu.
+- [x] Source payslips are soft-deleted, not hard-deleted, and disappear from the session.
+      `payslips.integration.ts`: 404 through the API, rows and sources kept.
 
 ---
 
@@ -752,6 +778,7 @@ each is run separately and its result recorded in the owning task's history file
 | **Small corpus** — 11 payslips, 7 layouts, no more available | Accepted | Every accuracy figure describes these seven vendors and no eighth |
 | **Hand-written rule creep** — a Croatian parser growing beneath a generic model | Watch | A growing count of deterministic post-processing rules is the signal to revisit the engine, not progress |
 | **Phone layout has no prior art** — every document-AI review UI found is desktop-only | Open | Task 10 implemented it; browser review and M2 real-iPhone verification remain the test |
+| **Forked PDF library** — `@cantoo/pdf-lib` replaces `pdf-lib` because only the fork decrypts permissions-only PDFs (plan 11 D1) | Watch | A fork's maintenance is the risk. Upload validation and merge both depend on it; `source-file.test.ts` and `payslip-merge.test.ts` are the regression checks |
 | **Inherited gaps** — no password reset, unverified emails, Render cold starts | Accepted | Documented, not fixed. CI exists since Task 01b |
 | **Direct-write gap** — a signed-in user can update their own payslip's `status` or `canonical_data` through PostgREST, bypassing the API | **Closed** (Task 09 step P, 2026-09-26) | Every write, retry included, goes through a `security definer` function. `update` is revoked and `insert` narrowed to the six upload columns (migration `20260926081337`); `direct-writes.integration.ts` proves both on every run. The functions still accept any `jsonb`, so a direct RPC can store fields that fail the canonical schema, on the caller's own payslip only |
 | **Service source on the wrong text** — D01's `paymentDate` carries a service source on the employer address and is outlined there faithfully (history/08). Grounding checks the whole page, not the region | Open (Task 09 D15) | Needs its own measurement over the recordings: whether the OCR words inside each region contain the printed value |

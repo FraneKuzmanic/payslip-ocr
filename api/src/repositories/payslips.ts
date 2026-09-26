@@ -104,6 +104,15 @@ export interface ListPayslipsOptions {
   readonly status?: PayslipStatus;
 }
 
+export interface MergePayslipsInput {
+  readonly sessionId: string;
+  readonly id: string;
+  /** Page order; also stored as `merged_from`. */
+  readonly order: readonly [string, string];
+  readonly originalFilename: string;
+  readonly pageCount: number;
+}
+
 export interface PayslipPage {
   readonly items: Payslip[];
   readonly total: number;
@@ -324,6 +333,25 @@ export class PayslipRepository {
     const { data, error } = await this.#client.rpc("begin_payslip_retry", {
       p_payslip_id: uuidSchema.parse(id),
       p_retryable_reasons: [...RETRYABLE_FAILURE_REASONS],
+    });
+
+    if (error) throw new PayslipRepositoryError("query_failed", error);
+    return data === true;
+  }
+
+  /**
+   * Plan 11 D8: soft-deletes both originals and inserts the merged payslip, in one transaction
+   * through `merge_payslips`. The merged row is `processing` with pending tables, and takes the
+   * earlier original's `created_at`. False: either original is missing, foreign, deleted, in
+   * another session, or still extracting.
+   */
+  async merge(input: MergePayslipsInput): Promise<boolean> {
+    const { data, error } = await this.#client.rpc("merge_payslips", {
+      p_session_id: uuidSchema.parse(input.sessionId),
+      p_new_id: uuidSchema.parse(input.id),
+      p_order: input.order.map((id) => uuidSchema.parse(id)),
+      p_original_filename: input.originalFilename,
+      p_page_count: input.pageCount,
     });
 
     if (error) throw new PayslipRepositoryError("query_failed", error);

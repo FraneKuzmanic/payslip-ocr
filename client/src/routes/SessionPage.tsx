@@ -1,18 +1,23 @@
-import { AlertCircle, Clock, Loader2, X } from "lucide-react";
+import { AlertCircle, Clock, Combine, Loader2, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useParams, useSearchParams } from "react-router";
 import {
+  isMergeable,
   isRetryableFailure,
+  mergedFilename,
   type PayslipSummary,
   type SessionDetailResponse,
 } from "@payslip/shared";
 import { ApiError, getSessionDetail, retryPayslip } from "../api/client";
+import { ActionMenu } from "../components/ActionMenu";
 import { Spinner } from "../components/Spinner";
 import { useWideLayout, XL } from "../history/useWideLayout";
 import { PayslipRail } from "../review/PayslipRail";
 import { PayslipReview } from "../review/PayslipReview";
 import { useUnsavedEdits } from "../review/unsaved/useUnsavedEdits";
+import { MergeDialog } from "../session/MergeDialog";
+import { MergeSuggestions } from "../session/MergeSuggestions";
 import type { BatchItem } from "../upload/UploadBatchContext";
 import { useUploadBatch } from "../upload/useUploadBatch";
 
@@ -20,10 +25,17 @@ export const POLL_INTERVAL_MS = 2_000;
 
 type LoadState = "loading" | "ready" | "not_found" | "error";
 
-/** D7: nothing further will change without the user acting. */
+/** D7: nothing further will change without the user acting. The same rule as a merge (plan 11 D3). */
 function isSettled(payslip: PayslipSummary): boolean {
-  if (payslip.status === "review") return payslip.tablesStatus !== "pending";
-  return payslip.status === "failed" || payslip.status === "confirmed";
+  return isMergeable(payslip.status, payslip.tablesStatus);
+}
+
+/** The action menu's only item needs this payslip and another one to be mergeable (plan 11 D11). */
+function canMerge(selected: PayslipSummary, payslips: readonly PayslipSummary[]): boolean {
+  return (
+    isSettled(selected) &&
+    payslips.some((payslip) => payslip.id !== selected.id && isSettled(payslip))
+  );
 }
 
 function isUnsent(item: BatchItem): boolean {
@@ -48,12 +60,19 @@ export function SessionPage() {
   const { sessionId = "" } = useParams();
   const { itemsFor, dismiss } = useUploadBatch();
   const xl = useWideLayout(XL);
-  const { unsaved } = useUnsavedEdits();
+  const { unsaved, keep } = useUnsavedEdits();
   const [detail, setDetail] = useState<SessionDetailResponse | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [refreshKey, setRefreshKey] = useState(0);
   const [retrying, setRetrying] = useState<ReadonlySet<string>>(new Set());
   const [retryFailed, setRetryFailed] = useState<ReadonlySet<string>>(new Set());
+  // `pair: null` opens the dialog at its pick step. `opened` keys each opening (plan 11 D11).
+  const [merge, setMerge] = useState<{ pair: readonly [string, string] | null } | null>(null);
+  const [mergeOpened, setMergeOpened] = useState(0);
+  const [lastMerge, setLastMerge] = useState<{
+    id: string;
+    originals: readonly [string, string];
+  } | null>(null);
   // The selection lives in the URL, so it survives a reload and the back button (D1).
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get("payslip");
@@ -145,6 +164,55 @@ export function SessionPage() {
     }
   }
 
+  function openMerge(pair: readonly [string, string] | null) {
+    setMerge({ pair });
+    setMergeOpened((count) => count + 1);
+  }
+
+  /**
+   * Plan 11 D11: the merged payslip takes the earlier original's place and is selected.
+   * `originals` are in page order.
+   */
+  function merged(id: string, originals: readonly [string, string]) {
+    setMerge(null);
+    setDetail((current) => {
+      if (current === null) return current;
+      const replaced = current.payslips.filter((payslip) => originals.includes(payslip.id));
+      const [first, second] = originals;
+      const named = (payslipId: string) =>
+        replaced.find((payslip) => payslip.id === payslipId)?.originalFilename ?? "";
+      // Shown until the next read, which the refresh below starts at once.
+      const placeholder: PayslipSummary = {
+        id,
+        status: "processing",
+        tablesStatus: "pending",
+        period: null,
+        employeeName: null,
+        pageCount: replaced.reduce((pages, payslip) => pages + payslip.pageCount, 0),
+        failureReason: null,
+        warningCount: 0,
+        originalFilename: mergedFilename(named(first), named(second)),
+      };
+      const position = current.payslips.findIndex((payslip) => originals.includes(payslip.id));
+      const payslips = current.payslips.filter((payslip) => !originals.includes(payslip.id));
+      payslips.splice(position, 0, placeholder);
+      return { ...current, payslips };
+    });
+    setSearchParams({ payslip: id }, { replace: true });
+    setLastMerge({ id, originals });
+    setRefreshKey((key) => key + 1);
+  }
+
+  // An effect, not the handler: the closing review hands its unsaved edits to `keep` in its unmount
+  // cleanup, which runs before this parent effect in the same commit, so this clears them last.
+  // The dialog's own effect has closed it by then; its opener may be gone, so focus moves to the
+  // merged payslip's tab, as after a retry.
+  useEffect(() => {
+    if (lastMerge === null) return;
+    for (const id of lastMerge.originals) keep(id, null);
+    document.getElementById(`payslip-tab-${lastMerge.id}`)?.focus();
+  }, [lastMerge, keep]);
+
   const selectedIndex = detail?.payslips.findIndex((payslip) => payslip.id === selectedId) ?? -1;
   const selected = selectedIndex === -1 ? null : (detail?.payslips[selectedIndex] ?? null);
 
@@ -211,6 +279,14 @@ export function SessionPage() {
         </div>
       ) : null}
 
+      {payslips.length > 1 ? (
+        <MergeSuggestions
+          pairs={detail?.mergeSuggestions ?? []}
+          payslips={payslips}
+          onReview={openMerge}
+        />
+      ) : null}
+
       {payslips.length > 0 ? (
         <div className="flex min-w-0 flex-col gap-5 xl:grid xl:grid-cols-[13rem_minmax(0,1fr)] xl:items-start xl:gap-6">
           <div className="min-w-0 xl:sticky xl:top-20">
@@ -232,9 +308,26 @@ export function SessionPage() {
               aria-labelledby={`payslip-tab-${selected.id}`}
               className="flex min-w-0 flex-col gap-3"
             >
-              <h2 className="font-semibold break-all">
-                {t("session.position", { index: selectedIndex + 1 })} · {selected.originalFilename}
-              </h2>
+              <div className="flex items-start justify-between gap-2">
+                <h2 className="font-semibold break-all">
+                  {t("session.position", { index: selectedIndex + 1 })} ·{" "}
+                  {selected.originalFilename}
+                </h2>
+                {canMerge(selected, payslips) ? (
+                  <ActionMenu
+                    id="payslip-actions"
+                    label={t("merge.actions")}
+                    items={[
+                      {
+                        key: "merge",
+                        label: t("merge.mergeWith"),
+                        icon: Combine,
+                        onSelect: () => openMerge(null),
+                      },
+                    ]}
+                  />
+                ) : null}
+              </div>
               {isReadable(selected) ? (
                 <PayslipReview
                   key={selected.id}
@@ -315,6 +408,20 @@ export function SessionPage() {
       <Link to="/" className={linkClass}>
         {t("session.scanMore")}
       </Link>
+
+      {selected === null ? null : (
+        <MergeDialog
+          key={mergeOpened}
+          open={merge !== null}
+          sessionId={sessionId}
+          payslips={payslips}
+          pair={merge?.pair ?? null}
+          selectedId={selected.id}
+          onMerged={merged}
+          onRefused={() => setRefreshKey((key) => key + 1)}
+          onClose={() => setMerge(null)}
+        />
+      )}
     </section>
   );
 }

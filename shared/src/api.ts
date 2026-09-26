@@ -115,7 +115,12 @@ export type PayslipSummary = z.infer<typeof payslipSummarySchema>;
 /** PRD §10.4 — `GET /api/sessions/:id` */
 export const sessionDetailResponseSchema = sessionSchema
   .pick({ id: true, createdAt: true })
-  .extend({ payslips: z.array(payslipSummarySchema) })
+  .extend({
+    payslips: z.array(payslipSummarySchema),
+    // Pairs that look like pages of one payslip (plan 11 D5). The default is load-bearing: the
+    // static client can deploy before the API, and a new bundle must parse an old API's body.
+    mergeSuggestions: z.array(z.tuple([z.uuid(), z.uuid()])).default([]),
+  })
   .strip();
 
 export type SessionDetailResponse = z.infer<typeof sessionDetailResponseSchema>;
@@ -201,6 +206,20 @@ export type MergePayslipsRequest = z.infer<typeof mergePayslipsRequestSchema>;
 export const mergePayslipsResponseSchema = payslipSchema.pick({ id: true, status: true }).strip();
 
 export type MergePayslipsResponse = z.infer<typeof mergePayslipsResponseSchema>;
+
+/**
+ * The merge route's own refusals (plan 11 D10). `pdf_too_many_pages` and `file_too_large` reuse the
+ * upload codes: the upload caps apply to the combined PDF too.
+ */
+export const MERGE_ERROR_CODES = [
+  "merge_not_allowed",
+  "merge_source_unreadable",
+  "pdf_too_many_pages",
+  "file_too_large",
+] as const;
+
+export const mergeErrorCodeSchema = z.enum(MERGE_ERROR_CODES);
+export type MergeErrorCode = z.infer<typeof mergeErrorCodeSchema>;
 
 /**
  * PRD §10.12 — `GET /api/payslips`

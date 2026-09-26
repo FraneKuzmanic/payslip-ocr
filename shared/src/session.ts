@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { Payslip } from "./payslip.js";
 
 /**
  * A Session is the set of Payslips uploaded together. It has **no status of its own**: its
@@ -75,4 +76,61 @@ export const RETRYABLE_FAILURE_REASONS = [
 
 export function isRetryableFailure(reason: ExtractionFailureReason): boolean {
   return (RETRYABLE_FAILURE_REASONS as readonly ExtractionFailureReason[]).includes(reason);
+}
+
+/**
+ * Whether a payslip may be merged now (plan 11 D3): anything not still extracting. A merge
+ * re-extracts, so a payslip whose analysis is still running would have that paid analysis
+ * discarded mid-flight. A failed payslip is mergeable: a page 2 alone is often unreadable.
+ */
+export function isMergeable(status: PayslipStatus, tablesStatus: TablesStatus): boolean {
+  if (status === "processing") return false;
+  return !(status === "review" && tablesStatus === "pending");
+}
+
+export type MergeCandidate = Pick<
+  Payslip,
+  "id" | "status" | "tablesStatus" | "period" | "employeeOib" | "employerOib"
+>;
+
+/**
+ * Pairs of payslips that look like pages of one (PRD §7.8, plan 11 D5): both readable and settled,
+ * the same period, and the same employee OIB, or, when an employee OIB is unread on either side,
+ * the same employer OIB. Two different employee OIBs never match: that is two employees.
+ *
+ * Pairs come in list order, `a` before `b`, and every matching pair is returned.
+ */
+export function mergeSuggestions(payslips: readonly MergeCandidate[]): [string, string][] {
+  const candidates = payslips.filter(
+    (payslip) =>
+      (payslip.status === "review" || payslip.status === "confirmed") &&
+      isMergeable(payslip.status, payslip.tablesStatus),
+  );
+  const pairs: [string, string][] = [];
+  for (const [index, a] of candidates.entries()) {
+    for (const b of candidates.slice(index + 1)) {
+      if (looksLikeOnePayslip(a, b)) pairs.push([a.id, b.id]);
+    }
+  }
+  return pairs;
+}
+
+function looksLikeOnePayslip(a: MergeCandidate, b: MergeCandidate): boolean {
+  const period = known(a.period);
+  if (period === null || period !== known(b.period)) return false;
+  const employeeA = known(a.employeeOib);
+  const employeeB = known(b.employeeOib);
+  if (employeeA !== null && employeeB !== null) return employeeA === employeeB;
+  const employer = known(a.employerOib);
+  return employer !== null && employer === known(b.employerOib);
+}
+
+function known(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+/** The merged payslip's name: both originals in page order (plan 11 D9), within 255 characters. */
+export function mergedFilename(first: string, second: string): string {
+  return `${first} + ${second}`.slice(0, 255);
 }

@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { PDFDocument, PDFHexString } from "pdf-lib";
+import { PDFDocument, PDFHexString } from "@cantoo/pdf-lib";
 import { describe, expect, it } from "vitest";
 import { HttpError } from "../middleware/error-handler.js";
 import { validateSourceFile } from "./source-file.js";

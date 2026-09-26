@@ -103,8 +103,8 @@ export function ActionMenu({
         {...(variant === "icon" ? { "aria-label": label } : {})}
         className={
           variant === "icon"
-            ? "grid min-h-11 min-w-11 place-items-center rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-            : "inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+            ? "grid min-h-12 min-w-12 place-items-center rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+            : "inline-flex min-h-12 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-100"
         }
       >
         {/* The glyph and the spinner share one 16px box, so a busy trigger neither reflows nor
@@ -145,7 +145,7 @@ export function ActionMenu({
                 key={item.key}
                 type="button"
                 onClick={() => select(item)}
-                className={`flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-left text-sm font-medium ${
+                className={`flex min-h-12 w-full items-center gap-2 rounded-lg px-3 text-left text-sm font-medium ${
                   item.destructive
                     ? "text-red-700 hover:bg-red-50"
                     : "text-slate-700 hover:bg-slate-100"

@@ -229,5 +229,33 @@
     "neto_mismatch": "Dohodak minus income tax does not equal net pay.",
     "isplata_mismatch": "Net pay plus non-taxable payments minus obustave does not equal the amount paid out.",
     "pay_components_sum_mismatch": "The pay components do not add up to gross pay."
+  },
+  "merge": {
+    "actions": "Payslip actions",
+    "mergeWith": "Merge with another payslip…",
+    "pickTitle": "Merge with another payslip",
+    "pickLegend": "Which payslip holds the other pages of this one?",
+    "continue": "Continue",
+    "title": "Merge payslips",
+    "consequence": "The two payslips are replaced by one. It is read again from the combined document, so edits, unsaved changes and confirmation on both are discarded.",
+    "pagePosition": "Page {{page}}",
+    "pageRange": "Pages {{from}}–{{to}}",
+    "pageCount_one": "{{count}} page",
+    "pageCount_other": "{{count}} pages",
+    "swap": "Swap order",
+    "swapped": "Order swapped. Payslip {{index}} is now first.",
+    "confirm": "Merge",
+    "cancel": "Cancel",
+    "noPreview": "No preview in this browser",
+    "suggestion": "Payslips {{a}} and {{b}} look like pages of one payslip.",
+    "reviewSuggestion": "Review merge",
+    "dismissSuggestion": "Not now",
+    "errors": {
+      "merge_not_allowed": "These payslips can no longer be merged. One of them may already be merged, deleted or being read again.",
+      "merge_source_unreadable": "One of the documents could not be read, so they cannot be combined.",
+      "pdf_too_many_pages": "Together these documents have more than 10 pages. A payslip can have at most 10.",
+      "file_too_large": "Together these documents are larger than 10 MB, so they cannot be combined.",
+      "network": "The merge could not be started. Check your connection and try again."
+    }
   }
 }

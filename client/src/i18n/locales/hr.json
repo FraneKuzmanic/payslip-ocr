@@ -231,5 +231,34 @@
     "neto_mismatch": "Dohodak umanjen za porez na dohodak nije jednak neto plaći.",
     "isplata_mismatch": "Neto plaća uvećana za neoporezive primitke i umanjena za obustave nije jednaka iznosu za isplatu.",
     "pay_components_sum_mismatch": "Zbroj primitaka nije jednak bruto plaći."
+  },
+  "merge": {
+    "actions": "Radnje s platnom listom",
+    "mergeWith": "Spoji s drugom platnom listom…",
+    "pickTitle": "Spoji s drugom platnom listom",
+    "pickLegend": "Koja platna lista sadrži ostale stranice ove?",
+    "continue": "Nastavi",
+    "title": "Spajanje platnih lista",
+    "consequence": "Dvije platne liste zamjenjuje jedna. Ona se ponovno očitava iz spojenog dokumenta pa se izmjene, nespremljene promjene i potvrda na objema odbacuju.",
+    "pagePosition": "Stranica {{page}}",
+    "pageRange": "Stranice {{from}}–{{to}}",
+    "pageCount_one": "{{count}} stranica",
+    "pageCount_few": "{{count}} stranice",
+    "pageCount_other": "{{count}} stranica",
+    "swap": "Zamijeni redoslijed",
+    "swapped": "Redoslijed je zamijenjen. Platna lista {{index}} sada je prva.",
+    "confirm": "Spoji",
+    "cancel": "Odustani",
+    "noPreview": "Pregled nije dostupan u ovom pregledniku",
+    "suggestion": "Platne liste {{a}} i {{b}} izgledaju kao stranice jedne platne liste.",
+    "reviewSuggestion": "Pregledaj spajanje",
+    "dismissSuggestion": "Ne sada",
+    "errors": {
+      "merge_not_allowed": "Ove platne liste više nije moguće spojiti. Jedna je možda već spojena, obrisana ili se ponovno očitava.",
+      "merge_source_unreadable": "Jedan od dokumenata nije moguće pročitati pa ih nije moguće spojiti.",
+      "pdf_too_many_pages": "Ovi dokumenti zajedno imaju više od 10 stranica. Platna lista može imati najviše 10.",
+      "file_too_large": "Ovi su dokumenti zajedno veći od 10 MB pa ih nije moguće spojiti.",
+      "network": "Spajanje nije pokrenuto. Provjerite vezu i pokušajte ponovno."
+    }
   }
 }

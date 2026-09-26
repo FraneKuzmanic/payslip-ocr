@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
+import type { MergePayslipsRequest } from "@payslip/shared";
 import { supabase } from "../lib/supabase";
 import {
   ApiError,
@@ -8,6 +9,7 @@ import {
   getPayslipRegions,
   getPayslipSource,
   getSessionDetail,
+  mergePayslips,
   retryPayslip,
   updatePayslip,
   uploadPayslip,
@@ -226,6 +228,24 @@ describe("the API client", () => {
     expect(init?.body).toBe(JSON.stringify({ netoPlaca: "1.00" }));
   });
 
+  it("posts a merge with its JSON body and parses the response", async () => {
+    getSession.mockResolvedValue(sessionResult("token-abc"));
+    const merged = { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", status: "processing" };
+    const fetchMock = respondWith(202, merged);
+    vi.stubGlobal("fetch", fetchMock);
+    const body: MergePayslipsRequest = {
+      payslipIds: ["bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "cccccccc-cccc-4ccc-8ccc-cccccccccccc"],
+      order: ["cccccccc-cccc-4ccc-8ccc-cccccccccccc", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"],
+    };
+
+    await expect(mergePayslips("session/id", body)).resolves.toEqual(merged);
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe("/api/sessions/session%2Fid/merge");
+    expect(init?.method).toBe("POST");
+    expect(sentHeaders(fetchMock).get("Content-Type")).toBe("application/json");
+    expect(init?.body).toBe(JSON.stringify(body));
+  });
+
   it("posts a confirm and parses its response", async () => {
     getSession.mockResolvedValue(sessionResult("token-abc"));
     const confirmed = {
@@ -244,6 +264,18 @@ describe("the API client", () => {
   it.each([
     ["an edit", () => updatePayslip("id", { obustave: [] }), "tables_pending"],
     ["a confirm", () => confirmPayslip("id"), "confirm_not_allowed"],
+    [
+      "a merge",
+      () =>
+        mergePayslips("id", {
+          payslipIds: [
+            "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+          ],
+          order: ["bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "cccccccc-cccc-4ccc-8ccc-cccccccccccc"],
+        }),
+      "merge_not_allowed",
+    ],
   ])("surfaces a refused %s as an ApiError carrying its code", async (_name, call, code) => {
     getSession.mockResolvedValue(sessionResult("token-abc"));
     vi.stubGlobal("fetch", respondWith(409, { error: { code } }));

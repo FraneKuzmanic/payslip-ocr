@@ -9,7 +9,16 @@ interface PagesProps {
   onChange: (page: number) => void;
 }
 
-function PageThumbnail({ document, page }: { document: LoadedPdf; page: number }) {
+/** One page painted at `width` CSS px: 64 in the navigator, larger in the merge dialog. */
+export function PageThumbnail({
+  document,
+  page,
+  width = 64,
+}: {
+  document: LoadedPdf;
+  page: number;
+  width?: number;
+}) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const [ratio, setRatio] = useState<number>();
   useEffect(() => {
@@ -25,7 +34,11 @@ function PageThumbnail({ document, page }: { document: LoadedPdf; page: number }
         const size = await document.viewportOf(page);
         if (cancelled) return;
         setRatio(size.width / size.height);
-        task = document.render(page, (64 * (window.devicePixelRatio || 1)) / size.width, element);
+        task = document.render(
+          page,
+          (width * (window.devicePixelRatio || 1)) / size.width,
+          element,
+        );
         await task.completed;
       } catch (error) {
         if (!cancelled && !isRenderCancellation(error))
@@ -48,13 +61,13 @@ function PageThumbnail({ document, page }: { document: LoadedPdf; page: number }
       observer?.disconnect();
       task?.cancel();
     };
-  }, [document, page]);
+  }, [document, page, width]);
   return (
     <canvas
       ref={canvas}
       aria-hidden="true"
-      className="block w-16 max-w-full"
-      style={{ aspectRatio: ratio }}
+      className="block max-w-full"
+      style={{ width, aspectRatio: ratio }}
     />
   );
 }

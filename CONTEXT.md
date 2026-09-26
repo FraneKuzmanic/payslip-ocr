@@ -45,6 +45,11 @@ Pages. Merging combines the Source Files and re-extracts, rather than reconcilin
 already-extracted values.
 _Avoid_: Join, combine, group
 
+**Merge suggestion**:
+A non-blocking prompt that two Payslips in a Session look like pages of one: the same period and
+employee OIB, or the same employer OIB when an employee OIB is unread. It never merges by itself.
+_Avoid_: Auto-merge, duplicate detection
+
 ## Croatian payroll
 
 **Obrazac IP1**:

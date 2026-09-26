@@ -4,6 +4,7 @@ import {
   confirmPayslipResponseSchema,
   createPayslipResponseSchema,
   createSessionResponseSchema,
+  mergePayslipsResponseSchema,
   payslipDetailResponseSchema,
   retryPayslipResponseSchema,
   sessionDetailResponseSchema,
@@ -13,6 +14,8 @@ import {
   type CreatePayslipResponse,
   type CreateSessionResponse,
   type HealthResponse,
+  type MergePayslipsRequest,
+  type MergePayslipsResponse,
   type PayslipDetailResponse,
   type RetryPayslipResponse,
   type SessionDetailResponse,
@@ -171,6 +174,19 @@ export async function retryPayslip(id: string): Promise<RetryPayslipResponse> {
     method: "POST",
   });
   return await parseResponse(retryPayslipResponseSchema, response, "POST /api/payslips/:id/retry");
+}
+
+/** PRD §10.11: replaces two payslips with one that re-extracts their combined pages. */
+export async function mergePayslips(
+  sessionId: string,
+  body: MergePayslipsRequest,
+): Promise<MergePayslipsResponse> {
+  const response = await request(`/api/sessions/${encodeURIComponent(sessionId)}/merge`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return await parseResponse(mergePayslipsResponseSchema, response, "POST /api/sessions/:id/merge");
 }
 
 /** PRD §10.6: saves the changed fields and answers with the recomputed detail. */

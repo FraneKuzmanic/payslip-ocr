@@ -1,6 +1,6 @@
 import { fileTypeFromBuffer } from "file-type";
 import "multer";
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument } from "@cantoo/pdf-lib";
 import { SOURCE_CONTENT_TYPES, type SourceContentType } from "@payslip/shared";
 import { config } from "../config.js";
 import { HttpError } from "../middleware/error-handler.js";
@@ -57,8 +57,9 @@ async function validatePdf(bytes: Buffer): Promise<number> {
 /**
  * `pdf_encrypted` means "cannot be opened without a password". A permissions-only PDF carries an
  * `/Encrypt` entry too, but it opens with no password in every reader and in the extraction
- * service, and payroll software emits them (golden-set B01). pdf-lib cannot decrypt, so pdf.js,
- * the reader the client renders with, answers the question. Anything else it cannot open throws,
+ * service, and payroll software emits them (golden-set B01). pdf-lib loads with
+ * `ignoreEncryption` and does not answer that question, so pdf.js, the reader the client renders
+ * with, answers it. Anything else it cannot open throws,
  * and the caller reports it as `pdf_unreadable`.
  */
 async function requiresPassword(bytes: Buffer): Promise<boolean> {

@@ -180,6 +180,25 @@ describe("mergePayslipsRequestSchema (PRD §10.11)", () => {
   });
 });
 
+describe("sessionDetailResponseSchema mergeSuggestions (plan 11 D5)", () => {
+  const body = { id: ID_B, createdAt: NOW, payslips: [] };
+
+  it("defaults to no suggestions for an API that predates them", () => {
+    expect(sessionDetailResponseSchema.parse(body).mergeSuggestions).toEqual([]);
+  });
+  it("carries pairs", () => {
+    expect(
+      sessionDetailResponseSchema.parse({ ...body, mergeSuggestions: [[ID_A, USER]] })
+        .mergeSuggestions,
+    ).toEqual([[ID_A, USER]]);
+  });
+  it("rejects an id that is not a UUID", () => {
+    expect(
+      sessionDetailResponseSchema.safeParse({ ...body, mergeSuggestions: [[ID_A, "b"]] }).success,
+    ).toBe(false);
+  });
+});
+
 describe("listPayslipsQuerySchema (PRD §10.12)", () => {
   it("coerces query-string counts and applies defaults", () => {
     expect(listPayslipsQuerySchema.parse({ page: "2" })).toEqual({ page: 2, limit: 20 });

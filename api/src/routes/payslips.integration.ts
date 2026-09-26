@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { PDFDocument, PDFHexString } from "pdf-lib";
+import { PDFDocument, PDFHexString, PDFName } from "@cantoo/pdf-lib";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
@@ -9,6 +9,7 @@ import {
   createPayslipResponseSchema,
   createSessionResponseSchema,
   listPayslipsResponseSchema,
+  mergePayslipsResponseSchema,
   payslipDetailResponseSchema,
   retryPayslipResponseSchema,
   sessionDetailResponseSchema,
@@ -945,6 +946,309 @@ describe("editing and confirming (Task 09)", () => {
   });
 });
 
+describe("merge (PRD §10.11, plan 11)", () => {
+  // Records the jobs instead of running them, so the merged bytes can be asserted at $0.
+  const enqueued: ExtractionJob[] = [];
+  const mergeApp = createApp({
+    extraction: {
+      enqueue: (job) => {
+        enqueued.push(job);
+        return Promise.resolve();
+      },
+    },
+  });
+  // A 1×1 PNG: decodable, unlike the header-only `jpeg` above, which pdf-lib cannot embed.
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
+    "base64",
+  );
+  const repositoryA = () => new PayslipRepository(userA, userAId);
+  const tablesLanded = {
+    fields: { payComponents: [], obustave: [], neoporeziviPrimici: [] },
+    metadata: { unreadableFields: [] },
+    raw: { pass: "tables" },
+  };
+  let mergeSessionId = "";
+  let pdfId = "";
+  let pngId = "";
+  let processingId = "";
+
+  async function newSession(token = tokenA): Promise<string> {
+    const created = await request(mergeApp)
+      .post("/api/sessions")
+      .set("Authorization", `Bearer ${token}`);
+    return createSessionResponseSchema.parse(created.body).id;
+  }
+
+  async function uploaded(
+    targetSessionId: string,
+    bytes: Buffer,
+    filename: string,
+    contentType: string,
+  ): Promise<string> {
+    const response = await request(mergeApp)
+      .post(`/api/sessions/${targetSessionId}/payslips`)
+      .set("Authorization", `Bearer ${tokenA}`)
+      .attach("file", bytes, { filename, contentType });
+    expect(response.status).toBe(201);
+    const { id } = createPayslipResponseSchema.parse(response.body);
+    sourcePaths.push(sourceObjectPath(userAId, id));
+    return id;
+  }
+
+  /** Both passes landed: `review` with its tables `ready`. */
+  async function reviewed(id: string, fields: Record<string, string> = {}): Promise<void> {
+    const scalars = { fields, metadata: { unreadableFields: [] }, raw: { pass: "scalars" } };
+    expect(await repositoryA().completeExtractionPass(id, "scalars", scalars)).toBe(true);
+    expect(await repositoryA().completeExtractionPass(id, "tables", tablesLanded)).toBe(true);
+  }
+
+  async function failed(id: string): Promise<void> {
+    expect(await repositoryA().failExtraction(id, "unreadable_document")).toBe(true);
+    expect(await repositoryA().failTablesExtraction(id)).toBe(true);
+  }
+
+  function merge(
+    targetSessionId: string,
+    payslipIds: string[],
+    order = payslipIds,
+    token = tokenA,
+  ) {
+    return request(mergeApp)
+      .post(`/api/sessions/${targetSessionId}/merge`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ payslipIds, order });
+  }
+
+  function merged(response: request.Response): string {
+    expect(response.status).toBe(202);
+    const body = mergePayslipsResponseSchema.parse(response.body);
+    sourcePaths.push(sourceObjectPath(userAId, body.id));
+    expect(body.status).toBe("processing");
+    return body.id;
+  }
+
+  async function liveIds(targetSessionId: string): Promise<string[]> {
+    const detail = sessionDetailResponseSchema.parse(
+      (await getAsA(`/api/sessions/${targetSessionId}`)).body,
+    );
+    return detail.payslips.map(({ id }) => id);
+  }
+
+  beforeAll(async () => {
+    // Its own session: the others are near the ten-payslip cap.
+    mergeSessionId = await newSession();
+    pdfId = await uploaded(mergeSessionId, await pdf(1), "page-1.pdf", "application/pdf");
+    pngId = await uploaded(mergeSessionId, png, "page-2.png", "image/png");
+    processingId = await uploaded(mergeSessionId, await pdf(1), "other.pdf", "application/pdf");
+    await reviewed(pdfId);
+    await failed(pngId);
+    enqueued.length = 0;
+  });
+
+  it("refuses a pair with a payslip still processing", async () => {
+    const response = await merge(mergeSessionId, [pdfId, processingId]);
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({ error: { code: "merge_not_allowed" } });
+    expect(await liveIds(mergeSessionId)).toEqual([pdfId, pngId, processingId]);
+  });
+
+  it("replaces the pair with one processing payslip in the earlier one's place, in page order", async () => {
+    const id = merged(await merge(mergeSessionId, [pdfId, pngId], [pngId, pdfId]));
+
+    expect((await getAsA(`/api/payslips/${pdfId}`)).status).toBe(404);
+    expect((await getAsA(`/api/payslips/${pngId}`)).status).toBe(404);
+    const detail = sessionDetailResponseSchema.parse(
+      (await getAsA(`/api/sessions/${mergeSessionId}`)).body,
+    );
+    expect(detail.payslips.map((payslip) => payslip.id)).toEqual([id, processingId]);
+    expect(detail.payslips[0]).toMatchObject({
+      status: "processing",
+      tablesStatus: "pending",
+      pageCount: 2,
+      originalFilename: "page-2.png + page-1.pdf",
+    });
+
+    const stored = await downloadAsA(id);
+    const pageSizes = (await PDFDocument.load(stored)).getPages().map((page) => page.getSize());
+    const pdfPage = (await PDFDocument.load(await pdf(1))).getPage(0).getSize();
+    // The PNG first, as an 842 pt square, then the PDF's page.
+    expect(pageSizes).toEqual([{ width: 842, height: 842 }, pdfPage]);
+    expect(enqueued).toHaveLength(1);
+    expect(enqueued[0]).toMatchObject({ payslipId: id, contentType: "application/pdf" });
+    expect(enqueued[0]?.bytes).toEqual(stored);
+
+    const { data: storedRows } = await admin
+      .from("payslips")
+      .select("id, created_at, deleted_at, merged_from")
+      .in("id", [id, pdfId, pngId]);
+    const byId = new Map(storedRows?.map((row) => [row.id, row]));
+    expect(byId.get(id)).toMatchObject({ merged_from: [pngId, pdfId], deleted_at: null });
+    expect(byId.get(id)?.created_at).toBe(byId.get(pdfId)?.created_at);
+    // Soft-deleted, not removed: both rows remain, and so do their sources.
+    expect(byId.get(pdfId)?.deleted_at).not.toBeNull();
+    expect(byId.get(pngId)?.deleted_at).not.toBeNull();
+    expect(await downloadAsA(pngId)).toEqual(png);
+  });
+
+  it("refuses to merge an original again", async () => {
+    const other = await uploaded(mergeSessionId, await pdf(1), "again.pdf", "application/pdf");
+    await failed(other);
+
+    const response = await merge(mergeSessionId, [pdfId, other]);
+
+    expect(response.status).toBe(409);
+    expect(await liveIds(mergeSessionId)).toContain(other);
+  });
+
+  it("refuses a payslip from another session, and another user's session or payslips", async () => {
+    const elsewhere = await uploaded(await newSession(), await pdf(1), "b.pdf", "application/pdf");
+    await failed(elsewhere);
+    const target = await uploaded(mergeSessionId, await pdf(1), "c.pdf", "application/pdf");
+    await failed(target);
+    const [first] = await liveIds(mergeSessionId);
+
+    expect((await merge(mergeSessionId, [target, elsewhere])).status).toBe(409);
+    const foreignSession = await merge(mergeSessionId, [target, first!], undefined, tokenB);
+    expect(foreignSession.status).toBe(404);
+    expect(foreignSession.body).toEqual({ error: { code: "not_found" } });
+    const ownSessionB = await newSession(tokenB);
+    expect((await merge(ownSessionB, [target, elsewhere], undefined, tokenB)).status).toBe(409);
+    expect(await liveIds(mergeSessionId)).toContain(target);
+  });
+
+  it("merges a pair once when two requests race, leaving no orphan source", async () => {
+    const racingSession = await newSession();
+    const a = await uploaded(racingSession, png, "race-a.png", "image/png");
+    const b = await uploaded(racingSession, png, "race-b.png", "image/png");
+    await failed(a);
+    await failed(b);
+
+    const responses = await Promise.all([
+      merge(racingSession, [a, b]),
+      merge(racingSession, [a, b]),
+    ]);
+
+    expect(responses.map((response) => response.status).toSorted()).toEqual([202, 409]);
+    const winner = merged(responses.find((response) => response.status === 202)!);
+    expect(await liveIds(racingSession)).toEqual([winner]);
+    // The loser removed the source it stored: every object under user A is a known payslip's.
+    const { data: objects } = await admin.storage
+      .from(config.STORAGE_BUCKET)
+      .list(userAId, { limit: 1000 });
+    const known = new Set(sourcePaths.map((path) => path.split("/")[1]));
+    expect(objects?.filter((object) => !known.has(object.name))).toEqual([]);
+  });
+
+  it("refuses another user's direct call of the merge function, changing nothing", async () => {
+    const guarded = await newSession();
+    const a = await uploaded(guarded, png, "guard-a.png", "image/png");
+    const b = await uploaded(guarded, png, "guard-b.png", "image/png");
+    await failed(a);
+    await failed(b);
+
+    const intruder = new PayslipRepository(userB, userBId);
+    const refused = await intruder.merge({
+      sessionId: guarded,
+      id: randomUUID(),
+      order: [a, b],
+      originalFilename: "intruder.pdf",
+      pageCount: 2,
+    });
+
+    expect(refused).toBe(false);
+    expect(await liveIds(guarded)).toEqual([a, b]);
+  });
+
+  it("refuses a combined PDF over the page cap, storing and deleting nothing", async () => {
+    const cappedSession = await newSession();
+    const ten = await uploaded(
+      cappedSession,
+      await pdf(config.MAX_PDF_PAGES),
+      "ten.pdf",
+      "application/pdf",
+    );
+    const one = await uploaded(cappedSession, await pdf(1), "one.pdf", "application/pdf");
+    await failed(ten);
+    await failed(one);
+
+    const response = await merge(cappedSession, [ten, one]);
+
+    expect(response.status).toBe(422);
+    expect(response.body).toEqual({ error: { code: "pdf_too_many_pages" } });
+    expect(await liveIds(cappedSession)).toEqual([ten, one]);
+  });
+
+  // Two 5.8 MB uploads and their downloads against the hosted project outlast the default timeout.
+  it("refuses a combined PDF over the size cap, though each source is under it", async () => {
+    const cappedSession = await newSession();
+    const half = Math.ceil(config.MAX_UPLOAD_BYTES * 0.55);
+    const first = await uploaded(cappedSession, await paddedPdf(half), "a.pdf", "application/pdf");
+    const second = await uploaded(cappedSession, await paddedPdf(half), "b.pdf", "application/pdf");
+    await failed(first);
+    await failed(second);
+
+    const response = await merge(cappedSession, [first, second]);
+
+    expect(response.status).toBe(422);
+    expect(response.body).toEqual({ error: { code: "file_too_large" } });
+    expect(await liveIds(cappedSession)).toEqual([first, second]);
+  }, 120_000);
+
+  it("refuses a source that uploads but cannot be embedded", async () => {
+    const unreadableSession = await newSession();
+    // The header-only JPEG passes the upload's byte sniff; pdf-lib finds no frame to embed.
+    const broken = await uploaded(unreadableSession, jpeg, "broken.jpg", "image/jpeg");
+    const readable = await uploaded(unreadableSession, png, "page.png", "image/png");
+    await failed(broken);
+    await failed(readable);
+
+    const response = await merge(unreadableSession, [broken, readable]);
+
+    expect(response.status).toBe(422);
+    expect(response.body).toEqual({ error: { code: "merge_source_unreadable" } });
+    expect(await liveIds(unreadableSession)).toEqual([broken, readable]);
+  });
+
+  it("merges in a full session, since the originals free their slots first", async () => {
+    const fullSession = await newSession();
+    const ids: string[] = [];
+    for (let index = 0; index < MAX_PAYSLIPS_PER_SESSION; index += 1) {
+      ids.push(await uploaded(fullSession, png, `full-${index}.png`, "image/png"));
+    }
+    const [first, second] = ids as [string, string];
+    await failed(first);
+    await failed(second);
+
+    merged(await merge(fullSession, [first, second]));
+
+    expect(await liveIds(fullSession)).toHaveLength(MAX_PAYSLIPS_PER_SESSION - 1);
+  });
+
+  it("suggests two payslips with the same employee OIB and period (D5)", async () => {
+    const suggestSession = await newSession();
+    const key = { period: "2025-03", employeeOib: "69435151530" };
+    const a = await uploaded(suggestSession, png, "s-a.png", "image/png");
+    const b = await uploaded(suggestSession, png, "s-b.png", "image/png");
+    const c = await uploaded(suggestSession, png, "s-c.png", "image/png");
+    await reviewed(a, key);
+    await reviewed(b, key);
+    await reviewed(c, { ...key, employeeOib: "94577403194" });
+
+    const detail = sessionDetailResponseSchema.parse(
+      (await getAsA(`/api/sessions/${suggestSession}`)).body,
+    );
+
+    expect(detail.mergeSuggestions).toEqual([[a, b]]);
+  });
+
+  it("answers 400 for a malformed body or session id", async () => {
+    expect((await merge(mergeSessionId, [pdfId, pdfId])).status).toBe(400);
+    expect((await merge("not-a-uuid", [pdfId, pngId])).status).toBe(400);
+  });
+});
+
 describe("soft delete", () => {
   it("removes the payslip from every list and read, and a second delete is 404", async () => {
     const deleted = await request(app)
@@ -1008,6 +1312,17 @@ async function downloadAsA(payslipId: string): Promise<Buffer> {
   return Buffer.from(await data.arrayBuffer());
 }
 
+/** A one-page PDF of about `bytes`: an incompressible content-stream comment, which merging copies. */
+async function paddedPdf(bytes: number): Promise<Buffer> {
+  const document = await PDFDocument.create();
+  const page = document.addPage();
+  const padding = document.context.stream(
+    `%${randomBytes(Math.ceil(bytes / 2)).toString("hex")}\n`,
+  );
+  page.node.set(PDFName.of("Contents"), document.context.register(padding));
+  return Buffer.from(await document.save({ useObjectStreams: false }));
+}
+
 async function pdf(pageCount: number): Promise<Buffer> {
   const document = await PDFDocument.create();
   for (let page = 0; page < pageCount; page += 1) document.addPage();
@@ -1016,7 +1331,8 @@ async function pdf(pageCount: number): Promise<Buffer> {
 
 /**
  * A PDF that needs a password to open: a standard-security-handler `/Encrypt` whose `/U` matches
- * no empty user password. pdf-lib cannot encrypt, but a reader asks for a password all the same.
+ * no empty user password. Only the dictionary is written, not encrypted content, but a reader asks
+ * for a password all the same.
  */
 async function encryptedPdf(): Promise<Buffer> {
   const document = await PDFDocument.create();
