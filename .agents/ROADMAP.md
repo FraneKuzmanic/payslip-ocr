@@ -92,7 +92,7 @@ investigation and is recorded with its reasoning.
 | 06 | Warnings & validation engine | ✅ complete → [`history/06`](./history/06-warnings-validation-engine.md) |
 | 07 | Capture & multi-upload UI | ✅ complete, reviewed and validated; M3 core journey passed, sub-steps pending → [`history/07`](./history/07-capture-multi-upload.md) |
 | 08 | Source regions & document preview with highlighting | ✅ complete, reviewed and validated; M1 spot-check pending → [`history/08`](./history/08-source-regions-preview.md) |
-| 09 | Review form & two-way linking | ✅ implemented, reviewed and validated; migration 2 pending (step P) → [`history/09`](./history/09-review-form-two-way-linking.md) |
+| 09 | Review form & two-way linking | ✅ complete, reviewed and validated; migration 2 applied (step P) → [`history/09`](./history/09-review-form-two-way-linking.md) |
 | 10 | Session navigation & phone layout | ⬜ not started |
 | 11 | Merge payslips | ⬜ not started |
 | 12 | Export & history | ⬜ not started |
@@ -737,7 +737,7 @@ each is run separately and its result recorded in the owning task's history file
 | **Hand-written rule creep** — a Croatian parser growing beneath a generic model | Watch | A growing count of deterministic post-processing rules is the signal to revisit the engine, not progress |
 | **Phone layout has no prior art** — every document-AI review UI found is desktop-only | Open | Task 10; first thing to put in front of a real user |
 | **Inherited gaps** — no password reset, unverified emails, Render cold starts | Accepted | Documented, not fixed. CI exists since Task 01b |
-| **Direct-write gap** — a signed-in user can update their own payslip's `status` or `canonical_data` through PostgREST, bypassing the API | Closing: functions applied (Task 09); revoke pending step P | Every write, retry included, goes through a `security definer` function. The migration revoking `update`, and narrowing `insert` to the six upload columns (Task 09 review), is written and applied once the new API is live on Render (plan 09 step P) |
+| **Direct-write gap** — a signed-in user can update their own payslip's `status` or `canonical_data` through PostgREST, bypassing the API | **Closed** (Task 09 step P, 2026-09-26) | Every write, retry included, goes through a `security definer` function. `update` is revoked and `insert` narrowed to the six upload columns (migration `20260926081337`); `direct-writes.integration.ts` proves both on every run. The functions still accept any `jsonb`, so a direct RPC can store fields that fail the canonical schema, on the caller's own payslip only |
 | **Service source on the wrong text** — D01's `paymentDate` carries a service source on the employer address and is outlined there faithfully (history/08). Grounding checks the whole page, not the region | Open (Task 09 D15) | Needs its own measurement over the recordings: whether the OCR words inside each region contain the printed value |
 | **In-memory extraction queue** — upload bytes wait in process memory; a redeploy drops in-flight work | Accepted for a demo | Lost jobs fail on the next read after 15 min and are retryable (Task 04 D3). Worst case 10 × 10 MB per session on a 512 MB instance; Task 07's downscale shrinks images |
 | **Background writes use the upload's token** — a token near expiry at upload can fail the completion write | Mitigated (Task 07 D5) | The client refreshes the session before each upload batch, giving every write about the full token lifetime. If it still happens, the row is failed by the stale reaper and is retryable |

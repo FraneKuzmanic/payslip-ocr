@@ -29,7 +29,11 @@ if (extraction) {
 
 const integrationFiles = extraction
   ? ["src/routes/extraction.integration.ts"]
-  : ["src/auth/auth.integration.ts", "src/routes/payslips.integration.ts"];
+  : [
+      "src/auth/auth.integration.ts",
+      "src/routes/payslips.integration.ts",
+      "src/routes/direct-writes.integration.ts",
+    ];
 
 for (const file of integrationFiles) {
   const test = spawnSync(

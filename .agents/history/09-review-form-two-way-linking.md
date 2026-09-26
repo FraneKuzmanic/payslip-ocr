@@ -25,7 +25,7 @@ It spent **$0** on Azure.
 | File | Contents |
 | --- | --- |
 | `supabase/migrations/20260926065611_server_side_payslip_writes.sql` | **Applied.** Seven new `security definer` functions (`update_payslip_fields`, `confirm_payslip`, `begin_payslip_retry`, `soft_delete_payslip`, `fail_payslip_extraction`, `fail_payslip_tables`, `fail_stale_payslip_extractions`), and `complete_extraction_pass` altered to definer (D2) |
-| `supabase/migrations/20260926070000_revoke_direct_payslip_updates.sql` | **Written, not applied** (D3): `revoke update` and drop the update policy. The version is a placeholder; step P renames it to the recorded one |
+| `supabase/migrations/20260926081337_revoke_direct_payslip_updates.sql` | **Applied in step P** (D3): `revoke update`, drop the update policy, and (review session) `insert` narrowed to the six upload columns. Renamed from its placeholder version `20260926070000` |
 | `api/src/database.types.ts` | `Functions` regenerated: eight entries |
 | `api/src/validation/attention.ts` | `GROUNDING_GATED_FIELDS`; the pass's `ungroundableFields` gate `period`/`paymentDate` (D7) |
 | `api/src/validation/edited.ts` | `TABLE_FIELDS`, `editedFields` (D5), `liveSignals` (D6) |
@@ -251,3 +251,24 @@ $0.045–0.051 per two-pass document, **about $0.15**. All data deleted; 0 orpha
 1. Findings 4, 6 and 7, and the copy read from the handoff above.
 2. Committing, then step P. Step P now also closes the INSERT path, and
    `direct-writes.integration.ts` covers it.
+
+## Step P (2026-09-26, after `aab59c0` deployed)
+
+The product owner reported the deploy live; `/api/health` answered with `uptimeSeconds` 278.
+
+1. **Dry run:** migration 2 as written, in `begin; … rollback;`. Afterwards `authenticated` had no
+   UPDATE (table or column), INSERT on exactly six columns and not on `status`, and no update
+   policy.
+2. **Applied** as `revoke_direct_payslip_updates`, recorded once as version `20260926081337`. The
+   local file was renamed from `20260926070000`, and the hosted list now matches
+   `supabase/migrations/` exactly.
+3. `direct-writes.integration.ts` joined the runner's file list.
+4. `npm run test:integration` on hosted: auth **3/3**, payslips **45/45** (the two direct-write cap
+   tests now refused with a permission error), direct writes **4/4**, including the forged insert.
+   0 `task%` users, 0 orphan payslips or Storage objects.
+5. **Advisors (security):** lint 0029 on the eight functions and `auth_leaked_password_protection`;
+   nothing else.
+6. ROADMAP §5 "Direct-write gap" is closed; `validate.md` 8.1 no longer lists an expected exception.
+
+Not run: a paid upload on production. The narrowed INSERT is the one the upload repository
+performs, and the hosted suite exercises it through the API.
