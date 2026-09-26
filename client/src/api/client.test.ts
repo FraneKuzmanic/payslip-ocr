@@ -4,10 +4,14 @@ import { supabase } from "../lib/supabase";
 import {
   ApiError,
   confirmPayslip,
+  deletePayslip,
+  exportPayslip,
+  exportPayslips,
   getHealth,
   getPayslipDetail,
   getPayslipRegions,
   getPayslipSource,
+  getPayslips,
   getSessionDetail,
   mergePayslips,
   retryPayslip,
@@ -282,6 +286,69 @@ describe("the API client", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
 
     await expect(call()).rejects.toMatchObject({ status: 409, code });
+  });
+
+  it.each([
+    [{ page: 1 }, "/api/payslips?page=1"],
+    [{ page: 3, status: "confirmed" as const }, "/api/payslips?page=3&status=confirmed"],
+  ])("lists payslips with the query %j", async (query, url) => {
+    getSession.mockResolvedValue(sessionResult("token-abc"));
+    const fetchMock = respondWith(200, { items: [], page: query.page, limit: 20, total: 0 });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getPayslips(query)).resolves.toEqual({
+      items: [],
+      page: query.page,
+      limit: 20,
+      total: 0,
+    });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(url);
+  });
+
+  it("deletes a payslip and resolves on 204", async () => {
+    getSession.mockResolvedValue(sessionResult("token-abc"));
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
+      Promise.resolve(new Response(null, { status: 204 })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(deletePayslip("payslip/id")).resolves.toBeUndefined();
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/payslips/payslip%2Fid");
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe("DELETE");
+  });
+
+  it.each([
+    ["all confirmed", () => exportPayslips("csv"), "/api/payslips/export?format=csv"],
+    [
+      "one payslip",
+      () => exportPayslip("payslip/id", "json"),
+      "/api/payslips/payslip%2Fid/export?format=json",
+    ],
+  ])("exports %s as the response blob", async (_name, call, url) => {
+    getSession.mockResolvedValue(sessionResult("token-abc"));
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
+      Promise.resolve(new Response("\uFEFFid;sessionId", { status: 200 })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const blob = await call();
+    // The bytes, not `text()`: decoding strips a leading BOM, and the bytes are what `saveBlob`
+    // writes, so the BOM Excel needs must survive in them.
+    expect(new Uint8Array(await blob.arrayBuffer()).slice(0, 3)).toEqual(
+      new Uint8Array([0xef, 0xbb, 0xbf]),
+    );
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(url);
+  });
+
+  it("surfaces a refused export as an ApiError carrying export_not_allowed", async () => {
+    getSession.mockResolvedValue(sessionResult("token-abc"));
+    vi.stubGlobal("fetch", respondWith(409, { error: { code: "export_not_allowed" } }));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(exportPayslip("id", "csv")).rejects.toMatchObject({
+      status: 409,
+      code: "export_not_allowed",
+    });
   });
 
   it("surfaces a refused retry as an ApiError carrying retry_not_allowed", async () => {

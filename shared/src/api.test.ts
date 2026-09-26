@@ -6,6 +6,7 @@ import {
   createSessionResponseSchema,
   listPayslipsQuerySchema,
   listPayslipsResponseSchema,
+  payslipListItemSchema,
   mergePayslipsRequestSchema,
   mergePayslipsResponseSchema,
   payslipDetailResponseSchema,
@@ -206,5 +207,24 @@ describe("listPayslipsQuerySchema (PRD §10.12)", () => {
 
   it("rejects a limit above 100", () => {
     expect(listPayslipsQuerySchema.safeParse({ limit: "101" }).success).toBe(false);
+  });
+});
+
+describe("payslipListItemSchema (PRD §10.12, plan 12 D7)", () => {
+  it("keeps originalFilename", () => {
+    expect(
+      payslipListItemSchema.parse({ ...payslip, originalFilename: "A01.pdf" }).originalFilename,
+    ).toBe("A01.pdf");
+  });
+  it("parses an item from an older API without originalFilename", () => {
+    expect(payslipListItemSchema.parse(payslip).originalFilename).toBeUndefined();
+  });
+  it("rejects an empty originalFilename", () => {
+    expect(payslipListItemSchema.safeParse({ ...payslip, originalFilename: "" }).success).toBe(
+      false,
+    );
+  });
+  it("strips an unknown key", () => {
+    expect(payslipListItemSchema.parse({ ...payslip, extra: 1 })).not.toHaveProperty("extra");
   });
 });

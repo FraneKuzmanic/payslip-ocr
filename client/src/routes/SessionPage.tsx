@@ -1,4 +1,4 @@
-import { AlertCircle, Clock, Combine, Loader2, X } from "lucide-react";
+import { AlertCircle, Clock, Combine, FileJson, FileSpreadsheet, Loader2, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useParams, useSearchParams } from "react-router";
@@ -6,12 +6,15 @@ import {
   isMergeable,
   isRetryableFailure,
   mergedFilename,
+  type ExportFormat,
   type PayslipSummary,
   type SessionDetailResponse,
 } from "@payslip/shared";
-import { ApiError, getSessionDetail, retryPayslip } from "../api/client";
-import { ActionMenu } from "../components/ActionMenu";
+import { ApiError, exportPayslip, getSessionDetail, retryPayslip } from "../api/client";
+import { ActionMenu, type ActionMenuItem } from "../components/ActionMenu";
+import { ErrorMessage } from "../components/ErrorMessage";
 import { Spinner } from "../components/Spinner";
+import { payslipExportFilename, saveBlob } from "../history/download";
 import { useWideLayout, XL } from "../history/useWideLayout";
 import { PayslipRail } from "../review/PayslipRail";
 import { PayslipReview } from "../review/PayslipReview";
@@ -69,6 +72,9 @@ export function SessionPage() {
   // `pair: null` opens the dialog at its pick step. `opened` keys each opening (plan 11 D11).
   const [merge, setMerge] = useState<{ pair: readonly [string, string] | null } | null>(null);
   const [mergeOpened, setMergeOpened] = useState(0);
+  const [downloading, setDownloading] = useState(false);
+  // The payslip whose download failed, so the message does not follow the user to another one.
+  const [exportFailedId, setExportFailedId] = useState<string | null>(null);
   const [lastMerge, setLastMerge] = useState<{
     id: string;
     originals: readonly [string, string];
@@ -164,6 +170,22 @@ export function SessionPage() {
     }
   }
 
+  /** Plan 12 D5: the saved payslip, which a confirmed payslip always is after its last save. */
+  async function download(payslip: PayslipSummary, format: ExportFormat) {
+    if (downloading) return;
+    setDownloading(true);
+    setExportFailedId(null);
+    try {
+      const blob = await exportPayslip(payslip.id, format);
+      saveBlob(blob, payslipExportFilename(payslip, format));
+    } catch (error) {
+      console.error(`[session] exporting the payslip as ${format} failed`, error);
+      setExportFailedId(payslip.id);
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   function openMerge(pair: readonly [string, string] | null) {
     setMerge({ pair });
     setMergeOpened((count) => count + 1);
@@ -243,6 +265,38 @@ export function SessionPage() {
   }
 
   const payslips = detail?.payslips ?? [];
+  // Plan 12 D5: Merge when it can apply, and downloads once the selected payslip is confirmed.
+  const actions: ActionMenuItem[] =
+    selected === null
+      ? []
+      : [
+          ...(canMerge(selected, payslips)
+            ? [
+                {
+                  key: "merge",
+                  label: t("merge.mergeWith"),
+                  icon: Combine,
+                  onSelect: () => openMerge(null),
+                },
+              ]
+            : []),
+          ...(selected.status === "confirmed"
+            ? [
+                {
+                  key: "csv",
+                  label: t("history.downloadCsv"),
+                  icon: FileSpreadsheet,
+                  onSelect: () => void download(selected, "csv"),
+                },
+                {
+                  key: "json",
+                  label: t("history.downloadJson"),
+                  icon: FileJson,
+                  onSelect: () => void download(selected, "json"),
+                },
+              ]
+            : []),
+        ];
   const listed = new Set(payslips.map((payslip) => payslip.id));
   // An uploaded item is represented by its server row once the session read includes it.
   const pending = items.filter(
@@ -313,21 +367,18 @@ export function SessionPage() {
                   {t("session.position", { index: selectedIndex + 1 })} ·{" "}
                   {selected.originalFilename}
                 </h2>
-                {canMerge(selected, payslips) ? (
+                {actions.length > 0 ? (
                   <ActionMenu
                     id="payslip-actions"
                     label={t("merge.actions")}
-                    items={[
-                      {
-                        key: "merge",
-                        label: t("merge.mergeWith"),
-                        icon: Combine,
-                        onSelect: () => openMerge(null),
-                      },
-                    ]}
+                    items={actions}
+                    busy={downloading}
                   />
                 ) : null}
               </div>
+              {exportFailedId === selected.id ? (
+                <ErrorMessage message={t("history.errors.export")} />
+              ) : null}
               {isReadable(selected) ? (
                 <PayslipReview
                   key={selected.id}

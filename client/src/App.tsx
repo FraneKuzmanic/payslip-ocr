@@ -1,6 +1,7 @@
 import { Route, Routes } from "react-router";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { AppLayout } from "./components/AppLayout";
+import { HistoryPage } from "./routes/HistoryPage";
 import { HomePage } from "./routes/HomePage";
 import { LoginPage } from "./routes/LoginPage";
 import { NotFoundPage } from "./routes/NotFoundPage";
@@ -25,6 +26,7 @@ export function App() {
             <Route element={<UnsavedEditsProvider />}>
               <Route index element={<HomePage />} />
               <Route path="sessions/:sessionId" element={<SessionPage />} />
+              <Route path="history" element={<HistoryPage />} />
               <Route path="*" element={<NotFoundPage />} />
             </Route>
           </Route>

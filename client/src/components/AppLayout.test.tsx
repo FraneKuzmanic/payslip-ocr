@@ -29,6 +29,7 @@ function renderLayout(options: { path?: string; value?: Partial<AuthContextValue
           <Route element={<AppLayout />}>
             <Route index element={<p>capture screen</p>} />
             <Route path="elsewhere" element={<p>another screen</p>} />
+            <Route path="history" element={<p>history screen</p>} />
           </Route>
         </Routes>
       </AuthContext>
@@ -76,6 +77,21 @@ describe("AppLayout", () => {
 
     for (const nav of screen.getAllByRole("navigation")) {
       expect(within(nav).queryAllByRole("link", { current: "page" })).toHaveLength(0);
+    }
+  });
+
+  it("marks History as the current destination on the history route (plan 12 D10)", () => {
+    renderLayout({ path: "/history" });
+
+    for (const nav of screen.getAllByRole("navigation")) {
+      expect(
+        within(nav)
+          .getAllByRole("link")
+          .map((link) => link.textContent),
+      ).toEqual(["Scan", "History"]);
+      const current = within(nav).getAllByRole("link", { current: "page" });
+      expect(current).toHaveLength(1);
+      expect(current[0]).toHaveTextContent("History");
     }
   });
 

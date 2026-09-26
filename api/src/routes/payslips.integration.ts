@@ -8,6 +8,7 @@ import {
   confirmPayslipResponseSchema,
   createPayslipResponseSchema,
   createSessionResponseSchema,
+  jsonExportResponseSchema,
   listPayslipsResponseSchema,
   mergePayslipsResponseSchema,
   payslipDetailResponseSchema,
@@ -1246,6 +1247,184 @@ describe("merge (PRD §10.11, plan 11)", () => {
   it("answers 400 for a malformed body or session id", async () => {
     expect((await merge(mergeSessionId, [pdfId, pdfId])).status).toBe(400);
     expect((await merge("not-a-uuid", [pdfId, pngId])).status).toBe(400);
+  });
+});
+
+describe("export and history (Task 12)", () => {
+  const scalarsBody = regionsPassBody({
+    employerName: cell("Poslodavac d.o.o."),
+    employeeName: cell("Đurđa Čačić"),
+    period: cell("03/2025"),
+    brutoPlaca: cell("1.300,00"),
+  });
+  const tablesBody = regionsPassBody({
+    obustave: rows({ naziv: cell("KREDIT"), iznos: cell("100,00") }),
+  });
+
+  let exportSessionId = "";
+  let sessionBId = "";
+
+  beforeAll(async () => {
+    exportSessionId = await newSession(tokenA);
+    sessionBId = await newSession(tokenB);
+  });
+
+  async function newSession(token: string): Promise<string> {
+    const created = await request(app)
+      .post("/api/sessions")
+      .set("Authorization", `Bearer ${token}`);
+    return createSessionResponseSchema.parse(created.body).id;
+  }
+
+  /** A payslip in `processing`, `review` (both passes landed) or `confirmed`. No source object. */
+  async function payslipIn(
+    status: "processing" | "review" | "confirmed",
+    owner: { client: SupabaseClient<Database>; id: string; token: string; session: string } = {
+      client: userA,
+      id: userAId,
+      token: tokenA,
+      session: exportSessionId,
+    },
+  ): Promise<string> {
+    const { data, error } = await owner.client
+      .from("payslips")
+      .insert({
+        session_id: owner.session,
+        user_id: owner.id,
+        original_filename: "izvoz-ožujak.pdf",
+        content_type: "application/pdf",
+        page_count: 1,
+      })
+      .select("id")
+      .single();
+    if (error) throw new Error("Could not insert a payslip to export.");
+    if (status === "processing") return data.id;
+
+    const repository = new PayslipRepository(owner.client, owner.id);
+    expect(
+      await repository.completeExtractionPass(
+        data.id,
+        "scalars",
+        mappedPass(scalarsBody, "scalars"),
+      ),
+    ).toBe(true);
+    expect(
+      await repository.completeExtractionPass(data.id, "tables", mappedPass(tablesBody, "tables")),
+    ).toBe(true);
+    if (status === "confirmed") {
+      const confirmed = await request(app)
+        .post(`/api/payslips/${data.id}/confirm`)
+        .set("Authorization", `Bearer ${owner.token}`);
+      expect(confirmed.status).toBe(200);
+    }
+    return data.id;
+  }
+
+  const exportAll = async () =>
+    jsonExportResponseSchema.parse((await getAsA("/api/payslips/export?format=json")).body);
+
+  it("refuses to export a payslip that is not confirmed, in either format", async () => {
+    const review = await payslipIn("review");
+    const processing = await payslipIn("processing");
+
+    for (const id of [review, processing]) {
+      for (const format of ["json", "csv"]) {
+        const response = await getAsA(`/api/payslips/${id}/export?format=${format}`);
+        expect(response.status).toBe(409);
+        expect(response.body).toEqual({ error: { code: "export_not_allowed" } });
+      }
+    }
+  });
+
+  it("exports a confirmed payslip as JSON and as a Croatian-dialect CSV", async () => {
+    const id = await payslipIn("confirmed");
+
+    const json = await getAsA(`/api/payslips/${id}/export?format=json`);
+    expect(json.status).toBe(200);
+    const body = jsonExportResponseSchema.parse(json.body);
+    expect(body.payslips).toHaveLength(1);
+    expect(body.payslips[0]).toMatchObject({
+      id,
+      status: "confirmed",
+      tablesStatus: "ready",
+      employeeName: "Đurđa Čačić",
+      brutoPlaca: "1300.00",
+    });
+    expect(body.payslips[0]?.obustave).toHaveLength(1);
+
+    const csv = await getAsA(`/api/payslips/${id}/export?format=csv`).buffer(true);
+    expect(csv.status).toBe(200);
+    expect(csv.headers["content-type"]).toMatch(/^text\/csv/);
+    expect(csv.headers["content-disposition"]).toBe(`attachment; filename="payslip-${id}.csv"`);
+    const text = csv.text;
+    expect(text.startsWith("\uFEFF")).toBe(true);
+    const lines = text.slice(1).split("\r\n");
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatch(/^id;sessionId;status;tablesStatus;/);
+    expect(lines[1]).toContain(";Đurđa Čačić;");
+    expect(lines[1]).toContain(";1300,00;");
+  });
+
+  it("exports all confirmed, live payslips of the caller only", async () => {
+    const confirmed = await payslipIn("confirmed");
+    const review = await payslipIn("review");
+    const deleted = await payslipIn("confirmed");
+    const ofB = await payslipIn("confirmed", {
+      client: userB,
+      id: userBId,
+      token: tokenB,
+      session: sessionBId,
+    });
+    const removed = await request(app)
+      .delete(`/api/payslips/${deleted}`)
+      .set("Authorization", `Bearer ${tokenA}`);
+    expect(removed.status).toBe(204);
+
+    // A `200` here also proves the route order: `/export` never reaches `GET /:id`'s id check.
+    const ids = (await exportAll()).payslips.map((payslip) => payslip.id);
+    expect(ids).toContain(confirmed);
+    expect(ids).not.toContain(review);
+    expect(ids).not.toContain(deleted);
+    expect(ids).not.toContain(ofB);
+    expect((await exportAll()).payslips.every((payslip) => payslip.status === "confirmed")).toBe(
+      true,
+    );
+
+    const csv = await getAsA("/api/payslips/export?format=csv").buffer(true);
+    expect(csv.status).toBe(200);
+    expect(csv.headers["content-disposition"]).toBe('attachment; filename="payslips.csv"');
+    expect(csv.text.slice(1).split("\r\n")).toHaveLength(ids.length + 1);
+
+    expect((await getAsA(`/api/payslips/${deleted}/export?format=json`)).status).toBe(404);
+    expect((await getAsA(`/api/payslips/${ofB}/export?format=json`)).status).toBe(404);
+  });
+
+  it("refuses a bad format or id", async () => {
+    const id = await payslipIn("confirmed");
+
+    expect((await getAsA(`/api/payslips/${id}/export?format=xml`)).status).toBe(400);
+    expect((await getAsA(`/api/payslips/${id}/export`)).status).toBe(400);
+    expect((await getAsA("/api/payslips/export?format=xml")).status).toBe(400);
+    expect((await getAsA("/api/payslips/not-a-uuid/export?format=json")).status).toBe(400);
+  });
+
+  it("lists each payslip with its filename, and a previous day's payslip after today's", async () => {
+    const today = await payslipIn("review");
+    const yesterday = await payslipIn("review");
+    const createdAt = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { error } = await admin
+      .from("payslips")
+      .update({ created_at: createdAt })
+      .eq("id", yesterday);
+    expect(error).toBeNull();
+
+    const list = listPayslipsResponseSchema.parse((await getAsA("/api/payslips?limit=100")).body);
+    const ids = list.items.map((item) => item.id);
+    expect(ids).toContain(yesterday);
+    expect(ids.indexOf(yesterday)).toBeGreaterThan(ids.indexOf(today));
+    const row = list.items.find((item) => item.id === yesterday);
+    expect(row?.originalFilename).toBe("izvoz-ožujak.pdf");
+    expect(new Date(row?.createdAt ?? 0).getTime()).toBe(new Date(createdAt).getTime());
   });
 });
 

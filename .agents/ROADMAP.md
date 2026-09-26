@@ -95,7 +95,7 @@ investigation and is recorded with its reasoning.
 | 09 | Review form & two-way linking | ✅ complete, reviewed and validated; migration 2 applied (step P) → [`history/09`](./history/09-review-form-two-way-linking.md) |
 | 10 | Session navigation & phone layout | ✅ implemented and reviewed; M2 pending |
 | 11 | Merge payslips | ✅ complete, reviewed and validated; journey 9.10 passed → [`history/11`](./history/11-merge-payslips.md) |
-| 12 | Export & history | ⬜ not started |
+| 12 | Export & history | ✅ complete, reviewed and validated; journey 9.11 passed → [`history/12`](./history/12-export-history.md) |
 | 13 | Deploy & end-to-end verification | ⬜ not started |
 
 ---
@@ -715,13 +715,34 @@ Added in execution: the upload size cap applies to the combined PDF too
 
 **Not in this task:** deployment (13).
 
+**Added in planning (plan 12)**
+
+- D1: the CSV is the Croatian Excel dialect: `;`, decimal comma, BOM, CRLF, no `sep=` line.
+- D2: CSV columns are structure, the 25 scalars in schema order, then timestamps; OIBs raw.
+- D3: the round trip is a $0 unit test through `scoreSet` over all 11 fixtures.
+- D4: the all-confirmed export covers the whole account, paged, in upload order.
+- D5: export is offered in history (per row and in bulk) and in the session's `⋮` menu.
+- D6: one translated export error; the detail goes to the console.
+- D7: history rows carry `originalFilename`, the rail's label rule, `iznosZaIsplatu` and the upload date.
+- D8: a delete from history clears that payslip's unsaved edits.
+- D9: filenames carry the period and a short id, never a name.
+- D10: History joins the primary navigation.
+- D11: $0 here; the review session's journey 9.11 is at most one analysis.
+- D12: the implementing session stops before review, `/validate`, browser journeys and commit.
+
 **Definition of done**
 
-- [ ] A JSON export re-imported into the scoring harness reproduces the same values — round trip.
-- [ ] CSV opens in Excel with `č ć ž š đ` intact.
-- [ ] A cell beginning `=` is neutralised.
-- [ ] Export of an unconfirmed payslip is refused with the documented code.
-- [ ] History survives a session reload and finds payslips from a previous day.
+- [x] A JSON export re-imported into the scoring harness reproduces the same values — round trip.
+      `api/src/export/payslips.test.ts`: all 11 fixtures deep-equal and score 100% (D3).
+- [x] CSV opens in Excel with `č ć ž š đ` intact. Excel 16 `OpenText` under hr-HR semantics
+      (history/12 step 13), confirmed in journey 9.11 on the app's own download: 34 columns,
+      diacritics intact, amounts as numbers.
+- [x] A cell beginning `=` is neutralised. Unit tests, and `=1+1` stayed text in Excel.
+- [x] Export of an unconfirmed payslip is refused with the documented code: `409
+      export_not_allowed` for `review` and `processing`, both formats (`payslips.integration.ts`).
+- [x] History survives a session reload and finds payslips from a previous day. Proven at the
+      API level (a payslip moved to yesterday is listed after today's), and in journey 9.11: a
+      reload kept all 22 rows, yesterday's included.
 
 ---
 

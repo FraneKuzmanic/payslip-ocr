@@ -237,12 +237,23 @@ export const listPayslipsQuerySchema = z
 
 export type ListPayslipsQuery = z.infer<typeof listPayslipsQuerySchema>;
 
+/**
+ * One history row: the payslip plus the name of the file it came from, which labels a row before
+ * extraction has read an employee name (plan 12 D7). Optional because a new bundle can meet an older
+ * API that does not send it yet.
+ */
+export const payslipListItemSchema = payslipSchema
+  .extend({ originalFilename: z.string().min(1).optional() })
+  .strip();
+
+export type PayslipListItem = z.infer<typeof payslipListItemSchema>;
+
 export const listPayslipsResponseSchema = z
   .object({
     // The payslip itself is loosened too, not just the envelope: a new canonical field is exactly
     // the kind of additive change that lands here, and history is the screen a stale tab is most
     // likely to be sitting on.
-    items: z.array(payslipSchema.strip()),
+    items: z.array(payslipListItemSchema),
     page: z.number().int(),
     limit: z.number().int(),
     total: z.number().int(),

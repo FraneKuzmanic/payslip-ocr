@@ -10,6 +10,7 @@ import {
   type CanonicalPayslipFields,
   type ExtractionFailureReason,
   type Payslip,
+  type PayslipListItem,
   type PayslipStatus,
   type SourceContentType,
 } from "@payslip/shared";
@@ -30,6 +31,9 @@ type PayslipReadRow = Omit<PayslipRow, "raw_provider_result">;
  */
 const PAYSLIP_COLUMNS =
   "id, session_id, user_id, status, tables_status, failure_reason, canonical_data, extraction_metadata, edited_fields, original_filename, content_type, page_count, merged_from, confirmed_at, created_at, updated_at, deleted_at, employee_name, employer_name, period, neto_placa, iznos_za_isplatu";
+
+/** Rows per request for the all-confirmed export, under the project's `max_rows = 1000` (D4). */
+const EXPORT_PAGE_SIZE = 500;
 
 const uuidSchema = z.uuid();
 /** Statuses with a readable form, the only ones that carry warnings (Task 06 D2). */
@@ -114,7 +118,7 @@ export interface MergePayslipsInput {
 }
 
 export interface PayslipPage {
-  readonly items: Payslip[];
+  readonly items: PayslipListItem[];
   readonly total: number;
 }
 
@@ -275,7 +279,38 @@ export class PayslipRepository {
       return { items: [], total: exactCount ?? 0 };
     }
     if (error) throw new PayslipRepositoryError("query_failed", error);
-    return { items: data.map(mapPayslipRow), total: count ?? 0 };
+    return {
+      items: data.map((row) => ({
+        ...mapPayslipRow(row),
+        originalFilename: row.original_filename,
+      })),
+      total: count ?? 0,
+    };
+  }
+
+  /**
+   * PRD §10.14 — every confirmed, non-deleted payslip of the user, in upload order. Paged, because
+   * a single select is silently truncated at `max_rows` (plan 12 D4). Without a count, PostgREST
+   * answers a range past the end with an empty page, which ends the loop.
+   */
+  async listConfirmedForExport(): Promise<Payslip[]> {
+    const items: Payslip[] = [];
+
+    for (let from = 0; ; from += EXPORT_PAGE_SIZE) {
+      const { data, error } = await this.#client
+        .from("payslips")
+        .select(PAYSLIP_COLUMNS)
+        .eq("user_id", this.#userId)
+        .is("deleted_at", null)
+        .eq("status", "confirmed")
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, from + EXPORT_PAGE_SIZE - 1);
+
+      if (error) throw new PayslipRepositoryError("query_failed", error);
+      items.push(...data.map(mapPayslipRow));
+      if (data.length < EXPORT_PAGE_SIZE) return items;
+    }
   }
 
   /**

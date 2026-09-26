@@ -4,6 +4,7 @@ import {
   confirmPayslipResponseSchema,
   createPayslipResponseSchema,
   createSessionResponseSchema,
+  listPayslipsResponseSchema,
   mergePayslipsResponseSchema,
   payslipDetailResponseSchema,
   retryPayslipResponseSchema,
@@ -13,10 +14,13 @@ import {
   type ConfirmPayslipResponse,
   type CreatePayslipResponse,
   type CreateSessionResponse,
+  type ExportFormat,
   type HealthResponse,
+  type ListPayslipsResponse,
   type MergePayslipsRequest,
   type MergePayslipsResponse,
   type PayslipDetailResponse,
+  type PayslipStatus,
   type RetryPayslipResponse,
   type SessionDetailResponse,
   type SourceDocumentResponse,
@@ -221,4 +225,32 @@ export async function getPayslipSource(id: string): Promise<SourceDocumentRespon
     response,
     "GET /api/payslips/:id/source",
   );
+}
+
+/** PRD §10.12: one page of the user's payslips, newest first, optionally of one status. */
+export async function getPayslips(query: {
+  page: number;
+  status?: PayslipStatus;
+}): Promise<ListPayslipsResponse> {
+  const params = new URLSearchParams({ page: String(query.page) });
+  if (query.status !== undefined) params.set("status", query.status);
+  const response = await request(`/api/payslips?${params.toString()}`);
+  return await parseResponse(listPayslipsResponseSchema, response, "GET /api/payslips");
+}
+
+/** PRD §10.13: soft delete. */
+export async function deletePayslip(id: string): Promise<void> {
+  await request(`/api/payslips/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+/** PRD §10.14: every confirmed payslip, as the file the user saves. */
+export async function exportPayslips(format: ExportFormat): Promise<Blob> {
+  const response = await request(`/api/payslips/export?format=${format}`);
+  return await response.blob();
+}
+
+/** PRD §10.15: one confirmed payslip; `409 export_not_allowed` otherwise. */
+export async function exportPayslip(id: string, format: ExportFormat): Promise<Blob> {
+  const response = await request(`/api/payslips/${encodeURIComponent(id)}/export?format=${format}`);
+  return await response.blob();
 }

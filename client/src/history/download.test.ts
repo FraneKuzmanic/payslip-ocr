@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { exportFilename, saveBlob } from "./download";
+import { exportFilename, payslipExportFilename, saveBlob } from "./download";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -13,6 +13,16 @@ describe("download helpers", () => {
 
     expect(exportFilename("csv", now)).toBe("payslips-2026-08-20.csv");
     expect(exportFilename("json", now)).toBe("payslips-2026-08-20.json");
+  });
+
+  it("names one payslip's file by its period and short id, never by a name", () => {
+    const id = "a1b2c3d4-0000-4000-8000-000000000000";
+
+    expect(payslipExportFilename({ id, period: "2025-06" }, "csv")).toBe(
+      "payslip-2025-06-a1b2c3d4.csv",
+    );
+    expect(payslipExportFilename({ id, period: null }, "json")).toBe("payslip-a1b2c3d4.json");
+    expect(payslipExportFilename({ id }, "json")).toBe("payslip-a1b2c3d4.json");
   });
 
   it("saves a blob through an object URL and revokes it", () => {

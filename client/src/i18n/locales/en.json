@@ -6,6 +6,7 @@
     "dismiss": "Dismiss",
     "language": "Language",
     "navCapture": "Scan",
+    "navHistory": "History",
     "mainNav": "Main navigation",
     "accountMenu": "User menu",
     "signedInAs": "Signed in as",
@@ -256,6 +257,51 @@
       "pdf_too_many_pages": "Together these documents have more than 10 pages. A payslip can have at most 10.",
       "file_too_large": "Together these documents are larger than 10 MB, so they cannot be combined.",
       "network": "The merge could not be started. Check your connection and try again."
+    }
+  },
+  "history": {
+    "title": "Payslip history",
+    "count_one": "{{count}} payslip",
+    "count_other": "{{count}} payslips",
+    "filterLabel": "Status",
+    "filterAll": "All",
+    "export": "Export",
+    "exportAllCsv": "All confirmed as CSV",
+    "exportAllJson": "All confirmed as JSON",
+    "downloadCsv": "Download CSV",
+    "downloadJson": "Download JSON",
+    "delete": "Delete",
+    "actionsFor": "Actions for {{name}}",
+    "deleteTitle": "Delete payslip?",
+    "deleteBody": "{{name}} will disappear from your history, from its session and from exports. You cannot undo this.",
+    "confirmDelete": "Delete payslip",
+    "cancelDelete": "Keep it",
+    "columns": {
+      "period": "Period",
+      "employee": "Employee",
+      "employer": "Employer",
+      "amount": "Amount paid out",
+      "status": "Status",
+      "uploaded": "Uploaded",
+      "actions": "Actions"
+    },
+    "uploadedOn": "Uploaded {{date}}",
+    "untitled": "Untitled payslip",
+    "noPeriod": "Period not read",
+    "noAmount": "Amount not read",
+    "emptyTitle": "No payslips yet",
+    "empty": "Payslips you scan or upload will appear here.",
+    "emptyAction": "Scan a payslip",
+    "emptyFiltered": "No payslip has this status.",
+    "previous": "Previous",
+    "next": "Next",
+    "pageOf": "Page {{page}} of {{pages}}",
+    "exportingStatus": "Preparing export",
+    "deletingStatus": "Deleting payslip",
+    "errors": {
+      "load": "Your payslips could not be loaded. Try again.",
+      "delete": "This payslip could not be deleted. Try again.",
+      "export": "The export could not be created. Try again."
     }
   }
 }

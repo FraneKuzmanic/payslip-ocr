@@ -1,17 +1,21 @@
-import { Router } from "express";
+import { Router, type Response } from "express";
 import { z } from "zod";
 import {
   EDITABLE_PAYSLIP_STATUSES,
+  exportFormatSchema,
   isRetryableFailure,
   listPayslipsQuerySchema,
   updatePayslipRequestSchema,
   type ConfirmPayslipResponse,
+  type ExportFormat,
   type ListPayslipsResponse,
+  type Payslip,
   type PayslipDetailResponse,
   type RetryPayslipResponse,
   type SourceDocumentResponse,
   type SourceRegionsResponse,
 } from "@payslip/shared";
+import { toCsv, toJsonExport } from "../export/payslips.js";
 import { HttpError } from "../middleware/error-handler.js";
 import {
   originalExtraction,
@@ -50,6 +54,46 @@ export function createPayslipsRouter(extraction: ExtractionRunner): Router {
         limit: query.data.limit,
       };
       res.json(body);
+    }),
+  );
+
+  /**
+   * PRD §10.14 — every confirmed, live payslip of the user, across sessions (plan 12 D4).
+   *
+   * Registered before `/:id` (PRD §10 route-order note): Express matches in order, so after it
+   * `/export` would reach `GET /:id` and fail its id check as `400`.
+   */
+  router.get(
+    "/export",
+    authenticated(async (req, res, auth) => {
+      const format = exportFormatSchema.safeParse(req.query["format"]);
+      if (!format.success) throw new HttpError(400, "invalid_request");
+
+      const repository = new PayslipRepository(auth.client, auth.userId);
+      const payslips = await repository.listConfirmedForExport();
+      sendExport(res, payslips, format.data, "payslips");
+    }),
+  );
+
+  /**
+   * PRD §10.15 — one payslip, in the same formats. Only a confirmed payslip leaves the app, so a
+   * draft cannot be mistaken downstream for reviewed data. Warnings never block it.
+   */
+  router.get(
+    "/:id/export",
+    authenticated(async (req, res, auth) => {
+      const id = idSchema.safeParse(req.params["id"]);
+      if (!id.success) throw new HttpError(400, "invalid_request");
+      const format = exportFormatSchema.safeParse(req.query["format"]);
+      if (!format.success) throw new HttpError(400, "invalid_request");
+
+      const repository = new PayslipRepository(auth.client, auth.userId);
+      await repository.failStaleExtractions(new Date(Date.now() - STALE_EXTRACTION_MS));
+      const state = await repository.findDetailState(id.data);
+      if (state === null) throw new HttpError(404, "not_found");
+      if (state.payslip.status !== "confirmed") throw new HttpError(409, "export_not_allowed");
+
+      sendExport(res, [state.payslip], format.data, `payslip-${id.data}`);
     }),
   );
 
@@ -248,6 +292,17 @@ export function createPayslipsRouter(extraction: ExtractionRunner): Router {
   );
 
   return router;
+}
+
+/** CSV as an attachment, JSON as the body. The client names the saved file itself (plan 12 D9). */
+function sendExport(res: Response, payslips: Payslip[], format: ExportFormat, name: string): void {
+  if (format === "csv") {
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${name}.csv"`);
+    res.send(toCsv(payslips));
+    return;
+  }
+  res.json(toJsonExport(payslips));
 }
 
 /** PRD §10.5's shape, shared by `GET /:id` and `PATCH /:id`. */

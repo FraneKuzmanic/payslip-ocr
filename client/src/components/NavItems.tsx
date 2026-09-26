@@ -1,4 +1,4 @@
-import { Camera } from "lucide-react";
+import { Camera, History } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { NavLink } from "react-router";
 
@@ -6,7 +6,10 @@ import { NavLink } from "react-router";
  * The destinations, defined once and rendered by both the desktop sidebar and the mobile drawer.
  * Keeping them in one place is what stops the two navigations drifting apart.
  */
-export const NAV_ITEMS = [{ to: "/", labelKey: "common.navCapture", Icon: Camera }] as const;
+export const NAV_ITEMS = [
+  { to: "/", labelKey: "common.navCapture", Icon: Camera },
+  { to: "/history", labelKey: "common.navHistory", Icon: History },
+] as const;
 
 export function NavItems({ onNavigate }: { onNavigate?: () => void }) {
   const { t } = useTranslation();
@@ -22,7 +25,7 @@ export function NavItems({ onNavigate }: { onNavigate?: () => void }) {
             end={to === "/"}
             onClick={onNavigate}
             className={({ isActive }) =>
-              `flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm ${
+              `flex min-h-12 items-center gap-3 rounded-lg px-3 text-sm ${
                 isActive
                   ? "bg-accent-soft font-semibold text-accent"
                   : "text-slate-700 hover:bg-slate-100"

@@ -2,7 +2,8 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation, useNavigationType } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PayslipSummary, SessionDetailResponse } from "@payslip/shared";
-import { getSessionDetail, retryPayslip } from "../api/client";
+import { exportPayslip, getSessionDetail, retryPayslip } from "../api/client";
+import { saveBlob } from "../history/download";
 import i18n from "../i18n";
 import type { BatchItem } from "../upload/UploadBatchContext";
 import { resetDismissedSuggestions } from "../session/dismissedSuggestions";
@@ -18,8 +19,13 @@ vi.mock("../api/client", () => {
       this.code = code;
     }
   }
-  return { ApiError, getSessionDetail: vi.fn(), retryPayslip: vi.fn() };
+  return { ApiError, getSessionDetail: vi.fn(), retryPayslip: vi.fn(), exportPayslip: vi.fn() };
 });
+vi.mock("../history/download", () => ({
+  payslipExportFilename: (payslip: { id: string }, format: string) =>
+    `payslip-${payslip.id}.${format}`,
+  saveBlob: vi.fn(),
+}));
 
 let batchItems: readonly BatchItem[] = [];
 const dismiss = vi.fn();
@@ -123,6 +129,13 @@ const tick = () =>
   });
 const rows = () => within(screen.getByRole("list")).getAllByRole("listitem");
 const tabs = () => screen.getAllByRole("tab");
+/** Opens the panel's menu and names the items it offers, in order. */
+const menuItems = () => {
+  fireEvent.click(screen.getByRole("button", { name: "Payslip actions" }));
+  return ["Merge with another payslip…", "Download CSV", "Download JSON"].filter(
+    (name) => screen.queryByRole("button", { name }) !== null,
+  );
+};
 
 beforeEach(async () => {
   await i18n.changeLanguage("en");
@@ -573,5 +586,93 @@ describe("SessionPage merge (plan 11 D11)", () => {
     expect(mockedDetail).toHaveBeenCalledTimes(1);
     expect(tabs()[1]).toHaveTextContent("Reading the payslip");
     expect(screen.getByTestId("merge-dialog")).toBeInTheDocument();
+  });
+});
+
+describe("SessionPage export (plan 12 D5, D6)", () => {
+  const mockedExport = vi.mocked(exportPayslip);
+  const mockedSave = vi.mocked(saveBlob);
+
+  afterEach(() => {
+    mockedExport.mockReset();
+    mockedSave.mockReset();
+  });
+
+  it("offers only the downloads on a confirmed payslip without a mergeable sibling", async () => {
+    mockedDetail.mockResolvedValue(
+      session(summary("a", { status: "confirmed", tablesStatus: "ready" }), summary("c")),
+    );
+    renderPage("?payslip=a");
+    await flush();
+
+    expect(menuItems()).toEqual(["Download CSV", "Download JSON"]);
+  });
+
+  it("offers only Merge on a payslip in review with a mergeable sibling", async () => {
+    mockedDetail.mockResolvedValue(
+      session(
+        summary("a", { status: "review", tablesStatus: "ready" }),
+        summary("b", { status: "review", tablesStatus: "ready" }),
+      ),
+    );
+    renderPage("?payslip=a");
+    await flush();
+
+    expect(menuItems()).toEqual(["Merge with another payslip…"]);
+  });
+
+  it("offers all three on a confirmed payslip with a mergeable sibling", async () => {
+    mockedDetail.mockResolvedValue(
+      session(
+        summary("a", { status: "confirmed", tablesStatus: "ready" }),
+        summary("b", { status: "review", tablesStatus: "ready" }),
+      ),
+    );
+    renderPage("?payslip=a");
+    await flush();
+
+    expect(menuItems()).toEqual(["Merge with another payslip…", "Download CSV", "Download JSON"]);
+  });
+
+  it.each(["csv", "json"] as const)("downloads the selected payslip as %s", async (format) => {
+    const blob = new Blob([format]);
+    mockedExport.mockResolvedValue(blob);
+    mockedDetail.mockResolvedValue(
+      session(summary("a", { status: "confirmed", tablesStatus: "ready" })),
+    );
+    renderPage("?payslip=a");
+    await flush();
+
+    fireEvent.click(screen.getByRole("button", { name: "Payslip actions" }));
+    fireEvent.click(screen.getByRole("button", { name: `Download ${format.toUpperCase()}` }));
+    await flush();
+
+    expect(mockedExport).toHaveBeenCalledWith("a", format);
+    expect(mockedSave).toHaveBeenCalledWith(blob, `payslip-a.${format}`);
+  });
+
+  it("shows the translated export error on that payslip only, and logs the detail", async () => {
+    mockedExport.mockRejectedValue(new Error("offline"));
+    mockedDetail.mockResolvedValue(
+      session(
+        summary("a", { status: "confirmed", tablesStatus: "ready" }),
+        summary("b", { status: "confirmed", tablesStatus: "ready" }),
+      ),
+    );
+    renderPage("?payslip=a");
+    await flush();
+
+    fireEvent.click(screen.getByRole("button", { name: "Payslip actions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Download CSV" }));
+    await flush();
+
+    expect(screen.getByText("The export could not be created. Try again.")).toBeInTheDocument();
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining("[session]"),
+      expect.any(Error),
+    );
+    fireEvent.click(tabs()[1]!);
+    await flush();
+    expect(screen.queryByText("The export could not be created. Try again.")).toBeNull();
   });
 });

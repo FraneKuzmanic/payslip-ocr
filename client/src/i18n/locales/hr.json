@@ -6,6 +6,7 @@
     "dismiss": "Zatvori",
     "language": "Jezik",
     "navCapture": "Skeniranje",
+    "navHistory": "Povijest",
     "mainNav": "Glavna navigacija",
     "accountMenu": "Korisnički izbornik",
     "signedInAs": "Prijavljeni ste kao",
@@ -259,6 +260,52 @@
       "pdf_too_many_pages": "Ovi dokumenti zajedno imaju više od 10 stranica. Platna lista može imati najviše 10.",
       "file_too_large": "Ovi su dokumenti zajedno veći od 10 MB pa ih nije moguće spojiti.",
       "network": "Spajanje nije pokrenuto. Provjerite vezu i pokušajte ponovno."
+    }
+  },
+  "history": {
+    "title": "Povijest platnih lista",
+    "count_one": "{{count}} platna lista",
+    "count_few": "{{count}} platne liste",
+    "count_other": "{{count}} platnih lista",
+    "filterLabel": "Status",
+    "filterAll": "Sve",
+    "export": "Izvoz",
+    "exportAllCsv": "Sve potvrđene kao CSV",
+    "exportAllJson": "Sve potvrđene kao JSON",
+    "downloadCsv": "Preuzmi CSV",
+    "downloadJson": "Preuzmi JSON",
+    "delete": "Obriši",
+    "actionsFor": "Radnje za {{name}}",
+    "deleteTitle": "Obrisati platnu listu?",
+    "deleteBody": "{{name}} nestat će iz povijesti, iz svoje sesije i iz izvoza. Ovu radnju ne možete poništiti.",
+    "confirmDelete": "Obriši platnu listu",
+    "cancelDelete": "Zadrži je",
+    "columns": {
+      "period": "Razdoblje",
+      "employee": "Radnik",
+      "employer": "Poslodavac",
+      "amount": "Iznos za isplatu",
+      "status": "Status",
+      "uploaded": "Učitano",
+      "actions": "Radnje"
+    },
+    "uploadedOn": "Učitano {{date}}",
+    "untitled": "Platna lista bez naziva",
+    "noPeriod": "Razdoblje nije očitano",
+    "noAmount": "Iznos nije očitan",
+    "emptyTitle": "Još nema platnih lista",
+    "empty": "Ovdje će se prikazati platne liste koje skenirate ili učitate.",
+    "emptyAction": "Skeniraj platnu listu",
+    "emptyFiltered": "Nijedna platna lista nema ovaj status.",
+    "previous": "Prethodna",
+    "next": "Sljedeća",
+    "pageOf": "Stranica {{page}} od {{pages}}",
+    "exportingStatus": "Pripremamo izvoz",
+    "deletingStatus": "Brišemo platnu listu",
+    "errors": {
+      "load": "Platne liste nije moguće učitati. Pokušajte ponovno.",
+      "delete": "Ovu platnu listu nije moguće obrisati. Pokušajte ponovno.",
+      "export": "Izvoz nije bilo moguće stvoriti. Pokušajte ponovno."
     }
   }
 }

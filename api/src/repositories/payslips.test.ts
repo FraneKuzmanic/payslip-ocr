@@ -508,3 +508,65 @@ function failingInsert(error: { code: string; message: string }): SupabaseClient
   };
   return { from: () => chain } as unknown as SupabaseClient<Database>;
 }
+
+describe("PayslipRepository.listConfirmedForExport (plan 12 D4)", () => {
+  it("requests another page while a page comes back full, so max_rows cannot truncate it", async () => {
+    const ranges: [number, number][] = [];
+    const orders: [string, { ascending: boolean }][] = [];
+    const filters: unknown[][] = [];
+    const chain = {
+      select: () => chain,
+      eq: (...args: unknown[]) => (filters.push(["eq", ...args]), chain),
+      is: (...args: unknown[]) => (filters.push(["is", ...args]), chain),
+      order: (column: string, options: { ascending: boolean }) => (
+        orders.push([column, options]),
+        chain
+      ),
+      range: (from: number, to: number) => {
+        ranges.push([from, to]);
+        // 500 + 500 + 3 rows: two full pages, then a short one.
+        const size = ranges.length < 3 ? 500 : 3;
+        return Promise.resolve({
+          data: Array.from({ length: size }, () => payslipRow({ status: "confirmed" })),
+          error: null,
+        });
+      },
+    };
+    const client = { from: () => chain } as unknown as SupabaseClient<Database>;
+
+    const items = await new PayslipRepository(client, USER_ID).listConfirmedForExport();
+
+    expect(items).toHaveLength(1003);
+    expect(ranges).toEqual([
+      [0, 499],
+      [500, 999],
+      [1000, 1499],
+    ]);
+    expect(orders.slice(0, 2)).toEqual([
+      ["created_at", { ascending: true }],
+      ["id", { ascending: true }],
+    ]);
+    expect(filters.slice(0, 3)).toEqual([
+      ["eq", "user_id", USER_ID],
+      ["is", "deleted_at", null],
+      ["eq", "status", "confirmed"],
+    ]);
+  });
+});
+
+describe("PayslipRepository.listPage (plan 12 D7)", () => {
+  it("carries each row's originalFilename", async () => {
+    const chain = {
+      select: () => chain,
+      eq: () => chain,
+      is: () => chain,
+      order: () => chain,
+      range: () => Promise.resolve({ data: [payslipRow()], error: null, count: 1 }),
+    };
+    const client = { from: () => chain } as unknown as SupabaseClient<Database>;
+
+    const page = await new PayslipRepository(client, USER_ID).listPage({ page: 1, limit: 20 });
+
+    expect(page.items[0]?.originalFilename).toBe("platna-lista.pdf");
+  });
+});

@@ -592,6 +592,8 @@ Task 09 narrowed both:
 
 **Requirements.** JSON carries full fidelity including all three line-item tables and a `schemaVersion`. CSV is one row per payslip with the line-item tables omitted, UTF-8 BOM and CRLF so Excel opens Croatian diacritics correctly, and formula-injection neutralisation on text columns. Both single-payslip and all-confirmed scopes. Export is permitted only once a payslip is confirmed.
 
+**CSV dialect (Task 12).** The CSV is written for Croatian Excel: `;` between fields and a decimal comma in money and hours (`2298,97`), because Windows Excel splits a CSV by the OS list separator, which is `;` under hr-HR. There is no `sep=` line: it makes Excel ignore the BOM. The header row is the canonical identifiers, independent of the UI language; dates stay ISO. JSON keeps canonical decimal strings with a dot. An all-digit OIB with a leading zero loses the zero when Excel types the cell as a number; the JSON is lossless, and Excel's import can type the column as Text. In an Excel with en-US regional settings a double-clicked file does not split into its columns; Data → From Text/CSV reads it.
+
 ### 7.12 Extraction scoring
 
 **Purpose.** Know whether extraction is getting better or worse.
@@ -764,11 +766,11 @@ Coordinates are page-relative fractions in `[0,1]`. Returns empty arrays when no
 Body `{payslipIds: [string, string], order: [string, string]}`. Builds a combined PDF from the sources, creates a new Payslip, re-extracts, soft-deletes the originals.
 → `202 {id, status: "processing"}` · `400 invalid_request` for a bad id or body · `404 not_found` for a missing, foreign or deleted session · `409 merge_not_allowed` if either payslip is not a live payslip of this session, is still extracting, or was merged or deleted meanwhile · `422 pdf_too_many_pages` or `422 file_too_large` when the combined PDF exceeds an upload cap · `422 merge_source_unreadable` when a source cannot be loaded, converted or embedded. The merged payslip takes the earlier original's position, records `merged_from` in page order, and re-extracts; the originals are soft-deleted and keep their sources (Task 11).
 
-**10.12** `GET /api/payslips?page&limit&status` → `200 {items, page, limit, total}`
+**10.12** `GET /api/payslips?page&limit&status` → `200 {items, page, limit, total}`, newest first. Each item carries `originalFilename`, which names a row before extraction has read an employee (Task 12).
 
 **10.13** `DELETE /api/payslips/:id` → `204` (soft delete)
 
-**10.14** `GET /api/payslips/export?format=csv|json` → `200`, all confirmed and not deleted
+**10.14** `GET /api/payslips/export?format=csv|json` → `200`, all confirmed and not deleted, across sessions, in upload order. Read in pages, so the database's row limit cannot truncate it (Task 12).
 **10.15** `GET /api/payslips/:id/export?format=csv|json` → `200` · `409 export_not_allowed` unless confirmed
 
 > Route-order note carried from receipt-ocr: `/export` must be registered before `/:id`.
@@ -910,6 +912,7 @@ $0.045–0.051 two-pass (~1.5×).
 - ✅ Deploy to Render; end-to-end journeys on the hosted stack
 
 > **Status, 2026-09-26:** Task 11 merge is implemented, reviewed and validated, journey 9.10
+> included. Task 12 export and history is implemented, reviewed and validated, journey 9.11
 > included.
 
 **Validation.** The §11.1 journey completed on the deployed app, on a phone.
