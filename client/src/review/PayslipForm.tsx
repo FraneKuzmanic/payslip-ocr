@@ -225,11 +225,9 @@ export function PayslipForm({
         />
       ))}
 
-      {/* Pinned above the phone's bottom navigation, whose height the toast offset also uses (D14). */}
-      <div
-        data-hide-with-keyboard
-        className="sticky bottom-[calc(4rem+env(safe-area-inset-bottom))] z-10 -mx-4 flex flex-col gap-2 border-t border-slate-200 bg-white px-4 py-3 lg:bottom-0 lg:mx-0 lg:px-0"
-      >
+      {/* In flow after the last table (Task 14 D13, superseding the Task 09 D14 sticky bar). It is
+          not hidden while typing: hiding an in-flow block would shift the form under the finger. */}
+      <div className="flex flex-col gap-2 border-t border-slate-200 pt-4">
         {error ? (
           <p role="alert" className="text-sm text-red-700">
             {error}

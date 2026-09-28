@@ -95,7 +95,8 @@ export function PayslipReview({ payslipId, tablesStatus, onChanged }: PayslipRev
   }
 
   return (
-    <div className="flex flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start lg:gap-6">
+    // Task 14 D12: form and document split 1:1, so the document has room to fit its width.
+    <div className="flex flex-col gap-5 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6">
       <div className="min-w-0 lg:col-start-1 lg:row-start-1">
         <PayslipForm
           detail={detail}
@@ -121,10 +122,14 @@ export function PayslipReview({ payslipId, tablesStatus, onChanged }: PayslipRev
           }}
         />
       </div>
-      {/* Form first in Tab order; CSS puts the source above it on a phone (Task 10 D8). */}
+      {/* Form first in Tab order; CSS puts the source above it on a phone (Task 10 D8).
+          `--source-height` is the document frame's height budget (Task 14 D12, D21): `svh` on the
+          phone, which does not change as the address bar hides, and at `lg` the screen below the
+          sticky offset (5rem), the zoom toolbar (3.5rem), the open-in-a-new-tab row (3.75rem), the
+          panel padding (1.5rem) and a 1rem margin, so the whole aside stays in view. */}
       <aside
         aria-label={t("review.sourceTitle")}
-        className="order-first flex min-w-0 flex-col gap-3 lg:order-none lg:sticky lg:top-20 lg:col-start-2 lg:row-start-1"
+        className="order-first flex min-w-0 flex-col gap-3 [--source-height:65svh] lg:order-none lg:sticky lg:top-20 lg:col-start-2 lg:row-start-1 lg:[--source-height:calc(100dvh-15rem)]"
       >
         {keyboard ? null : (
           <button

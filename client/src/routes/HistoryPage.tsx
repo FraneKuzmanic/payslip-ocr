@@ -155,7 +155,7 @@ export function HistoryPage() {
             <option value="">{t("history.filterAll")}</option>
             {PAYSLIP_STATUSES.map((value) => (
               <option key={value} value={value}>
-                {t(`payslipStatus.${value}`)}
+                {t(`historyStatus.${value}`)}
               </option>
             ))}
           </select>

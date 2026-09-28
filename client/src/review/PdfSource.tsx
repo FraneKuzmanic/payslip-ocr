@@ -10,7 +10,13 @@ import {
   type LoadedPdf,
   type PdfPageViewport,
 } from "./pdfDocument";
-import { pageForField, renderScale } from "./pdfRender";
+import {
+  DESKTOP_PIXEL_BUDGET,
+  PHONE_PIXEL_BUDGET,
+  needsRedraw,
+  pageForField,
+  renderScale,
+} from "./pdfRender";
 import type { Viewport } from "./sourceZoom";
 import { ZoomableSourceViewport, type RegionInteraction } from "./ZoomableSourceViewport";
 
@@ -140,7 +146,10 @@ export function PdfSource({
       </div>
     );
 
-  if (pageViewport === null || pageViewport.page !== page)
+  // The first measurement has nothing to show yet. A later page change keeps the viewer mounted
+  // with the previous page until the next one is measured (Task 14 D20): replacing the frame with a
+  // bare spinner collapsed the page's height, and the phone's page jumped to the top.
+  if (pageViewport === null || (strip && pageViewport.page !== page))
     return strip ? (
       <div ref={host}>
         <Spinner />
@@ -157,8 +166,10 @@ export function PdfSource({
       </div>
     );
 
+  const measuring = pageViewport.page !== page;
+  const shown = pageViewport.page;
   const rendered = pageViewport.width / pageViewport.height;
-  const declared = regions?.pages.find((entry) => entry.page === page)?.aspectRatio;
+  const declared = regions?.pages.find((entry) => entry.page === shown)?.aspectRatio;
   const overlaySafe = declared !== undefined && Math.abs(rendered - declared) < RATIO_TOLERANCE;
 
   if (strip)
@@ -177,6 +188,7 @@ export function PdfSource({
               document={document}
               page={page}
               pageWidth={pageViewport.width}
+              pageHeight={pageViewport.height}
               viewport={{ width, height: width / rendered }}
               onFailed={onUnavailable}
             />
@@ -193,9 +205,11 @@ export function PdfSource({
           // The painted page's own ratio, never the API's: the box must fit what is actually drawn, so
           // a disagreement costs the outlines rather than distorting the document.
           ratio={rendered}
+          // The page's width on desktop, the whole page on a phone (Task 14 D17).
+          fit={wide ? "width" : "page"}
           overlaySafe={overlaySafe}
           regions={regions?.regions ?? []}
-          page={page}
+          page={shown}
           activeField={activeField}
           interaction={interaction}
           fieldValues={fieldValues}
@@ -206,15 +220,24 @@ export function PdfSource({
           onSelect={onSelect}
           // Only reachable once the page is measured, so the note never shows while loading (D10).
           outlinesWithheld={
-            !overlaySafe && (regions?.regions.some((region) => region.page === page) ?? false)
+            !overlaySafe && (regions?.regions.some((region) => region.page === shown) ?? false)
+          }
+          overlay={
+            measuring ? (
+              <div className="absolute inset-0 grid place-items-center bg-white/60">
+                <Spinner />
+              </div>
+            ) : null
           }
         >
-          {(viewport) => (
+          {(content, settledZoom) => (
             <PdfCanvas
               document={document}
-              page={page}
+              page={shown}
               pageWidth={pageViewport.width}
-              viewport={viewport}
+              pageHeight={pageViewport.height}
+              viewport={content}
+              zoom={settledZoom}
               onFailed={onUnavailable}
             />
           )}
@@ -231,28 +254,83 @@ interface PdfCanvasProps {
   document: LoadedPdf;
   page: number;
   pageWidth: number;
+  pageHeight: number;
+  /** The page's CSS size at zoom 1. */
   viewport: Viewport;
+  /** The settled zoom: past `RENDER_QUALITY` the page is redrawn sharper (Task 14 D18). */
+  zoom?: number;
   onFailed: () => void;
 }
 
-export function PdfCanvas({ document, page, pageWidth, viewport, onFailed }: PdfCanvasProps) {
+/** A phone's canvas limit is lower; read once per mount, as a tablet rarely changes pointer mid-page. */
+function pixelBudget(): number {
+  return window.matchMedia?.("(pointer: coarse)").matches
+    ? PHONE_PIXEL_BUDGET
+    : DESKTOP_PIXEL_BUDGET;
+}
+
+export function PdfCanvas({
+  document,
+  page,
+  pageWidth,
+  pageHeight,
+  viewport,
+  zoom = 1,
+  onFailed,
+}: PdfCanvasProps) {
   const canvas = useRef<HTMLCanvasElement | null>(null);
+  const [budget] = useState(pixelBudget);
+  // The page the visible bitmap shows, so a new page always paints even at an unchanged size.
+  const painted = useRef<number | null>(null);
 
   useEffect(() => {
     const element = canvas.current;
-    const scale = renderScale(pageWidth, viewport.width, window.devicePixelRatio);
+    const scale = renderScale(
+      pageWidth,
+      pageHeight,
+      viewport.width,
+      window.devicePixelRatio,
+      zoom,
+      budget,
+    );
     // Scale 0 means the viewport has not been measured yet. Painting at a guessed size would leave
     // a blurry page that never refreshes, because the real measurement reports no further change.
     if (element === null || scale === 0) return;
-    const task = document.render(page, scale, element);
-    task.completed.catch((error: unknown) => {
-      // Cancellation is the normal result of changing page or leaving the route, not a failure.
-      if (isRenderCancellation(error)) return;
-      console.error("[review] could not paint a PDF page", error);
-      onFailed();
-    });
-    return () => task.cancel();
-  }, [document, page, pageWidth, viewport.width]);
+    if (painted.current === page && !needsRedraw(element.width, Math.floor(pageWidth * scale))) {
+      return;
+    }
+    // Double-buffered (Task 14 D18): the page is drawn off screen and copied over in one task, so the
+    // visible canvas never blanks while a sharper bitmap renders. The flicker that caused is why
+    // the page was once rasterised only one time.
+    const offscreen = window.document.createElement("canvas");
+    let cancelled = false;
+    const task = document.render(page, scale, offscreen);
+    task.completed
+      .then(() => {
+        // A cancelled render can resolve without painting; copying it would blank the page.
+        if (cancelled) return;
+        element.width = offscreen.width;
+        element.height = offscreen.height;
+        element.getContext("2d")?.drawImage(offscreen, 0, 0);
+        painted.current = page;
+      })
+      .catch((error: unknown) => {
+        // Cancellation is the normal result of changing page or leaving the route, not a failure.
+        if (isRenderCancellation(error)) return;
+        console.error("[review] could not paint a PDF page", error);
+        onFailed();
+      })
+      .finally(() => {
+        // Free the buffer now rather than whenever it is collected, a cancelled one included: a
+        // pinch settling several times cancels a full-budget buffer each time.
+        offscreen.width = 0;
+        offscreen.height = 0;
+      });
+    return () => {
+      cancelled = true;
+      task.cancel();
+    };
+  }, [document, page, pageWidth, pageHeight, viewport.width, zoom, budget]);
 
   // CSS sizes the element while `pdfDocument` sizes the bitmap, exactly as the image path lets the
   // box size an `<img>` whose intrinsic pixels are larger.

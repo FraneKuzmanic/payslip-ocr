@@ -15,6 +15,7 @@ import {
 import { downscaleSourceImage } from "../capture/downscale";
 import { useCameraCapture } from "../capture/useCameraCapture";
 import { Spinner } from "../components/Spinner";
+import { useWideLayout } from "../history/useWideLayout";
 import type { BatchErrorCode } from "../upload/UploadBatchContext";
 import { useUploadBatch } from "../upload/useUploadBatch";
 
@@ -54,6 +55,7 @@ export function HomePage() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const cameraCapture = useCameraCapture();
+  const wide = useWideLayout();
   const { startBatch } = useUploadBatch();
   const [tray, setTray] = useState<readonly TrayItem[]>([]);
   const [notice, setNotice] = useState<Notice>(NO_NOTICE);
@@ -210,152 +212,195 @@ export function HomePage() {
 
   const count = tray.length;
   const busy = uploading || !settled;
+  // Wide, Upload is the primary action once the tray has items, as in receipt-ocr's selected
+  // state (Task 14 D4). The phone keeps its button styling unchanged.
+  const demoted = wide && count > 0;
+
+  const pickers = (
+    <div className="flex flex-col gap-3">
+      {/* focus-within, not focus: the focusable input is sr-only and invisible, so a ring
+          painted on it lands nowhere. The label is the element the user is looking at.
+          Without this the capture controls are a live WCAG 2.4.7 failure. */}
+      {cameraCapture ? (
+        <label className={demoted ? secondaryPicker : primaryPicker}>
+          <Camera aria-hidden="true" className="size-5" />
+          {t("capture.scan")}
+          {pickerInput(true)}
+        </label>
+      ) : null}
+      {/* Without a camera-capable pointer this is the only picker, and it is promoted to the
+          primary action — two buttons that open the same dialog is not a choice. */}
+      <label className={cameraCapture || demoted ? secondaryPicker : primaryPicker}>
+        <FileUp aria-hidden="true" className="size-5" />
+        {t("capture.chooseFiles")}
+        {pickerInput(false)}
+      </label>
+      {full ? (
+        <p id={CAP_NOTE_ID} className="text-sm text-slate-600">
+          {t("capture.cap")}
+        </p>
+      ) : null}
+    </div>
+  );
+
+  const notices =
+    notice.overCap > 0 || notice.refused.length > 0 ? (
+      <div
+        aria-live="polite"
+        className="flex flex-col gap-1 rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-950"
+      >
+        {notice.overCap > 0 ? <p>{t("capture.overCap", { count: notice.overCap })}</p> : null}
+        {notice.refused.map(({ name, code }, index) => (
+          <p key={`${name}-${index}`}>
+            {t("capture.rejectedFile", { name, reason: t(`upload.${code}`) })}
+          </p>
+        ))}
+      </div>
+    ) : null;
+
+  const trayList =
+    count > 0 ? (
+      <ul aria-label={t("capture.trayLabel")} className="flex flex-col gap-3">
+        {tray.map((item) => (
+          <li
+            key={item.localId}
+            className="flex gap-3 rounded-xl border border-slate-200 bg-white p-3"
+          >
+            <div className="grid size-20 shrink-0 place-items-center overflow-hidden rounded-lg bg-slate-100">
+              {item.file === undefined ? (
+                <Spinner label={false} className="size-5" />
+              ) : item.previewUrl ? (
+                <img
+                  src={item.previewUrl}
+                  alt={t("capture.imagePreview", { name: item.name })}
+                  className="size-full object-contain"
+                />
+              ) : (
+                <FileText aria-hidden="true" className="size-8 text-slate-600" />
+              )}
+            </div>
+            <div className="flex min-w-0 flex-1 flex-col gap-1 text-sm">
+              <p className="font-medium break-all">{item.name}</p>
+              {item.file === undefined ? (
+                <p className="text-slate-600">{t("capture.processing", { name: item.name })}</p>
+              ) : (
+                <p className="text-slate-600">
+                  {item.kind === "pdf" ? `${t("capture.documentPreview")} · ` : null}
+                  {t("capture.fileSize", {
+                    size: sizeInMegabytes(item.file.size, i18n.resolvedLanguage),
+                  })}
+                </p>
+              )}
+              {item.previewUnavailable ? (
+                <p className="text-slate-600">{t("capture.previewUnavailable")}</p>
+              ) : null}
+              {item.warnings.map((warning) => (
+                <p key={warning} className="text-amber-900">
+                  {warning === "low_resolution"
+                    ? t("capture.lowResolution")
+                    : t("capture.possibleBlur")}
+                </p>
+              ))}
+              {item.errorCode ? (
+                <p className="text-red-800">
+                  {item.errorCode === "network"
+                    ? t("session.uploadNetworkError")
+                    : t(`upload.${item.errorCode}`)}
+                </p>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              onClick={() => remove(item.localId)}
+              aria-disabled={uploading}
+              aria-label={t("capture.remove", { name: item.name })}
+              className="grid min-h-12 min-w-12 shrink-0 place-items-center self-start rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-900 aria-disabled:text-slate-300"
+            >
+              <X aria-hidden="true" className="size-5" />
+            </button>
+          </li>
+        ))}
+      </ul>
+    ) : null;
+
+  const uploadButton =
+    count > 0 ? (
+      <>
+        {/* aria-disabled, not disabled: the pressed button keeps focus and stays in the tab
+            order while the batch starts (Task 07 DoD). */}
+        <button
+          type="button"
+          onClick={() => void upload()}
+          aria-disabled={busy}
+          className="flex min-h-12 items-center justify-center gap-2 rounded-lg bg-accent px-4 font-semibold text-white hover:bg-accent-hover aria-disabled:bg-slate-400"
+        >
+          {uploading ? (
+            <Spinner label={false} className="size-5" />
+          ) : (
+            <FileUp aria-hidden="true" className="size-5" />
+          )}
+          {uploading ? t("capture.uploading") : t("capture.upload", { count })}
+        </button>
+        {/* "Uploading…" on the button is a changed accessible name, which screen readers
+            re-announce unreliably; this is the dependable channel. */}
+        <p role="status" className="sr-only">
+          {uploading ? t("capture.uploadingStatus") : ""}
+        </p>
+      </>
+    ) : null;
 
   return (
     // min-h rather than h, plus justify-center: because the height is a *minimum*, a long tray
     // grows the container instead of being centred and clipped off the top of the screen. The
     // subtractions are the header and the mobile tab bar.
     <div className="flex min-h-[calc(100svh-3.5rem-4rem)] flex-col justify-center px-4 py-8 lg:min-h-[calc(100svh-4rem)]">
-      <section className="mx-auto flex w-full max-w-xl flex-col gap-5">
-        <div className="flex flex-col gap-2">
-          <h1 className="text-2xl font-semibold">{t("home.title")}</h1>
-          <p className="max-w-prose text-slate-600">{t("home.subtitle")}</p>
-          <p className="max-w-prose text-slate-600">{t("capture.guidance")}</p>
-        </div>
+      <section className="mx-auto grid w-full max-w-xl gap-10 lg:max-w-5xl lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)] lg:gap-16">
+        <div className="flex flex-col gap-5">
+          <div className="flex flex-col gap-2">
+            <h1 className="text-2xl font-semibold">{t("home.title")}</h1>
+            <p className="max-w-prose text-slate-600">{t("capture.guidance")}</p>
+          </div>
 
-        <div className="flex flex-col gap-3">
-          {/* focus-within, not focus: the focusable input is sr-only and invisible, so a ring
-              painted on it lands nowhere. The label is the element the user is looking at.
-              Without this the capture controls are a live WCAG 2.4.7 failure. */}
-          {cameraCapture ? (
-            <label className={primaryPicker}>
-              <Camera aria-hidden="true" className="size-5" />
-              {count > 0 ? t("capture.scanAnother") : t("capture.scan")}
-              {pickerInput(true)}
-            </label>
-          ) : null}
-          {/* Without a camera-capable pointer this is the only picker, and it is promoted to the
-              primary action — two buttons that open the same dialog is not a choice. */}
-          <label className={cameraCapture ? secondaryPicker : primaryPicker}>
-            <FileUp aria-hidden="true" className="size-5" />
-            {t("capture.chooseFiles")}
-            {pickerInput(false)}
-          </label>
-          {full ? (
-            <p id={CAP_NOTE_ID} className="text-sm text-slate-600">
-              {t("capture.cap")}
+          {/* The order is chosen here rather than by CSS `order`, so the Tab order is the order
+              that is seen (WCAG 2.4.3). Wide, the pickers follow Upload (Task 14 D4). */}
+          {wide ? (
+            <>
+              {notices}
+              {trayList}
+              {uploadButton}
+              {pickers}
+            </>
+          ) : (
+            <>
+              {pickers}
+              {notices}
+              {trayList}
+              {uploadButton}
+            </>
+          )}
+
+          {error ? (
+            <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-900">
+              {error}
             </p>
           ) : null}
         </div>
 
-        {notice.overCap > 0 || notice.refused.length > 0 ? (
-          <div
-            aria-live="polite"
-            className="flex flex-col gap-1 rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-950"
-          >
-            {notice.overCap > 0 ? <p>{t("capture.overCap", { count: notice.overCap })}</p> : null}
-            {notice.refused.map(({ name, code }, index) => (
-              <p key={`${name}-${index}`}>
-                {t("capture.rejectedFile", { name, reason: t(`upload.${code}`) })}
-              </p>
-            ))}
-          </div>
-        ) : null}
-
-        {count > 0 ? (
-          <ul aria-label={t("capture.trayLabel")} className="flex flex-col gap-3">
-            {tray.map((item) => (
-              <li
-                key={item.localId}
-                className="flex gap-3 rounded-xl border border-slate-200 bg-white p-3"
-              >
-                <div className="grid size-20 shrink-0 place-items-center overflow-hidden rounded-lg bg-slate-100">
-                  {item.file === undefined ? (
-                    <Spinner label={false} className="size-5" />
-                  ) : item.previewUrl ? (
-                    <img
-                      src={item.previewUrl}
-                      alt={t("capture.imagePreview", { name: item.name })}
-                      className="size-full object-contain"
-                    />
-                  ) : (
-                    <FileText aria-hidden="true" className="size-8 text-slate-600" />
-                  )}
-                </div>
-                <div className="flex min-w-0 flex-1 flex-col gap-1 text-sm">
-                  <p className="font-medium break-all">{item.name}</p>
-                  {item.file === undefined ? (
-                    <p className="text-slate-600">{t("capture.processing", { name: item.name })}</p>
-                  ) : (
-                    <p className="text-slate-600">
-                      {item.kind === "pdf" ? `${t("capture.documentPreview")} · ` : null}
-                      {t("capture.fileSize", {
-                        size: sizeInMegabytes(item.file.size, i18n.resolvedLanguage),
-                      })}
-                    </p>
-                  )}
-                  {item.previewUnavailable ? (
-                    <p className="text-slate-600">{t("capture.previewUnavailable")}</p>
-                  ) : null}
-                  {item.warnings.map((warning) => (
-                    <p key={warning} className="text-amber-900">
-                      {warning === "low_resolution"
-                        ? t("capture.lowResolution")
-                        : t("capture.possibleBlur")}
-                    </p>
-                  ))}
-                  {item.errorCode ? (
-                    <p className="text-red-800">
-                      {item.errorCode === "network"
-                        ? t("session.uploadNetworkError")
-                        : t(`upload.${item.errorCode}`)}
-                    </p>
-                  ) : null}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => remove(item.localId)}
-                  aria-disabled={uploading}
-                  aria-label={t("capture.remove", { name: item.name })}
-                  className="grid min-h-12 min-w-12 shrink-0 place-items-center self-start rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-900 aria-disabled:text-slate-300"
-                >
-                  <X aria-hidden="true" className="size-5" />
-                </button>
+        <div className="flex flex-col gap-4 lg:border-l lg:border-slate-200 lg:pl-10">
+          <h2 className="text-lg font-semibold">{t("home.stepsTitle")}</h2>
+          <ol className="flex flex-col gap-4 text-slate-700">
+            {(["step1", "step2", "step3"] as const).map((step, index) => (
+              <li key={step} className="flex items-start gap-3">
+                <span className="grid size-7 shrink-0 place-items-center rounded-full bg-accent-soft text-sm font-semibold text-accent">
+                  {index + 1}
+                </span>
+                <span className="pt-0.5">
+                  {t(step === "step1" && !cameraCapture ? "home.step1NoCamera" : `home.${step}`)}
+                </span>
               </li>
             ))}
-          </ul>
-        ) : null}
-
-        {count > 0 ? (
-          <>
-            {/* aria-disabled, not disabled: the pressed button keeps focus and stays in the tab
-                order while the batch starts (Task 07 DoD). */}
-            <button
-              type="button"
-              onClick={() => void upload()}
-              aria-disabled={busy}
-              className="flex min-h-12 items-center justify-center gap-2 rounded-lg bg-accent px-4 font-semibold text-white hover:bg-accent-hover aria-disabled:bg-slate-400"
-            >
-              {uploading ? (
-                <Spinner label={false} className="size-5" />
-              ) : (
-                <FileUp aria-hidden="true" className="size-5" />
-              )}
-              {uploading ? t("capture.uploading") : t("capture.upload", { count })}
-            </button>
-            {/* "Uploading…" on the button is a changed accessible name, which screen readers
-                re-announce unreliably; this is the dependable channel. */}
-            <p role="status" className="sr-only">
-              {uploading ? t("capture.uploadingStatus") : ""}
-            </p>
-          </>
-        ) : null}
-
-        {error ? (
-          <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-900">
-            {error}
-          </p>
-        ) : null}
+          </ol>
+        </div>
       </section>
     </div>
   );

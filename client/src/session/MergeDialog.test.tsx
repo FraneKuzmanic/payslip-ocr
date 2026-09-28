@@ -101,7 +101,7 @@ describe("MergeDialog (plan 11 D11)", () => {
     const next = screen.getByRole("button", { name: "Continue" });
     expect(next).toHaveAttribute("aria-disabled", "true");
 
-    fireEvent.click(screen.getByRole("radio", { name: /Payslip 3/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /b\.jpg/ }));
     fireEvent.click(next);
 
     expect(screen.getByRole("heading", { name: "Merge payslips" })).toBeInTheDocument();
@@ -129,7 +129,7 @@ describe("MergeDialog (plan 11 D11)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Swap order" }));
 
     expect(cardOrder()).toEqual(["b.jpg", "a.jpg"]);
-    expect(screen.getByText("Order swapped. Payslip 3 is now first.")).toBeInTheDocument();
+    expect(screen.getByText("Order swapped. b.jpg is now first.")).toBeInTheDocument();
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Merge" }));
     });

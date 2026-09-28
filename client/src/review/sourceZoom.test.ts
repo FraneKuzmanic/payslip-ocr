@@ -8,6 +8,9 @@ import {
   clampPan,
   boundsOf,
   isRegionVisible,
+  minZoomFor,
+  panBy,
+  pinchZoom,
   zoomAbout,
 } from "./sourceZoom";
 
@@ -135,5 +138,111 @@ describe("centroidOf", () => {
     expect(centre.x).toBeCloseTo(0.4, 10);
     expect(centre.y).toBeCloseTo(0.5, 10);
     expect(centroidOf([])).toEqual({ x: 0.5, y: 0.5 });
+  });
+});
+
+/**
+ * Fit width (Task 14 D17): the frame is the column's width by a screen-height budget, and the page
+ * at zoom 1 is the column's width by `width / ratio`, taller than the frame.
+ */
+describe("fit width: content larger than its frame", () => {
+  const frame = { width: 600, height: 500 };
+  const content = { width: 600, height: 849 };
+
+  it("lets the page scroll vertically at zoom 1, from the top to the bottom edge", () => {
+    expect(clampPan({ zoom: 1, x: 0, y: 50 }, frame, content)).toEqual({ zoom: 1, x: 0, y: 0 });
+    expect(clampPan({ zoom: 1, x: -40, y: -1000 }, frame, content)).toEqual({
+      zoom: 1,
+      x: 0,
+      y: -349,
+    });
+  });
+
+  it("zooms out no further than the whole page, centred horizontally", () => {
+    const minimum = minZoomFor(frame, content);
+    expect(minimum).toBeCloseTo(500 / 849, 10);
+    const whole = clampPan({ zoom: 0.1, x: 0, y: 0 }, frame, content);
+    expect(whole.zoom).toBeCloseTo(minimum, 10);
+    expect(whole.x).toBeCloseTo((600 - 600 * minimum) / 2, 6);
+    expect(whole.y).toBeCloseTo(0, 6);
+  });
+
+  it("never allows a minimum above 1, and survives an unmeasured size", () => {
+    expect(minZoomFor({ width: 600, height: 900 }, { width: 600, height: 400 })).toBe(1);
+    expect(minZoomFor(viewport, viewport)).toBe(MIN_ZOOM);
+    expect(minZoomFor({ width: 0, height: 0 }, { width: 0, height: 0 })).toBe(1);
+  });
+
+  it("centres a page that is shorter than its frame instead of pinning it to the top", () => {
+    const wide = { width: 600, height: 270 };
+    expect(clampPan({ zoom: 1, x: 0, y: 0 }, frame, wide)).toEqual({ zoom: 1, x: 0, y: 115 });
+  });
+
+  it("scrolls down to a region near the bottom of the page at zoom 1", () => {
+    const moved = centreOn(FIT, frame, 0.5, 0.9, content);
+    expect(moved.zoom).toBe(1);
+    expect(moved.y).toBe(-349);
+  });
+
+  it("measures region visibility against the page, not the frame", () => {
+    const low = boundsOf([
+      { x: 0.2, y: 0.8 },
+      { x: 0.3, y: 0.82 },
+    ]);
+    expect(isRegionVisible(FIT, frame, low, content)).toBe(false);
+    expect(isRegionVisible({ zoom: 1, x: 0, y: -349 }, frame, low, content)).toBe(true);
+  });
+
+  it("holds the cursor's point still while zooming", () => {
+    const anchor = { x: 300, y: 250 };
+    const start = { zoom: 1, x: 0, y: -100 };
+    const contentY = (anchor.y - start.y) / start.zoom;
+    const next = zoomAbout(start, frame, 2, anchor, content);
+    expect(next.y + next.zoom * contentY).toBeCloseTo(anchor.y, 6);
+  });
+});
+
+describe("panBy", () => {
+  const frame = { width: 600, height: 500 };
+  const content = { width: 600, height: 849 };
+
+  it("moves the page and clamps it", () => {
+    expect(panBy(FIT, frame, content, 0, -100)).toEqual({ zoom: 1, x: 0, y: -100 });
+    expect(panBy(FIT, frame, content, 0, -1000)).toEqual({ zoom: 1, x: 0, y: -349 });
+  });
+
+  it("returns an equal state at the edge, so the caller lets the page scroll on", () => {
+    const bottom = { zoom: 1, x: 0, y: -349 };
+    expect(panBy(bottom, frame, content, 0, -60)).toEqual(bottom);
+  });
+});
+
+describe("pinchZoom", () => {
+  it("doubles the zoom when the fingers move twice as far apart, holding the midpoint still", () => {
+    const start = { zoom: 1, x: 0, y: 0 };
+    const midpoint = { x: 150, y: 200 };
+    const next = pinchZoom(
+      start,
+      viewport,
+      viewport,
+      { distance: 100, midpoint },
+      { distance: 200, midpoint },
+    );
+    expect(next.zoom).toBe(2);
+    const under = renderedPoint(next, 150 / viewport.width, 200 / viewport.height);
+    expect(under.x).toBeCloseTo(midpoint.x, 6);
+    expect(under.y).toBeCloseTo(midpoint.y, 6);
+  });
+
+  it("carries the point under the fingers with the midpoint as it moves", () => {
+    const start = { zoom: 2, x: -100, y: -100 };
+    const from = { distance: 100, midpoint: { x: 200, y: 300 } };
+    const to = { distance: 100, midpoint: { x: 180, y: 260 } };
+    const fx = (from.midpoint.x - start.x) / (start.zoom * viewport.width);
+    const fy = (from.midpoint.y - start.y) / (start.zoom * viewport.height);
+    const next = pinchZoom(start, viewport, viewport, from, to);
+    const under = renderedPoint(next, fx, fy);
+    expect(under.x).toBeCloseTo(to.midpoint.x, 6);
+    expect(under.y).toBeCloseTo(to.midpoint.y, 6);
   });
 });

@@ -23,11 +23,11 @@ describe("LanguageSwitcher", () => {
 
   it("switches visible copy between Croatian and English", async () => {
     render(<Harness />);
-    expect(screen.getByRole("heading")).toHaveTextContent("Digitalizacija platnih lista");
+    expect(screen.getByRole("heading")).toHaveTextContent("Dodajte platne liste");
 
     await userEvent.click(screen.getByRole("button", { name: "en" }));
 
-    expect(screen.getByRole("heading")).toHaveTextContent("Payslip digitization");
+    expect(screen.getByRole("heading")).toHaveTextContent("Add payslips");
   });
 
   it("persists the chosen language to localStorage", async () => {

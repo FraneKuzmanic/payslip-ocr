@@ -1,4 +1,13 @@
-import { AlertCircle, Clock, Combine, FileJson, FileSpreadsheet, Loader2, X } from "lucide-react";
+import {
+  AlertCircle,
+  ChevronLeft,
+  Clock,
+  Combine,
+  FileJson,
+  FileSpreadsheet,
+  Loader2,
+  X,
+} from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useParams, useSearchParams } from "react-router";
@@ -15,7 +24,6 @@ import { ActionMenu, type ActionMenuItem } from "../components/ActionMenu";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { Spinner } from "../components/Spinner";
 import { payslipExportFilename, saveBlob } from "../history/download";
-import { useWideLayout, XL } from "../history/useWideLayout";
 import { PayslipRail } from "../review/PayslipRail";
 import { PayslipReview } from "../review/PayslipReview";
 import { useUnsavedEdits } from "../review/unsaved/useUnsavedEdits";
@@ -55,6 +63,14 @@ function isReadable(payslip: PayslipSummary): boolean {
 }
 
 /**
+ * A payslip whose chip opens (Task 14 D8, D10): a readable one, or a failed one, which is a
+ * finished result the user can act on (retry, merge) and must not wait behind a sibling.
+ */
+function isOpenable(payslip: PayslipSummary): boolean {
+  return isReadable(payslip) || payslip.status === "failed";
+}
+
+/**
  * A session's manual-activation payslip rail and selected review (Task 10 D7).
  * The upload batch and unsaved edits live above this route, so navigation cannot discard either.
  */
@@ -62,7 +78,6 @@ export function SessionPage() {
   const { t } = useTranslation();
   const { sessionId = "" } = useParams();
   const { itemsFor, dismiss } = useUploadBatch();
-  const xl = useWideLayout(XL);
   const { unsaved, keep } = useUnsavedEdits();
   const [detail, setDetail] = useState<SessionDetailResponse | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("loading");
@@ -235,19 +250,44 @@ export function SessionPage() {
     document.getElementById(`payslip-tab-${lastMerge.id}`)?.focus();
   }, [lastMerge, keep]);
 
-  const selectedIndex = detail?.payslips.findIndex((payslip) => payslip.id === selectedId) ?? -1;
-  const selected = selectedIndex === -1 ? null : (detail?.payslips[selectedIndex] ?? null);
+  const selected = detail?.payslips.find((payslip) => payslip.id === selectedId) ?? null;
 
+  // Task 14 D9: without a valid `?payslip=`, open the first payslip that has something to show,
+  // preferring a form over a failure. Nothing is chosen while nothing is openable; the loading
+  // screen covers that. An explicit `?payslip=` naming a payslip still being read is respected.
   useEffect(() => {
-    const first = detail?.payslips[0];
-    if (selected === null && first) setSearchParams({ payslip: first.id }, { replace: true });
+    if (selected !== null || detail === null) return;
+    const first = detail.payslips.find(isReadable) ?? detail.payslips.find(isOpenable);
+    if (first) setSearchParams({ payslip: first.id }, { replace: true });
   }, [detail, selectedId, setSearchParams]);
 
-  if (loadState === "loading") {
+  const payslips = detail?.payslips ?? [];
+  const listed = new Set(payslips.map((payslip) => payslip.id));
+  // An uploaded item is represented by its server row once the session read includes it.
+  const pending = items.filter(
+    (item) => item.state !== "uploaded" || !listed.has(item.payslipId ?? ""),
+  );
+  // Task 14 D8: a full-screen wait until the first payslip has something to show, while anything is
+  // still on its way. With every payslip failed or every upload rejected, the page shows at once.
+  // Any `?payslip=` skips it, not only a valid one: a merge replaces the rows one render before it
+  // replaces the URL, and the screen would flash and take the merged tab's focus with it.
+  const inFlight =
+    payslips.some((payslip) => payslip.status === "processing") ||
+    pending.some((item) => item.state !== "rejected");
+  const preparing =
+    loadState === "loading" ||
+    (loadState === "ready" && selectedId === null && !payslips.some(isOpenable) && inFlight);
+
+  if (preparing) {
     return (
-      <div className="mx-auto flex max-w-xl justify-center px-4 py-12">
+      <section
+        aria-live="polite"
+        className="mx-auto flex min-h-[calc(100svh-3.5rem-4rem)] max-w-lg flex-col items-center justify-center gap-3 px-4 py-12 text-center lg:min-h-[calc(100svh-4rem)]"
+      >
         <Spinner />
-      </div>
+        <h1 className="text-2xl font-semibold">{t("session.preparingTitle")}</h1>
+        <p className="text-slate-600">{t("session.preparingDescription")}</p>
+      </section>
     );
   }
 
@@ -264,7 +304,6 @@ export function SessionPage() {
     );
   }
 
-  const payslips = detail?.payslips ?? [];
   // Plan 12 D5: Merge when it can apply, and downloads once the selected payslip is confirmed.
   const actions: ActionMenuItem[] =
     selected === null
@@ -297,11 +336,6 @@ export function SessionPage() {
               ]
             : []),
         ];
-  const listed = new Set(payslips.map((payslip) => payslip.id));
-  // An uploaded item is represented by its server row once the session read includes it.
-  const pending = items.filter(
-    (item) => item.state !== "uploaded" || !listed.has(item.payslipId ?? ""),
-  );
   const ready = payslips.filter((payslip) => payslip.status === "review").length;
   const confirmed = payslips.filter((payslip) => payslip.status === "confirmed").length;
   const total = payslips.length + pending.filter((item) => item.state !== "rejected").length;
@@ -311,13 +345,22 @@ export function SessionPage() {
   ].join(" · ");
 
   return (
+    // Task 14 D12: the full main width at `lg`, so the document column gains width on wide screens.
     <section
       className={`mx-auto flex w-full max-w-xl flex-col gap-5 px-4 py-8 ${
-        payslips.length === 0 ? "" : "lg:max-w-6xl xl:max-w-7xl"
+        payslips.length === 0 ? "" : "lg:max-w-none"
       }`}
     >
       <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold">{t("session.title")}</h1>
+        {/* 48 px tall for the target-size rule (PRD §11.5), which receipt-ocr's link predates. */}
+        <Link
+          to="/payslips"
+          className="inline-flex min-h-12 w-fit items-center gap-1 text-sm font-semibold text-slate-600 hover:text-slate-900"
+        >
+          <ChevronLeft aria-hidden="true" className="size-4" />
+          {t("review.backToPayslips")}
+        </Link>
+        <h1 className="text-2xl font-semibold">{t("session.title", { count: total })}</h1>
         <p role="status" className="text-slate-600">
           {progress}
         </p>
@@ -344,19 +387,17 @@ export function SessionPage() {
         />
       ) : null}
 
+      {/* The rail sits above the selected payslip at every width (Task 14 D10, D12). */}
       {payslips.length > 0 ? (
-        <div className="flex min-w-0 flex-col gap-5 xl:grid xl:grid-cols-[13rem_minmax(0,1fr)] xl:items-start xl:gap-6">
-          <div className="min-w-0 xl:sticky xl:top-20">
-            <PayslipRail
-              payslips={payslips}
-              selectedId={selected?.id ?? null}
-              unsaved={unsaved}
-              orientation={xl ? "vertical" : "horizontal"}
-              onSelect={(id) => {
-                if (id !== selectedId) setSearchParams({ payslip: id });
-              }}
-            />
-          </div>
+        <div className="flex min-w-0 flex-col gap-5">
+          <PayslipRail
+            payslips={payslips}
+            selectedId={selected?.id ?? null}
+            unsaved={unsaved}
+            onSelect={(id) => {
+              if (id !== selectedId) setSearchParams({ payslip: id });
+            }}
+          />
           {selected === null ? null : (
             <div
               role="tabpanel"
@@ -366,10 +407,7 @@ export function SessionPage() {
               className="flex min-w-0 flex-col gap-3"
             >
               <div className="flex items-start justify-between gap-2">
-                <h2 className="font-semibold break-all">
-                  {t("session.position", { index: selectedIndex + 1 })} ·{" "}
-                  {selected.originalFilename}
-                </h2>
+                <h2 className="font-semibold break-all">{selected.originalFilename}</h2>
                 {actions.length > 0 ? (
                   <ActionMenu
                     id="payslip-actions"
@@ -425,10 +463,9 @@ export function SessionPage() {
 
       {pending.length > 0 ? (
         <ol className="flex flex-col gap-3">
-          {pending.map((item, index) => (
+          {pending.map((item) => (
             <Row
               key={item.localId}
-              position={payslips.length + index + 1}
               name={item.name}
               detail={null}
               icon={batchIcon(item)}
@@ -459,10 +496,6 @@ export function SessionPage() {
         </ol>
       ) : null}
 
-      <Link to="/" className={linkClass}>
-        {t("session.scanMore")}
-      </Link>
-
       {selected === null ? null : (
         <MergeDialog
           key={mergeOpened}
@@ -481,7 +514,6 @@ export function SessionPage() {
 }
 
 interface RowProps {
-  readonly position: number;
   readonly name: string;
   readonly detail: string | null;
   readonly icon: ReactNode;
@@ -489,14 +521,9 @@ interface RowProps {
   readonly children?: ReactNode;
 }
 
-function Row({ position, name, detail, icon, status, children }: RowProps) {
-  const { t } = useTranslation();
-
+function Row({ name, detail, icon, status, children }: RowProps) {
   return (
     <li className="flex flex-col gap-1 rounded-xl border border-slate-200 bg-white p-4 text-sm">
-      <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
-        {t("session.position", { index: position })}
-      </p>
       <p className="font-medium break-all">{name}</p>
       {detail ? <p className="text-slate-700">{detail}</p> : null}
       {/* The icon is decorative: the text beside it carries the status, never colour alone. */}

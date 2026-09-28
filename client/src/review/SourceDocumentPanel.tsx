@@ -4,6 +4,7 @@ import type { SourceRegionsResponse } from "@payslip/shared";
 import { getPayslipSource } from "../api/client";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { Spinner } from "../components/Spinner";
+import { useWideLayout } from "../history/useWideLayout";
 import { PdfSource } from "./PdfSource";
 import { SourceStrip } from "./SourceStrip";
 import { ZoomableSourceViewport, type RegionInteraction } from "./ZoomableSourceViewport";
@@ -213,6 +214,7 @@ function ImageSource({
   // "pending" until the image has loaded, so the withheld note never flashes during load (D10).
   // Keyed on the URL it measured, so a new URL reads as "pending" in the same render. A reset
   // effect could run after an early `load` and discard its measurement.
+  const wide = useWideLayout();
   const [measured, setMeasured] = useState<{ url: string; ratio: "agrees" | "disagrees" }>();
   const ratio = measured?.url === url ? measured.ratio : "pending";
   const page = regions?.pages[0];
@@ -268,6 +270,8 @@ function ImageSource({
   return (
     <ZoomableSourceViewport
       ratio={aspectRatio ?? 1}
+      // The page's width on desktop, the whole page on a phone (Task 14 D17).
+      fit={wide ? "width" : "page"}
       overlaySafe={ratio === "agrees" && page !== undefined}
       outlinesWithheld={
         ratio === "disagrees" && (regions?.regions.some((region) => region.page === 1) ?? false)

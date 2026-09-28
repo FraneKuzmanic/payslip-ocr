@@ -81,7 +81,7 @@ export function PayslipTable({ items, downloadingId, onDownload, onDelete }: Pay
               </td>
               <td className="px-4 py-3">
                 <span className="inline-block rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
-                  {t(`payslipStatus.${payslip.status}`)}
+                  {t(`historyStatus.${payslip.status}`)}
                 </span>
               </td>
               <td className="truncate px-4 py-3 text-slate-600">

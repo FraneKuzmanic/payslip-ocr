@@ -16,18 +16,15 @@ const payslips: PayslipSummary[] = ["a", "b", "c"].map((id, index) => ({
   warningCount: 0,
   originalFilename: `${id}.pdf`,
 }));
-function mount(orientation: "horizontal" | "vertical" = "horizontal") {
+function mount(list: readonly PayslipSummary[] = payslips) {
   const onSelect = vi.fn();
   render(
-    <PayslipRail
-      payslips={payslips}
-      selectedId="a"
-      unsaved={new Set(["b"])}
-      orientation={orientation}
-      onSelect={onSelect}
-    />,
+    <PayslipRail payslips={list} selectedId="a" unsaved={new Set(["b"])} onSelect={onSelect} />,
   );
   return onSelect;
+}
+function withStatus(id: string, status: PayslipSummary["status"]) {
+  return payslips.map((payslip) => (payslip.id === id ? { ...payslip, status } : payslip));
 }
 beforeEach(async () => {
   await i18n.changeLanguage("en");
@@ -41,8 +38,6 @@ describe("PayslipRail", () => {
     expect(tabs[0]).toHaveAttribute("aria-selected", "true");
     expect(tabs[0]).toHaveAttribute("tabindex", "0");
     expect(tabs[1]).toHaveAttribute("tabindex", "-1");
-    expect(tabs[0]).toHaveTextContent("2025-07");
-    expect(tabs[1]).toHaveTextContent("b.pdf");
     expect(tabs[1]).toHaveTextContent("Unsaved changes");
     expect(tabs[0]).not.toHaveTextContent("Unsaved changes");
     for (const tab of tabs) {
@@ -50,26 +45,34 @@ describe("PayslipRail", () => {
       expect(tab).toHaveClass("min-h-12");
     }
   });
-  it.each(["horizontal", "vertical"] as const)(
-    "moves focus without selecting in %s orientation",
-    (orientation) => {
-      const select = mount(orientation);
-      const tabs = screen.getAllByRole("tab");
-      tabs[0]!.focus();
-      fireEvent.keyDown(tabs[0]!, { key: orientation === "horizontal" ? "ArrowLeft" : "ArrowUp" });
-      expect(tabs[2]).toHaveFocus();
-      fireEvent.keyDown(tabs[2]!, {
-        key: orientation === "horizontal" ? "ArrowRight" : "ArrowDown",
-      });
-      expect(tabs[0]).toHaveFocus();
-      fireEvent.keyDown(tabs[0]!, { key: "End" });
-      expect(tabs[2]).toHaveFocus();
-      fireEvent.keyDown(tabs[2]!, { key: "Home" });
-      expect(tabs[0]).toHaveFocus();
-      expect(select).not.toHaveBeenCalled();
-      expect(screen.getByRole("tablist")).toHaveAttribute("aria-orientation", orientation);
-    },
-  );
+  it("shows the file name, with no position number and no period (Task 14 D10)", () => {
+    mount();
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs.map((tab) => tab.firstElementChild?.textContent)).toEqual([
+      "a.pdf",
+      "b.pdfUnsaved changes",
+      "c.pdf",
+    ]);
+    expect(tabs[0]).not.toHaveTextContent("2025-07");
+    expect(tabs[0]?.textContent?.startsWith("1")).toBe(false);
+  });
+  it("moves focus without selecting, horizontally", () => {
+    const select = mount();
+    const tabs = screen.getAllByRole("tab");
+    tabs[0]!.focus();
+    fireEvent.keyDown(tabs[0]!, { key: "ArrowLeft" });
+    expect(tabs[2]).toHaveFocus();
+    fireEvent.keyDown(tabs[2]!, { key: "ArrowRight" });
+    expect(tabs[0]).toHaveFocus();
+    fireEvent.keyDown(tabs[0]!, { key: "End" });
+    expect(tabs[2]).toHaveFocus();
+    fireEvent.keyDown(tabs[2]!, { key: "Home" });
+    expect(tabs[0]).toHaveFocus();
+    fireEvent.keyDown(tabs[0]!, { key: "ArrowDown" });
+    expect(tabs[0]).toHaveFocus();
+    expect(select).not.toHaveBeenCalled();
+    expect(screen.getByRole("tablist")).toHaveAttribute("aria-orientation", "horizontal");
+  });
   it("activates through Enter and Space", async () => {
     const select = mount();
     screen.getAllByRole("tab")[1]!.focus();
@@ -77,10 +80,25 @@ describe("PayslipRail", () => {
     expect(select).toHaveBeenCalledTimes(2);
     expect(select).toHaveBeenLastCalledWith("b");
   });
-  it("formats the period in Croatian", async () => {
-    await i18n.changeLanguage("hr");
-    mount();
-    expect(screen.getAllByRole("tab")[0]).toHaveTextContent("07/2025");
+  it("reaches a processing chip by arrow but never opens it (Task 14 D10)", async () => {
+    const select = mount(withStatus("b", "processing"));
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs[1]).toHaveAttribute("aria-disabled", "true");
+    expect(tabs[1]).not.toBeDisabled();
+    expect(tabs[1]).toHaveTextContent("Reading the payslip");
+    expect(tabs[0]).toHaveAttribute("aria-disabled", "false");
+
+    tabs[0]!.focus();
+    fireEvent.keyDown(tabs[0]!, { key: "ArrowRight" });
+    expect(tabs[1]).toHaveFocus();
+    await userEvent.keyboard("{Enter} ");
+    await userEvent.click(tabs[1]!);
+    expect(select).not.toHaveBeenCalled();
+  });
+  it("opens a failed chip", async () => {
+    const select = mount(withStatus("c", "failed"));
+    await userEvent.click(screen.getAllByRole("tab")[2]!);
+    expect(select).toHaveBeenCalledWith("c");
   });
   it("puts the overflow count on the last fully visible chip", () => {
     let update: IntersectionObserverCallback;

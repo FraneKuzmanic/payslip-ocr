@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PayslipSummary } from "@payslip/shared";
 import i18n from "../i18n";
 import { resetDismissedSuggestions } from "./dismissedSuggestions";
-import { MergeSuggestions } from "./MergeSuggestions";
+import { MergeSuggestions, shortName } from "./MergeSuggestions";
 
 function summary(id: string): PayslipSummary {
   return {
@@ -29,13 +29,35 @@ afterEach(() => {
   resetDismissedSuggestions();
 });
 
+describe("shortName", () => {
+  it("keeps a name of up to 40 characters whole", () => {
+    expect(shortName("lipanj.pdf")).toBe("lipanj.pdf");
+    expect(shortName("x".repeat(36) + ".pdf")).toBe("x".repeat(36) + ".pdf");
+  });
+
+  it("elides the middle of a long name and keeps its extension", () => {
+    const name = "very_long_" + "a".repeat(180) + "_scan.jpg";
+    const short = shortName(name);
+    expect(short).toHaveLength(40);
+    expect(short.startsWith("very_long_")).toBe(true);
+    expect(short.endsWith("_scan.jpg")).toBe(true);
+    expect(short).toContain("…");
+  });
+
+  it("elides a long name without an extension", () => {
+    const short = shortName("b".repeat(60));
+    expect(short).toHaveLength(40);
+    expect(short).toContain("…");
+  });
+});
+
 describe("MergeSuggestions (plan 11 D11)", () => {
-  it("names each pair by rail position and opens its review", () => {
+  it("names each pair by file name and opens its review (Task 14 D11)", () => {
     const onReview = vi.fn();
     render(<MergeSuggestions pairs={[["b", "c"]]} payslips={payslips} onReview={onReview} />);
 
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Payslips 2 and 3 look like pages of one payslip.",
+      "b.jpg and c.jpg look like pages of one payslip.",
     );
     fireEvent.click(screen.getByRole("button", { name: "Review merge" }));
     expect(onReview).toHaveBeenCalledWith(["b", "c"]);
@@ -67,6 +89,6 @@ describe("MergeSuggestions (plan 11 D11)", () => {
     );
 
     expect(screen.getAllByRole("status")).toHaveLength(1);
-    expect(screen.getByRole("status")).toHaveTextContent("Payslips 1 and 3");
+    expect(screen.getByRole("status")).toHaveTextContent("a.jpg and c.jpg");
   });
 });

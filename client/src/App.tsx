@@ -26,7 +26,7 @@ export function App() {
             <Route element={<UnsavedEditsProvider />}>
               <Route index element={<HomePage />} />
               <Route path="sessions/:sessionId" element={<SessionPage />} />
-              <Route path="history" element={<HistoryPage />} />
+              <Route path="payslips" element={<HistoryPage />} />
               <Route path="*" element={<NotFoundPage />} />
             </Route>
           </Route>

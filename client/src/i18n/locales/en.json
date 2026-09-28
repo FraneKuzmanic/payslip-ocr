@@ -1,20 +1,24 @@
 {
   "common": {
-    "appName": "Payslip OCR",
+    "appName": "Payslip Scanner",
     "retry": "Try again",
     "loading": "Loading",
     "dismiss": "Dismiss",
     "language": "Language",
     "navCapture": "Scan",
-    "navHistory": "History",
+    "navHistory": "Payslips",
     "mainNav": "Main navigation",
     "accountMenu": "User menu",
     "signedInAs": "Signed in as",
     "noEmail": "No email address"
   },
   "home": {
-    "title": "Payslip digitization",
-    "subtitle": "Photograph or upload your payslips, check the extracted data and export it."
+    "title": "Add payslips",
+    "stepsTitle": "How it works",
+    "step1": "Capture payslips or choose files.",
+    "step1NoCamera": "Choose files.",
+    "step2": "The payslips are read automatically.",
+    "step3": "Check the values and confirm each payslip."
   },
   "review": {
     "sourceTitle": "Original payslip",
@@ -38,7 +42,6 @@
     "inspectClose": "Close",
     "inspectEmpty": "No value was read here.",
     "inspectEdited": "Edited",
-    "inspectPrompt": "Tap a highlighted value on the payslip to see what was read.",
     "fields": {
       "employerName": "Employer name",
       "employerAddress": "Employer address",
@@ -125,7 +128,8 @@
     "addRow": "Add row",
     "removeRow": "Remove row {{row}}",
     "rowLabel": "{{section}} row {{row}}",
-    "invalidForm": "Some values could not be read. Fix the marked fields, then save."
+    "invalidForm": "Some values could not be read. Fix the marked fields, then save.",
+    "backToPayslips": "Back to payslips"
   },
   "auth": {
     "signIn": "Sign in",
@@ -162,9 +166,8 @@
   },
   "capture": {
     "scan": "Scan payslip",
-    "scanAnother": "Scan another",
     "chooseFiles": "Choose files",
-    "guidance": "Photograph each payslip flat and fully in frame, or choose image or PDF files. Up to 10 at once.",
+    "guidance": "Keep the whole payslip in view, make the text readable and avoid glare.",
     "trayLabel": "Selected payslips",
     "remove": "Remove {{name}}",
     "fileSize": "{{size}} MB",
@@ -189,26 +192,34 @@
     "payslips": "Payslips",
     "unsaved": "Unsaved changes",
     "processingPanel": "This payslip is still being read. Its form opens here when it is ready.",
-    "title": "Your payslips",
+    "title_one": "Review payslip",
+    "title_other": "Review payslips",
     "progress": "{{ready}} of {{total}} ready to review",
     "confirmedCount_one": "{{count}} of {{total}} confirmed",
     "confirmedCount_other": "{{count}} of {{total}} confirmed",
-    "position": "Payslip {{index}}",
     "waiting": "Waiting to upload",
     "uploading": "Uploading",
     "uploadNetworkError": "The upload failed. Check your connection.",
     "dismiss": "Dismiss {{name}}",
     "retry": "Try again",
-    "scanMore": "Scan more payslips",
+    "scanMore": "Scan payslips",
     "notFound": "This session does not exist.",
     "loadError": "The session could not be loaded.",
     "retryError": "The retry could not be started. Check your connection and try again.",
     "showDocument": "Show document",
-    "hideDocument": "Hide document"
+    "hideDocument": "Hide document",
+    "preparingTitle": "Preparing your payslips",
+    "preparingDescription": "This can take a moment."
   },
   "payslipStatus": {
     "processing": "Reading the payslip",
     "review": "Ready to review",
+    "confirmed": "Confirmed",
+    "failed": "Failed"
+  },
+  "historyStatus": {
+    "processing": "Processing",
+    "review": "Needs review",
     "confirmed": "Confirmed",
     "failed": "Failed"
   },
@@ -246,11 +257,11 @@
     "pageCount_one": "{{count}} page",
     "pageCount_other": "{{count}} pages",
     "swap": "Swap order",
-    "swapped": "Order swapped. Payslip {{index}} is now first.",
+    "swapped": "Order swapped. {{name}} is now first.",
     "confirm": "Merge",
     "cancel": "Cancel",
     "noPreview": "No preview in this browser",
-    "suggestion": "Payslips {{a}} and {{b}} look like pages of one payslip.",
+    "suggestion": "{{a}} and {{b}} look like pages of one payslip.",
     "reviewSuggestion": "Review merge",
     "dismissSuggestion": "Not now",
     "errors": {
@@ -262,7 +273,7 @@
     }
   },
   "history": {
-    "title": "Payslip history",
+    "title": "Your payslips",
     "count_one": "{{count}} payslip",
     "count_other": "{{count}} payslips",
     "filterLabel": "Status",
@@ -275,7 +286,7 @@
     "delete": "Delete",
     "actionsFor": "Actions for {{name}}",
     "deleteTitle": "Delete payslip?",
-    "deleteBody": "{{name}} will disappear from your history, from its session and from exports. You cannot undo this.",
+    "deleteBody": "{{name}} will be deleted. You cannot undo this.",
     "confirmDelete": "Delete payslip",
     "cancelDelete": "Keep it",
     "columns": {

@@ -11,10 +11,15 @@ export interface Viewport {
  * `zoom` plus a pan offset in **viewport pixels**, applied as
  * `transform: translate(x, y) scale(zoom)` with `transform-origin: 0 0`.
  *
- * That composition renders a content point `p` (in unzoomed viewport-pixel coordinates) at
+ * That composition renders a content point `p` (in unzoomed content-pixel coordinates) at
  * `x + zoom * p`, which is what every formula below inverts. Percentage translations cannot express
  * this: their percentages resolve against the transformed element's own box, not the clipping
  * viewport, which is the exact bug the mobile crop strip shipped with in iteration 15.
+ *
+ * The **viewport** is the clipping frame; the **content** is the page's size at zoom 1. They are
+ * equal when the whole page fits its frame (the phone). At fit width (Task 14 D17) the content is
+ * the frame's width by `width / ratio`, usually taller than the frame. Every function takes the
+ * content last and defaults it to the viewport, so a caller that fits the page is unchanged.
  */
 export interface ZoomState {
   zoom: number;
@@ -29,16 +34,36 @@ function clamp(value: number, low: number, high: number) {
 }
 
 /**
- * Keeps the scaled content covering the viewport, so panning can never reveal empty space beside
- * the document. At `zoom === 1` the only permitted offset is `0`, which is what makes "reset" and
- * "zoomed all the way out" the same state.
+ * The zoom that shows the whole page: 1 when the page already fits, less when the content is larger
+ * than its frame. An unmeasured (zero) size counts as fitting.
  */
-export function clampPan(state: ZoomState, viewport: Viewport): ZoomState {
-  const zoom = clamp(state.zoom, MIN_ZOOM, MAX_ZOOM);
+export function minZoomFor(viewport: Viewport, content: Viewport = viewport): number {
+  if (content.width <= 0 || content.height <= 0) return MIN_ZOOM;
+  return Math.min(MIN_ZOOM, viewport.width / content.width, viewport.height / content.height);
+}
+
+/** Per axis: a smaller page is centred, a larger one must cover the frame. */
+function clampAxis(offset: number, frame: number, scaled: number) {
+  if (scaled <= frame) return (frame - scaled) / 2;
+  return clamp(offset, frame - scaled, 0);
+}
+
+/**
+ * Keeps the scaled content covering the viewport, so panning can never reveal empty space beside
+ * the document; content smaller than the viewport is centred instead (Task 14 D17). When the page
+ * fits, the only permitted offset at `zoom === 1` is `0`, which is what makes "reset" and "zoomed
+ * all the way out" the same state.
+ */
+export function clampPan(
+  state: ZoomState,
+  viewport: Viewport,
+  content: Viewport = viewport,
+): ZoomState {
+  const zoom = clamp(state.zoom, minZoomFor(viewport, content), MAX_ZOOM);
   return {
     zoom,
-    x: clamp(state.x, Math.min(0, viewport.width - viewport.width * zoom), 0),
-    y: clamp(state.y, Math.min(0, viewport.height - viewport.height * zoom), 0),
+    x: clampAxis(state.x, viewport.width, content.width * zoom),
+    y: clampAxis(state.y, viewport.height, content.height * zoom),
   };
 }
 
@@ -51,22 +76,81 @@ export function zoomAbout(
   viewport: Viewport,
   nextZoom: number,
   anchor: { x: number; y: number },
+  content: Viewport = viewport,
 ): ZoomState {
-  const zoom = clamp(nextZoom, MIN_ZOOM, MAX_ZOOM);
+  const zoom = clamp(nextZoom, minZoomFor(viewport, content), MAX_ZOOM);
   const contentX = (anchor.x - state.x) / state.zoom;
   const contentY = (anchor.y - state.y) / state.zoom;
-  return clampPan({ zoom, x: anchor.x - zoom * contentX, y: anchor.y - zoom * contentY }, viewport);
+  return clampPan(
+    { zoom, x: anchor.x - zoom * contentX, y: anchor.y - zoom * contentY },
+    viewport,
+    content,
+  );
 }
 
 /** Pans (without changing zoom) so the page-relative point `(fx, fy)` sits at the viewport centre. */
-export function centreOn(state: ZoomState, viewport: Viewport, fx: number, fy: number): ZoomState {
+export function centreOn(
+  state: ZoomState,
+  viewport: Viewport,
+  fx: number,
+  fy: number,
+  content: Viewport = viewport,
+): ZoomState {
   return clampPan(
     {
       zoom: state.zoom,
-      x: viewport.width / 2 - state.zoom * fx * viewport.width,
-      y: viewport.height / 2 - state.zoom * fy * viewport.height,
+      x: viewport.width / 2 - state.zoom * fx * content.width,
+      y: viewport.height / 2 - state.zoom * fy * content.height,
     },
     viewport,
+    content,
+  );
+}
+
+/**
+ * Pans by a wheel delta (Task 14 D17). At an edge the state comes back equal, which the caller reads
+ * as "let the page scroll on", as nested scrolling does.
+ */
+export function panBy(
+  state: ZoomState,
+  viewport: Viewport,
+  content: Viewport,
+  dx: number,
+  dy: number,
+): ZoomState {
+  return clampPan({ ...state, x: state.x + dx, y: state.y + dy }, viewport, content);
+}
+
+export interface PinchPoint {
+  /** Distance between the two fingers, in viewport pixels. */
+  distance: number;
+  /** Their midpoint, in viewport pixels. */
+  midpoint: { x: number; y: number };
+}
+
+/**
+ * Two-finger zoom (Task 14 D19), always relative to the state when the second finger landed: the
+ * zoom scales with the finger distance, and the content point that was under the starting midpoint
+ * stays under the current one, so moving both fingers pans as well.
+ */
+export function pinchZoom(
+  start: ZoomState,
+  viewport: Viewport,
+  content: Viewport,
+  from: PinchPoint,
+  to: PinchPoint,
+): ZoomState {
+  const zoom = clamp(
+    (start.zoom * to.distance) / from.distance,
+    minZoomFor(viewport, content),
+    MAX_ZOOM,
+  );
+  const contentX = (from.midpoint.x - start.x) / start.zoom;
+  const contentY = (from.midpoint.y - start.y) / start.zoom;
+  return clampPan(
+    { zoom, x: to.midpoint.x - zoom * contentX, y: to.midpoint.y - zoom * contentY },
+    viewport,
+    content,
   );
 }
 
@@ -102,12 +186,13 @@ export function isRegionVisible(
   state: ZoomState,
   viewport: Viewport,
   bounds: Bounds,
+  content: Viewport = viewport,
   margin = VISIBILITY_MARGIN,
 ) {
-  const left = state.x + state.zoom * bounds.minX * viewport.width;
-  const right = state.x + state.zoom * bounds.maxX * viewport.width;
-  const top = state.y + state.zoom * bounds.minY * viewport.height;
-  const bottom = state.y + state.zoom * bounds.maxY * viewport.height;
+  const left = state.x + state.zoom * bounds.minX * content.width;
+  const right = state.x + state.zoom * bounds.maxX * content.width;
+  const top = state.y + state.zoom * bounds.minY * content.height;
+  const bottom = state.y + state.zoom * bounds.maxY * content.height;
   return (
     left >= margin &&
     right <= viewport.width - margin &&

@@ -20,6 +20,7 @@ const LOCALES = [
  */
 const GROUPS = [
   ["payslipStatus", PAYSLIP_STATUSES],
+  ["historyStatus", PAYSLIP_STATUSES],
   ["tablesStatus", TABLES_STATUSES],
   ["failureReason", EXTRACTION_FAILURE_REASONS],
   ["warnings", WARNING_CODES],

@@ -36,7 +36,7 @@ export function PayslipCards({ items, downloadingId, onDownload, onDelete }: Pay
                 ) : null}
               </div>
               <span className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
-                {t(`payslipStatus.${payslip.status}`)}
+                {t(`historyStatus.${payslip.status}`)}
               </span>
             </div>
             <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-slate-600">

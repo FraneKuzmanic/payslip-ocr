@@ -3,6 +3,22 @@ import { useTranslation } from "react-i18next";
 import type { PayslipSummary } from "@payslip/shared";
 import { suggestionKey, useDismissedSuggestions } from "./dismissedSuggestions";
 
+const MAX_NAME = 40;
+
+/**
+ * A file name short enough for a one-line banner (Task 14 D11): the middle is elided and the
+ * extension kept, so `very_long_…_scan.jpg` still says what kind of file it is.
+ */
+export function shortName(name: string, max = MAX_NAME): string {
+  if (name.length <= max) return name;
+  const dot = name.lastIndexOf(".");
+  const extension = dot > 0 && name.length - dot <= 10 ? name.slice(dot) : "";
+  const stem = name.slice(0, name.length - extension.length);
+  const room = max - 1 - extension.length;
+  const head = Math.ceil(room / 2);
+  return `${stem.slice(0, head)}…${stem.slice(stem.length - (room - head))}${extension}`;
+}
+
 interface MergeSuggestionsProps {
   pairs: readonly (readonly [string, string])[];
   payslips: readonly PayslipSummary[];
@@ -17,6 +33,8 @@ export function MergeSuggestions({ pairs, payslips, onReview }: MergeSuggestions
   const { t } = useTranslation();
   const { dismissed, dismiss } = useDismissedSuggestions();
   const position = (id: string) => payslips.findIndex((payslip) => payslip.id === id) + 1;
+  const name = (id: string) =>
+    shortName(payslips.find((payslip) => payslip.id === id)?.originalFilename ?? "");
   // A pair whose payslips have just been merged or deleted is stale until the next read.
   const shown = pairs.filter(
     (pair) => !dismissed.has(suggestionKey(pair)) && pair.every((id) => position(id) > 0),
@@ -33,7 +51,7 @@ export function MergeSuggestions({ pairs, payslips, onReview }: MergeSuggestions
         >
           <p className="flex items-start gap-2">
             <Combine aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
-            {t("merge.suggestion", { a: position(pair[0]), b: position(pair[1]) })}
+            {t("merge.suggestion", { a: name(pair[0]), b: name(pair[1]) })}
           </p>
           <div className="flex flex-wrap gap-2">
             <button

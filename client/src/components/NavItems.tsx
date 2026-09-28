@@ -1,4 +1,4 @@
-import { Camera, History } from "lucide-react";
+import { Camera, FileText } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { NavLink } from "react-router";
 
@@ -8,7 +8,7 @@ import { NavLink } from "react-router";
  */
 export const NAV_ITEMS = [
   { to: "/", labelKey: "common.navCapture", Icon: Camera },
-  { to: "/history", labelKey: "common.navHistory", Icon: History },
+  { to: "/payslips", labelKey: "common.navHistory", Icon: FileText },
 ] as const;
 
 export function NavItems({ onNavigate }: { onNavigate?: () => void }) {

@@ -99,7 +99,8 @@ function PageRail(props: PagesProps) {
   return (
     <nav
       aria-label={t("review.pages")}
-      className="max-h-[65dvh] w-[72px] shrink-0 overflow-y-auto p-1"
+      // As tall as the document frame beside it (Task 14 D12).
+      className="max-h-[var(--source-height,65dvh)] w-[72px] shrink-0 overflow-y-auto p-1"
     >
       <ol className="flex flex-col gap-2">
         <PageButtons {...props} />

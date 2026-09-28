@@ -1,38 +1,58 @@
 import type { SourceRegion } from "@payslip/shared";
 
 /**
- * How much sharper than the fitted CSS size the page bitmap is rasterised.
+ * How much sharper than the fitted CSS size the page bitmap is rasterised at fit.
  *
- * A PDF is vector, so it could be re-rasterised at every zoom level for perfect crispness. It
- * deliberately is not: the image path CSS-scales a fixed bitmap, and this feature exists to make a
- * PDF behave exactly like a photo. Rendering once at 2.5x buys legible text to roughly 250% zoom —
- * past which it softens the way a photo already does — without a render queue, in-flight
- * cancellation on every wheel tick, and the flicker that comes with them.
+ * 2.5x keeps text legible to roughly 250% zoom from the one bitmap drawn when the page opens. Past
+ * that the page is redrawn at the settled zoom (Task 14 D18), because a photo-like CSS-scaled bitmap
+ * left A01.pdf unreadable below ~500% on a laptop.
  */
 export const RENDER_QUALITY = 2.5;
 
 /**
- * Hard ceiling on the rasterised bitmap's width, in device pixels.
+ * The most pixels one page bitmap may hold (Task 14 D18). Canvas memory is width x height x 4
+ * bytes, and a canvas past the browser's limit paints nothing at all.
  *
- * Canvas memory is width x height x 4 bytes and mobile Safari discards a canvas that grows too
- * large, painting nothing at all. At this width an A4 portrait page costs roughly 2600 x 3676 x 4
- * bytes, about 38 MB — the practical limit worth spending on a phone.
+ * The phone value is the largest bitmap the viewer drew before Task 14, an A4 page 2,600 px wide
+ * (about 9.56 MP), which the product owner's Android phone rendered. WebKit's per-canvas limit
+ * (16,777,216 px) is higher, but a redraw holds two canvases at once, and pdf.js itself caps iOS
+ * and Android at 5,242,880 px (`pdf_viewer.mjs`). A phone's fit render stays under this cap
+ * (Task 14 review). The desktop value is pdf.js's own default `maxCanvasPixels`, 2^25.
  */
-export const MAX_CANVAS_WIDTH = 2600;
+export const PHONE_PIXEL_BUDGET = 9_560_000;
+export const DESKTOP_PIXEL_BUDGET = 33_554_432;
 
 /**
- * The scale to pass to pdf.js's `getViewport`, given the page's own unscaled width, the CSS width
- * it will be displayed at, and the device pixel ratio.
+ * The scale to pass to pdf.js's `getViewport`, given the page's own unscaled size, the CSS width
+ * it will be displayed at at zoom 1, the device pixel ratio and the settled zoom.
+ *
+ * The target width is `cssWidth x dpr x max(zoom, RENDER_QUALITY)`, so nothing is redrawn until the
+ * zoom passes the fitted quality, reduced until the bitmap's area fits `budget`.
  *
  * Returns 0 when the viewport has not been measured yet, which the caller must read as "do not
  * render". Rendering at a guessed size would paint a blurry page that is never replaced, because
  * the real measurement arrives through a ResizeObserver that reports no change.
  */
-export function renderScale(pageWidth: number, cssWidth: number, devicePixelRatio: number): number {
-  if (pageWidth <= 0 || cssWidth <= 0) return 0;
+export function renderScale(
+  pageWidth: number,
+  pageHeight: number,
+  cssWidth: number,
+  devicePixelRatio: number,
+  zoom = 1,
+  budget = DESKTOP_PIXEL_BUDGET,
+): number {
+  if (pageWidth <= 0 || pageHeight <= 0 || cssWidth <= 0) return 0;
   const dpr = devicePixelRatio > 0 ? devicePixelRatio : 1;
-  const target = Math.min(cssWidth * dpr * RENDER_QUALITY, MAX_CANVAS_WIDTH);
-  return target / pageWidth;
+  const wanted = cssWidth * dpr * Math.max(zoom, RENDER_QUALITY);
+  // width x (width x pageHeight / pageWidth) <= budget
+  const widest = Math.sqrt((budget * pageWidth) / pageHeight);
+  return Math.min(wanted, widest) / pageWidth;
+}
+
+/** Whether a bitmap `currentWidth` px wide is far enough from the target to be worth redrawing. */
+export function needsRedraw(currentWidth: number, targetWidth: number): boolean {
+  if (currentWidth <= 0) return targetWidth > 0;
+  return Math.abs(targetWidth - currentWidth) / currentWidth > 0.01;
 }
 
 /**

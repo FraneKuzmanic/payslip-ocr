@@ -2,39 +2,37 @@ import { AlertCircle, CheckCircle2, Loader2, PencilLine } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { PayslipSummary } from "@payslip/shared";
-import { formatField } from "./reviewForm";
 import { overflowAfter } from "./stripGeometry";
 
 interface PayslipRailProps {
   payslips: readonly PayslipSummary[];
   selectedId: string | null;
   unsaved: ReadonlySet<string>;
-  orientation: "horizontal" | "vertical";
   onSelect: (id: string) => void;
 }
 
-/** Manual activation keeps arrow-key browsing from loading another review (Task 10 D7). */
-export function PayslipRail({
-  payslips,
-  selectedId,
-  unsaved,
-  orientation,
-  onSelect,
-}: PayslipRailProps) {
-  const { t, i18n } = useTranslation();
+/**
+ * Manual activation keeps arrow-key browsing from loading another review (Task 10 D7). The rail is
+ * horizontal at every width since Task 14 D10.
+ *
+ * A payslip still being read has no form to open, so its chip is `aria-disabled` (Task 14 D10). It
+ * stays focusable in the roving tablist, so arrow keys reach it and it is announced as unavailable,
+ * as the APG tabs pattern allows; only activation is refused.
+ */
+export function PayslipRail({ payslips, selectedId, unsaved, onSelect }: PayslipRailProps) {
+  const { t } = useTranslation();
   const rail = useRef<HTMLDivElement>(null);
   const tabs = useRef(new Map<string, HTMLButtonElement>());
   const [visible, setVisible] = useState<readonly boolean[]>([]);
-  const horizontal = orientation === "horizontal";
-  const overflow = horizontal ? overflowAfter(visible) : null;
+  const overflow = overflowAfter(visible);
 
   useEffect(() => {
     tabs.current.get(selectedId ?? "")?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
-  }, [selectedId, orientation]);
+  }, [selectedId]);
 
   useEffect(() => {
     setVisible([]);
-    if (!horizontal || typeof IntersectionObserver === "undefined") return;
+    if (typeof IntersectionObserver === "undefined") return;
     const visibility = payslips.map(() => false);
     const indices = new Map(
       payslips.map((payslip, index) => [tabs.current.get(payslip.id), index]),
@@ -51,19 +49,17 @@ export function PayslipRail({
     );
     for (const tab of tabs.current.values()) observer.observe(tab);
     return () => observer.disconnect();
-  }, [payslips, horizontal]);
+  }, [payslips]);
 
   function move(event: KeyboardEvent<HTMLButtonElement>, index: number) {
-    const nextKey = horizontal ? "ArrowRight" : "ArrowDown";
-    const previousKey = horizontal ? "ArrowLeft" : "ArrowUp";
     const target =
       event.key === "Home"
         ? 0
         : event.key === "End"
           ? payslips.length - 1
-          : event.key === nextKey
+          : event.key === "ArrowRight"
             ? (index + 1) % payslips.length
-            : event.key === previousKey
+            : event.key === "ArrowLeft"
               ? (index + payslips.length - 1) % payslips.length
               : null;
     if (target === null) return;
@@ -78,11 +74,12 @@ export function PayslipRail({
       ref={rail}
       role="tablist"
       aria-label={t("session.payslips")}
-      aria-orientation={orientation}
-      className={`-m-1 flex min-w-0 gap-2 p-1 ${horizontal ? "snap-x snap-mandatory overflow-x-auto" : "max-h-[calc(100dvh-6rem)] flex-col overflow-y-auto"}`}
+      aria-orientation="horizontal"
+      className="-m-1 flex min-w-0 snap-x snap-mandatory gap-2 overflow-x-auto p-1"
     >
       {payslips.map((payslip, index) => {
         const selected = payslip.id === selectedId;
+        const unavailable = payslip.status === "processing";
         return (
           <button
             key={payslip.id}
@@ -95,34 +92,29 @@ export function PayslipRail({
             }}
             aria-selected={selected}
             aria-controls="payslip-panel"
+            aria-disabled={unavailable}
             tabIndex={selected ? 0 : -1}
             onKeyDown={(event) => move(event, index)}
-            onClick={() => onSelect(payslip.id)}
-            className={`relative flex min-h-12 min-w-0 shrink-0 snap-start flex-col gap-1 rounded-lg bg-white p-3 text-left text-sm ${
-              horizontal && payslips.length > 2
+            // Enter and Space reach a button as a click, so this one guard covers all three.
+            onClick={() => {
+              if (!unavailable) onSelect(payslip.id);
+            }}
+            className={`relative flex min-h-12 min-w-0 shrink-0 snap-start flex-col gap-1 rounded-lg bg-white p-3 text-left text-sm aria-disabled:cursor-not-allowed aria-disabled:opacity-60 lg:w-60 ${
+              payslips.length > 2
                 ? "w-[calc((100%-2.5rem)/2)]"
-                : horizontal && payslips.length === 2
+                : payslips.length === 2
                   ? "w-[calc((100%-0.5rem)/2)]"
                   : "w-full"
             } ${selected ? "border-2 border-accent" : "border border-slate-300"}`}
           >
-            <span className={`flex items-center gap-2 ${selected ? "font-semibold" : ""}`}>
-              {index + 1}
+            <span className={`flex min-w-0 items-center gap-2 ${selected ? "font-semibold" : ""}`}>
+              <span className="block min-w-0 truncate">{payslip.originalFilename}</span>
               {unsaved.has(payslip.id) ? (
                 <>
-                  <PencilLine aria-hidden="true" className="size-4" />
+                  <PencilLine aria-hidden="true" className="size-4 shrink-0" />
                   <span className="sr-only">{t("session.unsaved")}</span>
                 </>
               ) : null}
-            </span>
-            <span className="block w-full truncate">
-              {payslip.period
-                ? formatField(
-                    "period",
-                    payslip.period,
-                    i18n.language.startsWith("hr") ? "hr" : "en",
-                  )
-                : payslip.originalFilename}
             </span>
             <span className="flex items-center gap-2">
               {statusIcon(payslip)}

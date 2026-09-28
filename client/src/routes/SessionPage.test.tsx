@@ -129,6 +129,7 @@ const tick = () =>
   });
 const rows = () => within(screen.getByRole("list")).getAllByRole("listitem");
 const tabs = () => screen.getAllByRole("tab");
+const preparing = () => screen.queryByRole("heading", { name: "Preparing your payslips" });
 /** Opens the panel's menu and names the items it offers, in order. */
 const menuItems = () => {
   fireEvent.click(screen.getByRole("button", { name: "Payslip actions" }));
@@ -158,7 +159,7 @@ afterEach(() => {
 });
 
 describe("SessionPage", () => {
-  it("lists every payslip as a tab in server order with its period or filename and status", async () => {
+  it("lists every payslip as a tab in server order with its file name and status", async () => {
     mockedDetail.mockResolvedValue(
       session(
         summary("first", { status: "review", period: "2025-03" }),
@@ -167,7 +168,8 @@ describe("SessionPage", () => {
     );
     renderPage();
     await flush();
-    expect(tabs()[0]).toHaveTextContent("2025-03");
+    expect(tabs()[0]).toHaveTextContent("first.jpg");
+    expect(tabs()[0]).not.toHaveTextContent("2025-03");
     expect(tabs()[0]).toHaveTextContent("Ready to review");
     expect(tabs()[1]).toHaveTextContent("second.jpg");
     expect(tabs()[1]).toHaveTextContent("Failed");
@@ -207,7 +209,7 @@ describe("SessionPage", () => {
     });
 
     expect(mockedDetail.mock.calls.length).toBeGreaterThan(100);
-    expect(screen.getByText("Reading the payslip")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Preparing your payslips" })).toBeInTheDocument();
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
@@ -217,7 +219,9 @@ describe("SessionPage", () => {
       { localId: "l2", name: "b.pdf", state: "rejected", errorCode: "pdf_too_many_pages" },
       { localId: "l3", name: "c.jpg", state: "waiting" },
     ];
-    mockedDetail.mockResolvedValue(session(summary("a")));
+    mockedDetail.mockResolvedValue(
+      session(summary("a", { status: "review", tablesStatus: "ready" })),
+    );
     renderPage();
     await flush();
 
@@ -330,7 +334,7 @@ describe("SessionPage", () => {
       ),
     );
     mockedRetry.mockRejectedValue(new ApiError(500));
-    renderPage();
+    renderPage("?payslip=a");
     await flush();
 
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
@@ -354,7 +358,7 @@ describe("SessionPage", () => {
     await flush();
 
     expect(screen.getByRole("alert")).toHaveTextContent("This session does not exist.");
-    expect(screen.getByRole("link", { name: "Scan more payslips" })).toHaveAttribute("href", "/");
+    expect(screen.getByRole("link", { name: "Scan payslips" })).toHaveAttribute("href", "/");
   });
 
   it("stops on a request error and resumes when asked", async () => {
@@ -476,23 +480,20 @@ describe("SessionPage navigation (Task 10)", () => {
     renderPage("?payslip=done");
     await flush();
     expect(screen.getByTestId("preview")).toHaveTextContent("done ready");
-    expect(screen.getByRole("heading", { name: "Payslip 4 · done.jpg" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "done.jpg" })).toBeInTheDocument();
     expect(document.activeElement).toBe(document.body);
   });
 
-  it.each([false, true])("sets vertical orientation only at xl: %s", async (xl) => {
-    vi.stubGlobal("matchMedia", (query: string) => ({
-      matches: query === "(min-width: 1280px)" && xl,
+  it.each([false, true])("keeps the rail horizontal at every width, wide: %s", async (wide) => {
+    vi.stubGlobal("matchMedia", () => ({
+      matches: wide,
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
     }));
     mockedDetail.mockResolvedValue(readable());
     renderPage();
     await flush();
-    expect(screen.getByRole("tablist")).toHaveAttribute(
-      "aria-orientation",
-      xl ? "vertical" : "horizontal",
-    );
+    expect(screen.getByRole("tablist")).toHaveAttribute("aria-orientation", "horizontal");
   });
 
   it("passes the polled tables status through to the open form", async () => {
@@ -507,6 +508,142 @@ describe("SessionPage navigation (Task 10)", () => {
     );
     await tick();
     expect(screen.getByTestId("preview")).toHaveTextContent("ready ready");
+  });
+});
+
+describe("SessionPage loading screen and default selection (Task 14 D8, D9)", () => {
+  it("waits on the loading screen while every payslip is still being read", async () => {
+    mockedDetail.mockResolvedValue(session(summary("a"), summary("b")));
+    renderPage();
+    await flush();
+
+    expect(preparing()).toBeInTheDocument();
+    expect(screen.getByText("This can take a moment.")).toBeInTheDocument();
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(screen.getByTestId("location")).toHaveTextContent("");
+  });
+
+  it("waits on the loading screen while the only upload is still being sent", async () => {
+    batchItems = [{ localId: "l1", name: "a.jpg", state: "uploading" }];
+    mockedDetail.mockResolvedValue(session());
+    renderPage();
+    await flush();
+
+    expect(preparing()).toBeInTheDocument();
+  });
+
+  it("hands over to the first payslip that is read, selected by replacement", async () => {
+    mockedDetail.mockResolvedValue(session(summary("a"), summary("b")));
+    renderPage();
+    await flush();
+    expect(preparing()).toBeInTheDocument();
+
+    mockedDetail.mockResolvedValue(
+      session(summary("a"), summary("b", { status: "review", tablesStatus: "pending" })),
+    );
+    await tick();
+
+    expect(preparing()).toBeNull();
+    expect(screen.getByTestId("location")).toHaveTextContent("?payslip=b");
+    expect(screen.getByTestId("navigation")).toHaveTextContent("REPLACE");
+    expect(screen.getByTestId("preview")).toHaveTextContent("b pending");
+    expect(tabs()[0]).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("opens a failed payslip rather than waiting for a sibling still being read", async () => {
+    mockedDetail.mockResolvedValue(
+      session(summary("a"), summary("b", { status: "failed", failureReason: "provider_rejected" })),
+    );
+    renderPage();
+    await flush();
+
+    expect(preparing()).toBeNull();
+    expect(screen.getByTestId("location")).toHaveTextContent("?payslip=b");
+    expect(screen.getByRole("tabpanel")).toHaveTextContent(
+      "The extraction service refused this document.",
+    );
+  });
+
+  it("prefers a readable payslip over an earlier failed one", async () => {
+    mockedDetail.mockResolvedValue(
+      session(
+        summary("a", { status: "failed", failureReason: "provider_rejected" }),
+        summary("b", { status: "review", tablesStatus: "ready" }),
+      ),
+    );
+    renderPage();
+    await flush();
+
+    expect(screen.getByTestId("location")).toHaveTextContent("?payslip=b");
+  });
+
+  it("shows the page at once when every upload was rejected", async () => {
+    batchItems = [{ localId: "l1", name: "a.pdf", state: "rejected", errorCode: "pdf_encrypted" }];
+    mockedDetail.mockResolvedValue(session());
+    renderPage();
+    await flush();
+
+    expect(preparing()).toBeNull();
+    expect(rows()).toHaveLength(1);
+  });
+
+  it("respects an explicit selection of a payslip still being read", async () => {
+    mockedDetail.mockResolvedValue(session(summary("a"), summary("b")));
+    renderPage("?payslip=b");
+    await flush();
+
+    expect(preparing()).toBeNull();
+    expect(screen.getByRole("tabpanel")).toHaveTextContent("This payslip is still being read.");
+    expect(tabs()[1]).toHaveAttribute("aria-selected", "true");
+  });
+});
+
+describe("SessionPage heading and way back (Task 14 D7, D14)", () => {
+  it("links back to the payslip list above a plural heading", async () => {
+    mockedDetail.mockResolvedValue(
+      session(
+        summary("a", { status: "review", tablesStatus: "ready" }),
+        summary("b", { status: "review", tablesStatus: "ready" }),
+      ),
+    );
+    renderPage();
+    await flush();
+
+    expect(screen.getByRole("link", { name: "Back to payslips" })).toHaveAttribute(
+      "href",
+      "/payslips",
+    );
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Review payslips");
+    expect(screen.queryByRole("link", { name: /Scan/ })).toBeNull();
+  });
+
+  it("uses the singular for one payslip, in both languages", async () => {
+    mockedDetail.mockResolvedValue(
+      session(summary("a", { status: "review", tablesStatus: "ready" })),
+    );
+    renderPage();
+    await flush();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Review payslip");
+
+    await act(async () => {
+      await i18n.changeLanguage("hr");
+    });
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Pregledajte platnu listu");
+    expect(screen.getByRole("link", { name: "Natrag na platne liste" })).toBeInTheDocument();
+  });
+
+  it("uses the Croatian few form for three payslips", async () => {
+    await i18n.changeLanguage("hr");
+    mockedDetail.mockResolvedValue(
+      session(
+        summary("a", { status: "review", tablesStatus: "ready" }),
+        summary("b", { status: "review", tablesStatus: "ready" }),
+        summary("c", { status: "review", tablesStatus: "ready" }),
+      ),
+    );
+    renderPage();
+    await flush();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Pregledajte platne liste");
   });
 });
 
@@ -525,9 +662,7 @@ describe("SessionPage merge (plan 11 D11)", () => {
     renderPage();
     await flush();
 
-    expect(
-      screen.getByText("Payslips 1 and 2 look like pages of one payslip."),
-    ).toBeInTheDocument();
+    expect(screen.getByText("a.jpg and b.jpg look like pages of one payslip.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Review merge" }));
 
     expect(screen.getByTestId("merge-dialog")).toHaveTextContent("a,b");
@@ -552,8 +687,18 @@ describe("SessionPage merge (plan 11 D11)", () => {
     expect(screen.getByTestId("merge-dialog")).toHaveTextContent("pick");
     expect(dialogProps?.selectedId).toBe("a");
 
+    // A chip still being read does not open (Task 14 D10), so the selection and its menu stay.
     fireEvent.click(tabs()[2]!);
     await flush();
+    expect(screen.getByTestId("location")).toHaveTextContent("?payslip=a");
+  });
+
+  it("has no menu on a payslip still being read", async () => {
+    mockedDetail.mockResolvedValue(pair());
+    renderPage("?payslip=c");
+    await flush();
+
+    expect(screen.getByRole("tabpanel")).toHaveTextContent("This payslip is still being read.");
     expect(screen.queryByRole("button", { name: "Payslip actions" })).toBeNull();
   });
 
@@ -581,7 +726,7 @@ describe("SessionPage merge (plan 11 D11)", () => {
     expect(screen.getByTestId("location")).toHaveTextContent("?payslip=merged");
     expect(screen.getByTestId("navigation")).toHaveTextContent("REPLACE");
     expect(tabs().map((tab) => tab.id)).toEqual(["payslip-tab-merged", "payslip-tab-c"]);
-    expect(screen.getByRole("heading", { name: "Payslip 1 · b.jpg + a.jpg" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "b.jpg + a.jpg" })).toBeInTheDocument();
     expect(tabs()[0]).toHaveTextContent("Reading the payslip");
     expect(screen.queryByTestId("merge-dialog")).toBeNull();
     expect(tabs()[0]).toHaveFocus();

@@ -160,7 +160,7 @@ describe("PayslipForm", () => {
     expect(byId("netoPlaca")).toHaveValue("999.99");
   });
 
-  it("restores under StrictMode and marks the action bar for keyboard hiding", async () => {
+  it("restores under StrictMode and keeps Save in flow, never hidden while typing", async () => {
     const onDirtyChange = vi.fn();
     render(
       <StrictMode>
@@ -182,9 +182,10 @@ describe("PayslipForm", () => {
     );
     await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
     expect(byId("netoPlaca")).toHaveValue("999.99");
-    expect(
-      screen.getByRole("button", { name: "Save changes" }).closest("[data-hide-with-keyboard]"),
-    ).not.toBeNull();
+    const saveButton = screen.getByRole("button", { name: "Save changes" });
+    // Task 14 D13: an ordinary block after the last table, not a sticky bar.
+    expect(saveButton.closest("[data-hide-with-keyboard]")).toBeNull();
+    expect(saveButton.closest(".sticky")).toBeNull();
   });
   it("renders an editable control with a stable id for every scalar and every cell", () => {
     renderForm();

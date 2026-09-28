@@ -74,9 +74,9 @@ function SessionDestination() {
 
 function renderPage() {
   return render(
-    <MemoryRouter initialEntries={["/history"]}>
+    <MemoryRouter initialEntries={["/payslips"]}>
       <Routes>
-        <Route path="/history" element={<HistoryPage />} />
+        <Route path="/payslips" element={<HistoryPage />} />
         <Route path="/sessions/:sessionId" element={<SessionDestination />} />
         <Route path="/" element={<p>Capture destination</p>} />
       </Routes>
@@ -122,6 +122,21 @@ describe("HistoryPage", () => {
     // The matcher normalises the currency's no-break space; `historyRow.test.ts` checks it exactly.
     expect(screen.getByText("1.772,15 €")).toBeInTheDocument();
     expect(screen.getByText("1 platna lista")).toBeInTheDocument();
+  });
+
+  it("titles the list and words its statuses for a list, in both languages (Task 14 D6)", async () => {
+    renderPage();
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("Your payslips");
+
+    await i18n.changeLanguage("hr");
+    renderPage();
+    expect(await screen.findByText("Potvrđena", { selector: "span" })).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("heading", { level: 1 }).map((heading) => heading.textContent),
+    ).toContain("Vaše platne liste");
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(
+      expect.arrayContaining(["U obradi", "Za pregled", "Potvrđena", "Neuspješna"]),
+    );
   });
 
   it("renders a table at desktop width and a card list below it, never both", async () => {
@@ -257,7 +272,7 @@ describe("HistoryPage", () => {
       within(filter)
         .getAllByRole("option")
         .map((option) => option.textContent),
-    ).toEqual(["All", "Reading the payslip", "Ready to review", "Confirmed", "Failed"]);
+    ).toEqual(["All", "Processing", "Needs review", "Confirmed", "Failed"]);
     await user.selectOptions(filter, "confirmed");
     await waitFor(() =>
       expect(mockedGetPayslips).toHaveBeenLastCalledWith({ page: 1, status: "confirmed" }),
@@ -308,7 +323,9 @@ describe("HistoryPage", () => {
     expect(mockedDeletePayslip).not.toHaveBeenCalled();
 
     const dialog = screen.getByRole("dialog");
-    expect(within(dialog).getByText(/^Ana Horvat will disappear/)).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("Ana Horvat will be deleted. You cannot undo this."),
+    ).toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: "Delete payslip" }));
 
     await waitFor(() => expect(mockedDeletePayslip).toHaveBeenCalledWith(PAYSLIP_ID));

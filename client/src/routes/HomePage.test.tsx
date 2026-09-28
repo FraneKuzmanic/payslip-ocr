@@ -42,11 +42,18 @@ function imageFile(name = "platna.jpg") {
   return new File(["payslip"], name, { type: "image/jpeg" });
 }
 
-/** jsdom implements no matchMedia, so the pointer type has to be supplied explicitly. */
-function stubPointer(coarse: boolean) {
+/**
+ * jsdom implements no matchMedia, so the pointer type and the width have to be supplied
+ * explicitly, each answering its own query.
+ */
+function stubPointer(coarse: boolean, wide = false) {
   vi.stubGlobal(
     "matchMedia",
-    vi.fn(() => ({ matches: coarse, addEventListener: vi.fn(), removeEventListener: vi.fn() })),
+    vi.fn((query: string) => ({
+      matches: query.includes("pointer") ? coarse : wide,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
   );
 }
 
@@ -80,7 +87,64 @@ describe("HomePage", () => {
   it("renders the translated heading", () => {
     renderPage();
 
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Payslip digitization");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Add payslips");
+    expect(
+      screen.getByText("Keep the whole payslip in view, make the text readable and avoid glare."),
+    ).toBeInTheDocument();
+  });
+
+  it("explains how it works, naming the camera only where there is one (Task 14 D4)", () => {
+    renderPage();
+    const steps = screen.getByRole("list");
+    expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent("How it works");
+    expect(
+      within(steps)
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual([
+      "1Capture payslips or choose files.",
+      "2The payslips are read automatically.",
+      "3Check the values and confirm each payslip.",
+    ]);
+  });
+
+  it("names only files in the first step without a coarse pointer", () => {
+    stubPointer(false);
+    renderPage();
+    expect(screen.getByText("Choose files.")).toBeInTheDocument();
+  });
+
+  it("uses the formal Croatian imperative on the pickers (Task 14 D5)", async () => {
+    await i18n.changeLanguage("hr");
+    renderPage();
+    expect(screen.getByLabelText("Skenirajte platnu listu")).toBeInTheDocument();
+    expect(screen.getByLabelText("Odaberite datoteke")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Dodajte platne liste");
+  });
+
+  it("puts the pickers before the tray on a phone, keeping today's order", async () => {
+    renderPage();
+    await user().upload(fileInput(), [imageFile()]);
+    await within(tray()).findAllByRole("img");
+
+    expect(fileInput().compareDocumentPosition(uploadButton(1))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(fileInput().closest("label")).toHaveClass("border-slate-300");
+  });
+
+  it("puts the pickers after Upload when wide, and demotes the file picker", async () => {
+    stubPointer(false, true);
+    renderPage();
+    expect(fileInput().closest("label")).toHaveClass("bg-accent");
+
+    await user().upload(fileInput(), [imageFile()]);
+    await within(tray()).findAllByRole("img");
+
+    expect(fileInput().compareDocumentPosition(uploadButton(1))).toBe(
+      Node.DOCUMENT_POSITION_PRECEDING,
+    );
+    expect(fileInput().closest("label")).not.toHaveClass("bg-accent");
   });
 
   it("offers a single-shot camera and a multiple-file picker on a touch device", () => {
@@ -108,7 +172,8 @@ describe("HomePage", () => {
 
     expect(await within(tray()).findAllByRole("img")).toHaveLength(3);
     expect(uploadButton(3)).toBeInTheDocument();
-    expect(screen.getByLabelText("Scan another")).toBeInTheDocument();
+    // The camera keeps one label once a photo is in the tray (Task 14 D4).
+    expect(screen.getByLabelText("Scan payslip")).toBeInTheDocument();
 
     await user().click(screen.getByRole("button", { name: "Remove b.jpg" }));
 
@@ -122,7 +187,7 @@ describe("HomePage", () => {
     const file = new File(["%PDF"], "platna.pdf", { type: "application/pdf" });
     Object.defineProperty(file, "size", { value: 1.5 * 1024 * 1024 });
 
-    await user().upload(screen.getByLabelText("Odaberi datoteku"), [file]);
+    await user().upload(screen.getByLabelText("Odaberite datoteke"), [file]);
 
     const list = screen.getByRole("list", { name: "Odabrane platne liste" });
     expect(await within(list).findByText(/1,5 MB/)).toBeInTheDocument();
@@ -138,7 +203,7 @@ describe("HomePage", () => {
     expect(
       screen.getByText("2 files were not added: a session holds at most 10 payslips."),
     ).toBeInTheDocument();
-    for (const input of [fileInput(), screen.getByLabelText("Scan another")]) {
+    for (const input of [fileInput(), screen.getByLabelText("Scan payslip")]) {
       expect(input).toHaveAttribute("aria-disabled", "true");
       expect(input).toHaveAccessibleDescription("At most 10 payslips have been added.");
       expect(input).not.toBeDisabled();

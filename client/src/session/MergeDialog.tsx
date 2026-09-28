@@ -101,10 +101,10 @@ export function MergeDialog({
     }
   }
 
-  function label(payslip: PayslipSummary): string {
+  function period(payslip: PayslipSummary): string | null {
     return payslip.period
       ? formatField("period", payslip.period, i18n.language.startsWith("hr") ? "hr" : "en")
-      : payslip.originalFilename;
+      : null;
   }
 
   /** Where this document's pages land in the merged payslip. */
@@ -163,7 +163,6 @@ export function MergeDialog({
                   <SourceThumbnail payslipId={payslip.id} />
                   <div className="flex min-w-0 flex-col gap-1 text-sm">
                     <p className="font-semibold">{pagesOf(position, payslip.pageCount)}</p>
-                    <p>{t("session.position", { index: index(payslip.id) + 1 })}</p>
                     <p className="break-all text-slate-700">{payslip.originalFilename}</p>
                     <p className="text-slate-600">
                       {t("merge.pageCount", { count: payslip.pageCount })}
@@ -174,7 +173,7 @@ export function MergeDialog({
             ))}
           </ol>
           <p role="status" className="sr-only">
-            {swapped && ordered[0] ? t("merge.swapped", { index: index(ordered[0].id) + 1 }) : ""}
+            {swapped && ordered[0] ? t("merge.swapped", { name: ordered[0].originalFilename }) : ""}
           </p>
           <p className="mt-4 text-sm text-slate-700">{t("merge.consequence")}</p>
         </>
@@ -195,10 +194,11 @@ export function MergeDialog({
                 className="size-5 accent-accent"
               />
               <span className="flex min-w-0 flex-col">
-                <span className="font-semibold">
-                  {t("session.position", { index: index(payslip.id) + 1 })}
-                </span>
-                <span className="truncate">{label(payslip)}</span>
+                {/* The file name, as on the chips (Task 14 D11); the period only when read. */}
+                <span className="truncate font-semibold">{payslip.originalFilename}</span>
+                {period(payslip) === null ? null : (
+                  <span className="truncate">{period(payslip)}</span>
+                )}
                 <span className="flex items-center gap-2">
                   {statusIcon(payslip)}
                   {t(`payslipStatus.${payslip.status}`)}

@@ -157,7 +157,7 @@ The downstream consumer of the exported data is **deliberately unspecified**. Th
 
 **US-01 — Photograph a payslip.**
 As someone holding a paper payslip, I want to photograph it with my phone, so that I do not have to type forty numbers into a form.
-*Example:* I open the app on my phone, tap **Skeniraj platnu listu**, the camera opens, I photograph the A4 sheet on my desk, and within about ten seconds I am looking at a filled-in form.
+*Example:* I open the app on my phone, tap **Skenirajte platnu listu**, the camera opens, I photograph the A4 sheet on my desk, and within about ten seconds I am looking at a filled-in form.
 
 **US-02 — Upload several payslips at once.**
 As someone with three months of payslips as PDFs, I want to select all three at once, so that I do not repeat the same upload flow three times.
@@ -189,11 +189,11 @@ As someone who photographed a two-page payslip as two separate images, I want to
 
 **US-09 — Export the data.**
 As someone who has finished reviewing, I want to download the confirmed payslips as JSON or CSV, so that I can use the data elsewhere.
-*Example:* I tap **Preuzmi**, choose JSON, and get a file containing all three payslips with their full line-item tables.
+*Example:* I tap **Preuzmite JSON**, and get a file containing all three payslips with their full line-item tables.
 
 **US-10 — Come back later.**
 As someone interrupted mid-review, I want to find my session again, so that I do not start over.
-*Example:* I close the tab, sign in tomorrow, open **Povijest**, and re-enter the session with my edits intact.
+*Example:* I close the tab, sign in tomorrow, open **Platne liste**, and re-enter the session with my edits intact.
 
 **US-11 — Recover from a failure.**
 As someone whose upload failed, I want to know why and try again, so that one bad file does not end the session.
@@ -486,9 +486,9 @@ prototypes/payslip-ocr/
 
 **Purpose.** Get one or more payslips into the system with the fewest taps.
 
-**Requirements.** Device-adaptive pickers driven by `(pointer: coarse)`: on a phone, a primary **Skeniraj** button (`capture="environment"`) plus a permanently visible **Odaberi datoteku**; on desktop, file choice only. The file input accepts **multiple files**, capped at ten per upload. Accepted types are sniffed from the **bytes**, not the filename: JPEG, PNG, HEIC/HEIF, PDF. Images over 2 MP or 1.5 MB are re-encoded to a 1,600 px long edge at quality 0.82, and the preview is built from the exact bytes that upload. Advisory blur and resolution warnings are shown but never block.
+**Requirements.** Device-adaptive pickers driven by `(pointer: coarse)`: on a phone, a primary **Skenirajte platnu listu** button (`capture="environment"`) plus a permanently visible **Odaberite datoteke**; on desktop, file choice only. The Croatian copy uses the polite "vi" imperative throughout (Task 14). The file input accepts **multiple files**, capped at ten per upload. Accepted types are sniffed from the **bytes**, not the filename: JPEG, PNG, HEIC/HEIF, PDF. An image whose long edge exceeds 3,000 px is re-encoded to a 3,000 px long edge, and any other image over 4 MB at its own size, at quality 0.82 (Task 14; the long edge is what keeps text legible when zoomed, and accuracy was measured on original bytes). The preview is built from the exact bytes that upload. Advisory blur and resolution warnings are shown but never block.
 
-Selected files collect in a **tray** before anything uploads (Task 07): each **Skeniraj** press opens the camera once and adds one photo, since `capture` opens a single-shot camera on which `multiple` is ignored or unreliable; **Odaberi datoteku** adds several at once. The tray stops at ten and says how many were left out. An image the browser cannot decode (HEIC outside Safari) is shown as a file card with a note instead of a preview, and its **original bytes** upload: the service decodes HEIC, so it is not refused.
+Selected files collect in a **tray** before anything uploads (Task 07): each **Skenirajte platnu listu** press opens the camera once and adds one photo, since `capture` opens a single-shot camera on which `multiple` is ignored or unreliable; **Odaberite datoteke** adds several at once. The tray stops at ten and says how many were left out. An image the browser cannot decode (HEIC outside Safari) is shown as a file card with a note instead of a preview, and its **original bytes** upload: the service decodes HEIC, so it is not refused.
 
 ### 7.3 Session and payslip creation
 
@@ -522,10 +522,19 @@ Since Task 08: a value printed across several lines has one outline per line. Ev
 
 **Requirements.** Two controls, deliberately not one — established document-review practice splits document selection from page navigation, and the two levels are semantically different (payslips are alternatives to each other; pages are sequential parts of one thing).
 
-- **Payslips:** a horizontal scroll-snap chip rail below `xl`, a vertical list at `xl`. Each chip carries its position, period (or filename), status icon with text, and an unsaved-edits mark when needed. No thumbnails: letterheads within a session look alike. Implemented as a `tablist` with **manual activation**, since the panel swaps a rendered preview and a whole form. A truncated rail shows a `+N` badge on the last visible chip, and the next chip peeks ~24 px.
+- **Payslips:** a horizontal scroll-snap chip rail above the selected payslip at every width (Task 14; the vertical list at `xl` is superseded). Each chip carries the file name, its status icon with text, and an unsaved-edits mark when needed; there is no position number and no period. No thumbnails: letterheads within a session look alike. A chip whose payslip is still being read is `aria-disabled`: arrow keys still reach it, it does not open, and it is dimmed besides carrying its status text. Implemented as a `tablist` with **manual activation**, since the panel swaps a rendered preview and a whole form. A truncated rail shows a `+N` badge on the last visible chip, and the next chip peeks ~24 px.
 - **Pages:** a pager pill inside the preview (`‹ Stranica 2 od 3 ›`) that opens a thumbnail sheet on tap; at `lg`, a 72 px vertical page rail inside the source panel. Marked up as a `<nav>` with `aria-current="page"`, never a tablist nested inside a tabpanel.
 
 **Rules.** Every rail control has a hit box of at least 48 CSS px. Selection is never indicated by colour alone. The preview displays one page at a time; every page is reachable from the pager, sheet or rail, none only by horizontal scroll. Single-page payslips show no page navigator.
+
+Settled in Task 14:
+
+- **Loading screen.** Until one payslip can be opened (`review`, `confirmed` or `failed`) and while anything is still being read or uploaded, the review route shows a full-screen "Preparing your payslips" state. Without a `?payslip=`, the first readable payslip in list order opens, or else the first failed one. A failed payslip ends the wait, since it is a result the user can act on. Every payslip failed, or every upload rejected, shows the page at once.
+- **Layout.** A "Back to payslips" link and a heading counted by payslip ("Review payslips") sit above the rail. At `lg` the page uses the full main width and splits form and document 1:1.
+- **The document fits its column's width on desktop.** At `lg` the frame is the column's width by the screen height below the header, and zoom 1 is the page at that width. A plain wheel scrolls the document and, at its top or bottom edge, the page; Ctrl + wheel (and a trackpad pinch) zooms about the cursor; zoom-out stops at the whole page; reset returns to the page's width at the top. A phone keeps the whole page at zoom 1, in a frame budgeted in `svh`, so it does not resize as the address bar hides.
+- **Pinch.** Two fingers on the document zoom it about their midpoint, not the page; one finger pans once it overflows. Lifting the fingers opens no outline.
+- **Sharp PDFs.** 200 ms after the zoom settles, a PDF page is redrawn at that zoom within a pixel budget (16,777,216 px on a coarse pointer, 33,554,432 otherwise), off screen, and copied over so nothing blanks. At fit it is drawn at 2.5× as before.
+- **Page changes** keep the viewer mounted with a spinner over it until the next page is measured, so the page does not jump.
 
 ### 7.7 Review form
 
@@ -542,8 +551,8 @@ Settled in Task 09:
 - **Line breaks** in a stored value are joined into a space in its single-line input. Only changed fields are sent on save, so an untouched value keeps its breaks.
 - **Line items by tables status.** While the tables pass is `pending`, the three tables are a read-only skeleton, because that pass would overwrite an earlier edit; once `failed`, each says so and rows can be added by hand.
 - **Unsaved edits** are kept per payslip in the tab while the user switches payslips, goes Back or leaves the session; the browser prompts on reload. They are not persisted across reload or sign-out.
-- **Phone keyboard layout (Task 10).** While typing on a coarse-pointer device below `lg`, a fixed 64 px source strip shows the active field's first safe region, or an explicit no-outline note. The bottom navigation and action bar hide until focus leaves the input. `interactive-widget=resizes-content` and `visualViewport` offsets support keyboard resizing; real-iPhone verification remains M2.
-- **A sticky action bar** holds the unsaved indicator, Save, and Confirm with the visible reason it is unavailable. Controls are at least 48 px.
+- **Phone keyboard layout (Task 10).** While typing on a coarse-pointer device below `lg`, a fixed 64 px source strip shows the active field's first safe region, or an explicit no-outline note. The bottom navigation hides until focus leaves the input. `interactive-widget=resizes-content` and `visualViewport` offsets support keyboard resizing; real-iPhone verification remains M2.
+- **An action block at the end of the form** holds the unsaved indicator, Save, and Confirm with the visible reason it is unavailable. Controls are at least 48 px. It sits in flow after the last table (Task 14, superseding Task 09's sticky bar), and is not hidden while typing, since hiding an in-flow block would move the form under the finger.
 - **Format errors** (text that will not parse on save) are validation failures: red text under the input, `aria-invalid`, and a form-level alert on a failed save. They are visible in both the table and the card layout.
 - **Region interaction.** At `lg`, clicking an outline focuses its input; on a phone it opens the popover, whose Edit does. Escape closes the popover.
 
@@ -594,7 +603,7 @@ Task 09 narrowed both:
 
 **Purpose.** Find and re-open past work.
 
-**Requirements.** A flat, paginated list of payslips — mirroring receipt-ocr's existing screen rather than redesigning it — with a status filter, cards on phone and a table at `lg`. Each row links back into its Session's review screen. Soft delete. Per-payslip and all-confirmed export.
+**Requirements.** A flat, paginated list of payslips — mirroring receipt-ocr's existing screen rather than redesigning it — with a status filter, cards on phone and a table at `lg`. Since Task 14 it is reached as **Payslips** / **Platne liste** at `/payslips` (no redirect from `/history`), titled "Your payslips", and words its statuses for a list (Processing, Needs review, Confirmed, Failed / U obradi, Za pregled, Potvrđena, Neuspješna). Each row links back into its Session's review screen. Soft delete. Per-payslip and all-confirmed export.
 
 ### 7.11 Export
 
@@ -828,8 +837,15 @@ Ground truth is built from the native-text PDFs and **spot-checked by the produc
 | Single payslip, upload to **first usable form** | **≤ 10 s** per page, warm |
 | Single payslip, upload to complete form incl. line items | ≤ 25 s |
 | Four payslips in parallel (cap 3) | ≤ 25 s wall clock |
-| Time to interactive review screen after upload starts | ≤ 3 s (skeleton state) |
+| Time to the review route after upload starts | ≤ 3 s (a loading screen until the first payslip is read, Task 14) |
 | Cost per page | ≈ $0.01–0.02 |
+
+Since Task 14 the ≤3 s review-route target depends on the uplink. Photos keep up to a 3,000 px
+long edge, so a typical 12 MP phone photo uploads at about 1 MB instead of 0.35 MB. Measured in the
+Task 14 review: **3.5 s** to the first `201` (Task 07: 2.27 s), of which the larger upload is
++1.5 s at about 4 Mbit/s. One camera photo meets ≤3 s from roughly 8 Mbit/s up. The product owner
+accepted this on 2026-09-28 in favour of sharp photos
+([`history/14`](./.agents/history/14-ui-ux-iteration.md)).
 
 Render's free tier adds a cold start that is outside these targets: **22.4 s** to the first `200`, measured twice after 20+ minutes idle (Task 13). Warm the service before a demo.
 

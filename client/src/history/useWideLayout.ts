@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
 
 /**
- * `lg` remains the default; Task 10's three-zone session layout starts at `xl`.
+ * `lg`, where every wide layout starts since Task 14 put the session rail on top at every width.
  */
 export const LG = "(min-width: 1024px)";
-export const XL = "(min-width: 1280px)";
 
 function wide(query: string): boolean {
   // No matchMedia (jsdom, very old browsers): fall back to the card list, which is the layout

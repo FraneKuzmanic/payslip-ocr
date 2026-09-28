@@ -43,9 +43,11 @@ export function AppLayout() {
 
         <div className="flex min-h-0 flex-1">
           {signedIn ? (
+            // Sticky below the 4rem header, so the destinations stay in place while the page
+            // scrolls (Task 14 D15).
             <nav
               aria-label={t("common.mainNav")}
-              className="hidden w-60 shrink-0 border-r border-slate-200 bg-white p-3 lg:block"
+              className="hidden w-60 shrink-0 border-r border-slate-200 bg-white p-3 lg:sticky lg:top-16 lg:block lg:h-[calc(100dvh-4rem)] lg:self-start lg:overflow-y-auto"
             >
               <ul className="flex flex-col gap-1">
                 <NavItems />

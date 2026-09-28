@@ -1,8 +1,8 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import i18n from "../i18n";
-import { ZoomableSourceViewport } from "./ZoomableSourceViewport";
+import { ZoomableSourceViewport, type SourceFit } from "./ZoomableSourceViewport";
 
 const regions = [
   {
@@ -18,10 +18,11 @@ const regions = [
   },
 ];
 
-function renderViewport(onSelect?: (field: string) => void) {
+function renderViewport(onSelect?: (field: string) => void, fit: SourceFit = "page") {
   return render(
     <ZoomableSourceViewport
       ratio={0.8}
+      fit={fit}
       overlaySafe
       regions={regions}
       page={1}
@@ -41,6 +42,126 @@ function renderViewport(onSelect?: (field: string) => void) {
 
 beforeEach(async () => {
   await i18n.changeLanguage("en");
+});
+
+/**
+ * jsdom lays nothing out, so the frame reports the size a 600 px column with a 500 px height budget
+ * would. At ratio 0.8 the page at that width is 600 × 750, taller than its frame (Task 14 D17).
+ */
+function stubFrame(width = 600, height = 500) {
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(width);
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(height);
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
+    new DOMRect(0, 0, width, height),
+  );
+}
+
+/** The frame is the element that carries the pointer handlers: the transformed layer's parent. */
+function frameOf(container: HTMLElement) {
+  return layerOf(container).parentElement!;
+}
+
+function layerOf(container: HTMLElement) {
+  return container.querySelector<HTMLElement>("[style*='transform']")!;
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
+
+describe("ZoomableSourceViewport fit and gestures (Task 14)", () => {
+  it("no longer shows the tap-a-highlight hint (D16)", () => {
+    renderViewport(vi.fn());
+    expect(screen.queryByText(/Tap a highlighted value/)).toBeNull();
+  });
+
+  it("sizes the layer to the page at the column's width when fitting the width (D17)", () => {
+    stubFrame();
+    const { container } = renderViewport(vi.fn(), "width");
+    expect(layerOf(container).style.width).toBe("600px");
+    expect(layerOf(container).style.height).toBe("750px");
+    expect(frameOf(container).style.height).toBe("var(--source-height, 65svh)");
+  });
+
+  it("keeps the page's own box when fitting the page, in svh (D21)", () => {
+    stubFrame(400, 500);
+    const { container } = renderViewport(vi.fn(), "page");
+    expect(frameOf(container).style.width).toBe("min(100%, var(--source-height, 65svh) * 0.8)");
+    expect(layerOf(container).style.width).toBe("400px");
+    expect(layerOf(container).style.height).toBe("500px");
+  });
+
+  it("scrolls the document with a plain wheel, then lets the page scroll at its edge (D17)", () => {
+    stubFrame();
+    const { container } = renderViewport(vi.fn(), "width");
+    const frame = frameOf(container);
+
+    const down = fireEvent.wheel(frame, { deltaY: 100 });
+    expect(down).toBe(false); // consumed: the document moved
+    expect(layerOf(container).style.transform).toBe("translate(0px, -100px) scale(1)");
+    expect(screen.getByText("Zoom 100%")).toBeInTheDocument();
+
+    fireEvent.wheel(frame, { deltaY: 1000 });
+    expect(layerOf(container).style.transform).toBe("translate(0px, -250px) scale(1)");
+    const past = fireEvent.wheel(frame, { deltaY: 100 });
+    expect(past).toBe(true); // not consumed: the page scrolls on
+  });
+
+  it("zooms with Ctrl + wheel about the cursor (D17)", () => {
+    stubFrame();
+    const { container } = renderViewport(vi.fn(), "width");
+    fireEvent.wheel(frameOf(container), { deltaY: -100, ctrlKey: true, clientX: 300, clientY: 0 });
+    expect(screen.getByText("Zoom 150%")).toBeInTheDocument();
+  });
+
+  it("zooms out no further than the whole page, and resets to the page width at the top", async () => {
+    stubFrame();
+    const { container } = renderViewport(vi.fn(), "width");
+    const zoomOut = screen.getByRole("button", { name: "Zoom out" });
+    const reset = screen.getByRole("button", { name: "Fit to view" });
+    expect(zoomOut).toBeEnabled();
+    expect(reset).toBeDisabled();
+
+    await userEvent.click(zoomOut);
+    expect(screen.getByText("Zoom 67%")).toBeInTheDocument();
+    expect(zoomOut).toBeDisabled();
+
+    await userEvent.click(reset);
+    expect(screen.getByText("Zoom 100%")).toBeInTheDocument();
+    expect(layerOf(container).style.transform).toBe("translate(0px, 0px) scale(1)");
+  });
+
+  it("disables zoom-out at fit when the page fits its frame", () => {
+    stubFrame(400, 500);
+    renderViewport(vi.fn(), "page");
+    expect(screen.getByRole("button", { name: "Zoom out" })).toBeDisabled();
+  });
+
+  it("zooms the document when two fingers move apart, and the lift opens no outline (D19)", () => {
+    vi.useFakeTimers();
+    stubFrame(400, 500);
+    const { container } = renderViewport(vi.fn(), "page");
+    const frame = frameOf(container);
+    expect(frame).toHaveClass("touch-pan-y");
+
+    fireEvent.pointerDown(frame, { pointerId: 1, clientX: 150, clientY: 200 });
+    fireEvent.pointerDown(frame, { pointerId: 2, clientX: 250, clientY: 200 });
+    fireEvent.pointerMove(frame, { pointerId: 2, clientX: 350, clientY: 200 });
+    expect(screen.getByText("Zoom 200%")).toBeInTheDocument();
+    expect(frame).toHaveClass("touch-none");
+
+    const polygon = container.querySelector("polygon")!;
+    fireEvent.pointerUp(frame, { pointerId: 2 });
+    fireEvent.pointerUp(frame, { pointerId: 1 });
+    fireEvent.click(polygon);
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    // The suppression lasts for that one click only.
+    act(() => vi.runAllTimers());
+    fireEvent.click(polygon);
+    expect(screen.getByRole("dialog", { name: "Net pay" })).toBeInTheDocument();
+  });
 });
 
 describe("ZoomableSourceViewport's popover (Task 09 D9)", () => {
