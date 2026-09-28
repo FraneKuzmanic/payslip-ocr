@@ -252,4 +252,15 @@ owner chose to keep 3,000 px and record the miss (2026-09-28)**: PRD §11.4 and 
 2. Open item 1 is closed (finding 3). Open item 2's D20 cause is **confirmed** by the reproduction
    above. Open items 3–6 stand; items 4 and 5 read as natural at 1366 and 1920, and
    `--source-height` needs no change.
-3. Commit and subtree push wait for the product owner's go-ahead.
+3. ~~Commit and subtree push wait for the product owner's go-ahead.~~ Done, see below.
+
+### Commit and deploy
+
+Committed as `37e3d8e` on the product owner's go-ahead ("at the first sweep it looks fine; changes
+go to a future iteration"), subtree-pushed to `payslip-github` (`70251f6..526402c`). CI passed and
+Render deployed: the live client's title reads "Payslip Scanner", `/api/health` answers, and
+`check:secrets -- --url` on the live bundle is ok (6 files; a referenced `/assets/qcms_bg.js`
+answers 404 and is skipped with a note).
+
+Next: the product owner's Android check (D19–D21 on the deployed app), then the Task 13 device
+sitting.
