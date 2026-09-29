@@ -1,6 +1,6 @@
 import { fireEvent, render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { SourceOverlay } from "./SourceOverlay";
+import { OUTLINE_GAP_PX, SourceOverlay, padCorners } from "./SourceOverlay";
 
 const regions = [
   {
@@ -16,7 +16,70 @@ const regions = [
   },
 ];
 
+const pointsOf = (polygon: Element | null) =>
+  polygon!
+    .getAttribute("points")!
+    .split(" ")
+    .map((pair) => pair.split(",").map(Number));
+
+describe("padCorners (Task 15 D13)", () => {
+  it("grows each side of a rectangle by the pad", () => {
+    const padded = padCorners(regions[0]!.corners, 0.01, 0.02);
+    expect(padded[0]!.x).toBeCloseTo(0.09);
+    expect(padded[0]!.y).toBeCloseTo(0.08);
+    expect(padded[2]!.x).toBeCloseTo(0.31);
+    expect(padded[2]!.y).toBeCloseTo(0.22);
+  });
+
+  it("still grows a quad of zero height", () => {
+    const flat = [
+      { x: 0.1, y: 0.5 },
+      { x: 0.3, y: 0.5 },
+      { x: 0.3, y: 0.5 },
+      { x: 0.1, y: 0.5 },
+    ];
+    const padded = padCorners(flat, 0.01, 0.01);
+    expect(padded).toHaveLength(4);
+    expect(padded[0]!.x).toBeCloseTo(0.09);
+    expect(padded[2]!.x).toBeCloseTo(0.31);
+  });
+});
+
 describe("SourceOverlay", () => {
+  it("pads the outline outward by a constant screen gap, beside the text (Task 15 D13)", () => {
+    const { container } = render(
+      <SourceOverlay
+        regions={regions}
+        page={1}
+        activeField={null}
+        editedFields={[]}
+        onSelect={vi.fn()}
+        rendered={{ width: 300, height: 150 }}
+      />,
+    );
+    const [first, , third] = pointsOf(container.querySelector("polygon"));
+    expect(first![0]).toBeCloseTo(0.1 - OUTLINE_GAP_PX / 300);
+    expect(first![1]).toBeCloseTo(0.1 - OUTLINE_GAP_PX / 150);
+    expect(third![0]).toBeCloseTo(0.3 + OUTLINE_GAP_PX / 300);
+    expect(third![1]).toBeCloseTo(0.2 + OUTLINE_GAP_PX / 150);
+  });
+
+  it("draws the quad itself without a rendered size, and a 1 px stroke at rest", () => {
+    const { container } = render(
+      <SourceOverlay
+        regions={regions}
+        page={1}
+        activeField={null}
+        editedFields={[]}
+        onSelect={vi.fn()}
+      />,
+    );
+    const outline = container.querySelector("polygon");
+    expect(pointsOf(outline)[0]).toEqual([0.1, 0.1]);
+    expect(outline).toHaveAttribute("stroke-width", "1");
+    expect(outline).toHaveAttribute("fill-opacity", "0");
+  });
+
   it("renders accessible decoration and selects the canonical field", () => {
     const onSelect = vi.fn();
     const { container } = render(
@@ -33,7 +96,7 @@ describe("SourceOverlay", () => {
     const outline = container.querySelector("polygon");
     expect(overlay).toHaveAttribute("aria-hidden", "true");
     expect(outline).toHaveAttribute("vector-effect", "non-scaling-stroke");
-    expect(outline).toHaveAttribute("stroke-width", "2.5");
+    expect(outline).toHaveAttribute("stroke-width", "2");
     fireEvent.click(outline!);
     expect(onSelect).toHaveBeenCalledWith("total");
   });

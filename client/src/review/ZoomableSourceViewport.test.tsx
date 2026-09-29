@@ -92,20 +92,22 @@ describe("ZoomableSourceViewport fit and gestures (Task 14)", () => {
     expect(layerOf(container).style.height).toBe("500px");
   });
 
-  it("scrolls the document with a plain wheel, then lets the page scroll at its edge (D17)", () => {
+  it("zooms with a plain wheel about the cursor, and never lets the page scroll (Task 15 D8)", () => {
     stubFrame();
     const { container } = renderViewport(vi.fn(), "width");
     const frame = frameOf(container);
 
-    const down = fireEvent.wheel(frame, { deltaY: 100 });
-    expect(down).toBe(false); // consumed: the document moved
-    expect(layerOf(container).style.transform).toBe("translate(0px, -100px) scale(1)");
-    expect(screen.getByText("Zoom 100%")).toBeInTheDocument();
+    const zoomIn = fireEvent.wheel(frame, { deltaY: -100, clientX: 300, clientY: 0 });
+    expect(zoomIn).toBe(false); // consumed
+    expect(screen.getByText("Zoom 150%")).toBeInTheDocument();
 
-    fireEvent.wheel(frame, { deltaY: 1000 });
-    expect(layerOf(container).style.transform).toBe("translate(0px, -250px) scale(1)");
-    const past = fireEvent.wheel(frame, { deltaY: 100 });
-    expect(past).toBe(true); // not consumed: the page scrolls on
+    fireEvent.wheel(frame, { deltaY: 100, clientX: 300, clientY: 0 });
+    fireEvent.wheel(frame, { deltaY: 100, clientX: 300, clientY: 0 });
+    expect(screen.getByText("Zoom 67%")).toBeInTheDocument();
+    // At the whole page a further zoom-out changes nothing, and the page still does not scroll.
+    const past = fireEvent.wheel(frame, { deltaY: 100, clientX: 300, clientY: 0 });
+    expect(past).toBe(false);
+    expect(screen.getByText("Zoom 67%")).toBeInTheDocument();
   });
 
   it("zooms with Ctrl + wheel about the cursor (D17)", () => {

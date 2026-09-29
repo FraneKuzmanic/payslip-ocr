@@ -107,20 +107,6 @@ export function centreOn(
   );
 }
 
-/**
- * Pans by a wheel delta (Task 14 D17). At an edge the state comes back equal, which the caller reads
- * as "let the page scroll on", as nested scrolling does.
- */
-export function panBy(
-  state: ZoomState,
-  viewport: Viewport,
-  content: Viewport,
-  dx: number,
-  dy: number,
-): ZoomState {
-  return clampPan({ ...state, x: state.x + dx, y: state.y + dy }, viewport, content);
-}
-
 export interface PinchPoint {
   /** Distance between the two fingers, in viewport pixels. */
   distance: number;

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { canonicalPayslipFieldsSchema, payslipSchema } from "./payslip.js";
 import { extractionFailureReasonSchema, payslipStatusSchema, sessionSchema } from "./session.js";
-import { sourceContentTypeSchema } from "./upload.js";
+import { MAX_PAYSLIPS_PER_SESSION, sourceContentTypeSchema } from "./upload.js";
 
 /**
  * Response bodies are parsed leniently; request bodies are not.
@@ -117,9 +117,10 @@ export const sessionDetailResponseSchema = sessionSchema
   .pick({ id: true, createdAt: true })
   .extend({
     payslips: z.array(payslipSummarySchema),
-    // Pairs that look like pages of one payslip (plan 11 D5). The default is load-bearing: the
-    // static client can deploy before the API, and a new bundle must parse an old API's body.
-    mergeSuggestions: z.array(z.tuple([z.uuid(), z.uuid()])).default([]),
+    // Groups of two or more that look like pages of one payslip (plan 11 D5, Task 15b D7). The
+    // default is load-bearing: the static client can deploy before the API, and a new bundle must
+    // parse an old API's body.
+    mergeSuggestions: z.array(z.array(z.uuid()).min(2)).default([]),
   })
   .strip();
 
@@ -180,23 +181,28 @@ export type RetryPayslipResponse = z.infer<typeof retryPayslipResponseSchema>;
 /**
  * PRD §10.11 — `POST /api/sessions/:id/merge`
  *
- * `order` is the page order of the merged PDF, so it must be the same two payslips.
+ * Two or more of the session's payslips (Task 15b D4). `order` is the page order of the merged
+ * PDF, so it must name the same payslips, each once. A two-payslip body is unchanged from Task 11.
  */
+const mergeIdsSchema = z.array(z.uuid()).min(2).max(MAX_PAYSLIPS_PER_SESSION);
+
 export const mergePayslipsRequestSchema = z
   .object({
-    payslipIds: z.tuple([z.uuid(), z.uuid()]),
-    order: z.tuple([z.uuid(), z.uuid()]),
+    payslipIds: mergeIdsSchema,
+    order: mergeIdsSchema,
   })
   .strict()
-  .refine(({ payslipIds: [first, second] }) => first !== second, {
+  .refine(({ payslipIds }) => new Set(payslipIds).size === payslipIds.length, {
     message: "A payslip cannot be merged with itself",
     path: ["payslipIds"],
   })
   .refine(
     ({ payslipIds, order }) =>
-      order[0] !== order[1] && order.every((id) => payslipIds.includes(id)),
+      order.length === payslipIds.length &&
+      new Set(order).size === order.length &&
+      order.every((id) => payslipIds.includes(id)),
     {
-      message: "order must list the two payslips being merged",
+      message: "order must list the payslips being merged",
       path: ["order"],
     },
   );

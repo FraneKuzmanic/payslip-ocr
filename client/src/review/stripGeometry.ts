@@ -30,13 +30,3 @@ export function isObscured(
 ) {
   return rect.top < visibleTop || rect.bottom > visibleBottom;
 }
-
-/** Chips beyond the last completely visible tab; the badge stays on that visible tab. */
-export function overflowAfter(
-  visible: readonly boolean[],
-): { index: number; count: number } | null {
-  const index = visible.lastIndexOf(true);
-  return index < 0 || index === visible.length - 1
-    ? null
-    : { index, count: visible.length - index - 1 };
-}

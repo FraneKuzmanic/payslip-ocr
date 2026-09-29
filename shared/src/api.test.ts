@@ -162,19 +162,30 @@ describe("payslipSummarySchema (PRD §10.4)", () => {
   });
 });
 
-describe("mergePayslipsRequestSchema (PRD §10.11)", () => {
+describe("mergePayslipsRequestSchema (PRD §10.11, Task 15b D4)", () => {
+  const ELEVEN = Array.from(
+    { length: 11 },
+    (_, index) => `${String(index).padStart(8, "0")}-0000-4000-8000-000000000000`,
+  );
+
   it.each([
     { payslipIds: [ID_A, ID_B], order: [ID_A, ID_B] },
     { payslipIds: [ID_A, ID_B], order: [ID_B, ID_A] },
+    { payslipIds: [ID_A, ID_B, USER], order: [USER, ID_A, ID_B] },
+    { payslipIds: ELEVEN.slice(0, 10), order: ELEVEN.slice(0, 10).toReversed() },
   ])("accepts %j", (body) => {
     expect(mergePayslipsRequestSchema.safeParse(body).success).toBe(true);
   });
 
   it.each([
+    ["one id", { payslipIds: [ID_A], order: [ID_A] }],
+    ["eleven ids", { payslipIds: ELEVEN, order: ELEVEN }],
     ["identical ids", { payslipIds: [ID_A, ID_A], order: [ID_A, ID_A] }],
+    ["a repeated id among three", { payslipIds: [ID_A, ID_B, ID_A], order: [ID_A, ID_B, USER] }],
     ["an order naming another payslip", { payslipIds: [ID_A, ID_B], order: [ID_A, USER] }],
     ["an order repeating one payslip", { payslipIds: [ID_A, ID_B], order: [ID_A, ID_A] }],
-    ["three ids", { payslipIds: [ID_A, ID_B, USER], order: [ID_A, ID_B, USER] }],
+    ["an order shorter than the ids", { payslipIds: [ID_A, ID_B, USER], order: [ID_A, ID_B] }],
+    ["an order longer than the ids", { payslipIds: [ID_A, ID_B], order: [ID_A, ID_B, USER] }],
     ["an extra key", { payslipIds: [ID_A, ID_B], order: [ID_A, ID_B], force: true }],
   ])("rejects %s", (_name, body) => {
     expect(mergePayslipsRequestSchema.safeParse(body).success).toBe(false);
@@ -187,11 +198,19 @@ describe("sessionDetailResponseSchema mergeSuggestions (plan 11 D5)", () => {
   it("defaults to no suggestions for an API that predates them", () => {
     expect(sessionDetailResponseSchema.parse(body).mergeSuggestions).toEqual([]);
   });
-  it("carries pairs", () => {
+  it("carries groups of two or more (Task 15b D7)", () => {
+    const mergeSuggestions = [
+      [ID_A, USER],
+      [ID_A, ID_B, USER],
+    ];
     expect(
-      sessionDetailResponseSchema.parse({ ...body, mergeSuggestions: [[ID_A, USER]] })
-        .mergeSuggestions,
-    ).toEqual([[ID_A, USER]]);
+      sessionDetailResponseSchema.parse({ ...body, mergeSuggestions }).mergeSuggestions,
+    ).toEqual(mergeSuggestions);
+  });
+  it("rejects a group of one", () => {
+    expect(
+      sessionDetailResponseSchema.safeParse({ ...body, mergeSuggestions: [[ID_A]] }).success,
+    ).toBe(false);
   });
   it("rejects an id that is not a UUID", () => {
     expect(

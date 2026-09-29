@@ -1,5 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TablesStatus } from "@payslip/shared";
@@ -29,13 +30,16 @@ const none: AttentionSignals = { warnings: [], lowConfidenceFields: [], unground
 function Harness({
   tablesStatus = "ready",
   signals = none,
+  initiallyExpanded = true,
 }: {
   tablesStatus?: TablesStatus;
   signals?: AttentionSignals;
+  initiallyExpanded?: boolean;
 }) {
   const { control, register, handleSubmit, formState } = useForm<ReviewFormValues>({
     defaultValues: values,
   });
+  const [expanded, setExpanded] = useState(initiallyExpanded);
   return (
     <form onSubmit={handleSubmit(() => {})}>
       <LineItemSection
@@ -45,6 +49,8 @@ function Harness({
         tablesStatus={tablesStatus}
         signals={signals}
         errors={formState.errors}
+        expanded={expanded}
+        onToggle={() => setExpanded((open) => !open)}
       />
       <button type="submit">Save</button>
     </form>
@@ -201,5 +207,40 @@ describe("LineItemSection", () => {
     );
 
     expect(screen.getByText("The pay components do not add up to gross pay.")).toBeInTheDocument();
+  });
+});
+
+describe("LineItemSection disclosure (Task 15 D9, D14)", () => {
+  beforeEach(() => stubWide(true));
+
+  it("hides its rows while closed but keeps them mounted, and names its row count", async () => {
+    render(<Harness initiallyExpanded={false} />);
+    const toggle = screen.getByRole("button", { name: /^Pay components/ });
+
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(toggle).toHaveTextContent("2 rows");
+    expect(document.getElementById("review-field-payComponents-0-naziv")).not.toBeVisible();
+
+    await userEvent.click(toggle);
+    expect(document.getElementById("review-field-payComponents-0-naziv")).toBeVisible();
+  });
+
+  it("says the tables are pending in its header", () => {
+    render(<Harness tablesStatus="pending" initiallyExpanded={false} />);
+
+    expect(screen.getByRole("button", { name: /^Pay components/ })).toHaveTextContent(
+      "Line items still loading",
+    );
+  });
+
+  it("adds a row with a text action rather than an outlined button", async () => {
+    render(<Harness />);
+    const add = screen.getByRole("button", { name: "Add row" });
+
+    expect(add.className).not.toMatch(/\bborder\b/);
+    expect(add).toHaveClass("underline");
+    await userEvent.click(add);
+
+    expect(document.getElementById("review-field-payComponents-2-naziv")).toBeInTheDocument();
   });
 });

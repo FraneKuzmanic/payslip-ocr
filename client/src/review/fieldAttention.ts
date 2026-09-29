@@ -28,6 +28,19 @@ export function attentionFor(path: string, signals: AttentionSignals): Attention
 }
 
 /**
+ * How many things in a section ask to be checked (Task 15 D9): its paths with an attention note,
+ * plus any warnings about the section as a whole. Shown on the section's header, so a collapsed
+ * section still says it needs a look.
+ */
+export function attentionCount(
+  paths: readonly string[],
+  signals: AttentionSignals,
+  warnings: readonly unknown[] = [],
+): number {
+  return paths.filter((path) => attentionFor(path, signals) !== null).length + warnings.length;
+}
+
+/**
  * Warnings about a table as a whole, such as `pay_components_sum_mismatch` on `payComponents`.
  * No cell's lookup can match them, so they render under the table's legend.
  */

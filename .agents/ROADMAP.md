@@ -31,7 +31,8 @@ investigation and is recorded with its reasoning.
 2. **A Payslip owns Pages.** Pages are never reviewed or exported independently.
 3. **One Source File is always exactly one Payslip.** A three-page PDF is one payslip with three
    pages; each image is one payslip. Ten files per upload.
-4. **Merge is retained** for a payslip photographed as two files: automatic suggestion on
+4. **Merge is retained** for a payslip photographed as two or more files (several in one merge
+   since Task 15b): automatic suggestion on
    employee OIB + period, loosened to employer OIB + period when the employee OIB is missing,
    plus an always-available manual action. **No drag affordance** — a menu action satisfies
    WCAG 2.2 SC 2.5.7 with one implementation.
@@ -72,7 +73,7 @@ investigation and is recorded with its reasoning.
 - **Payslip validation as a product feature.** Arithmetic identities are computed, but only to
   raise review warnings — never to accept or reject a document.
 - **Splitting one uploaded file into several payslips.**
-- **Page reordering** beyond the swap offered at merge time.
+- **Page reordering** beyond the order chosen at merge time.
 - **Cross-payslip aggregation** ("average net over three months").
 - **Password reset, email verification, MFA, SSO** — inherited gaps, documented not fixed.
 - **Labelled samples in CU Studio** for layouts that resist zero-shot extraction.
@@ -102,6 +103,8 @@ investigation and is recorded with its reasoning.
 | 13 | Deploy & end-to-end verification | 🟡 reviewed, validated and deployed; journey 9.12 passed; device sitting pending → [`history/13`](./history/13-deploy-end-to-end.md) |
 
 Task 14 — UI/UX iteration (first post-roadmap iteration): plan → [`plans/14-ui-ux-iteration.md`](./plans/14-ui-ux-iteration.md), record → [`history/14-ui-ux-iteration.md`](./history/14-ui-ux-iteration.md); reviewed and validated, journey 9.13 passed in Chromium; the product owner's Android check and the Task 13 device sitting follow it.
+
+Task 15 — review-flow iteration (second post-roadmap iteration): plan → [`plans/15-review-flow-iteration.md`](./plans/15-review-flow-iteration.md), record → [`history/15-review-flow-iteration.md`](./history/15-review-flow-iteration.md); reviewed and validated, journey 9.14 passed in Chromium at $0. Follow-up 15b (panel-icon sidebar toggle, a short Merge button, merging two or more payslips with grouped suggestions, sections opening at their defaults): plan → [`plans/15b-review-flow-follow-up.md`](./plans/15b-review-flow-follow-up.md), recorded in history/15; implemented, awaiting its review session. The product owner's Android check (Tasks 14 and 15) and the Task 13 device sitting follow it.
 
 ---
 
@@ -835,7 +838,7 @@ each is run separately and its result recorded in the owning task's history file
 | **Phone layout has no prior art** — every document-AI review UI found is desktop-only | Open until the Task 13 sitting | Task 10 implemented it; browser review passed. M2 on Android Chrome is the remaining test; iOS is the row below. Task 14 changed the viewer: in-app pinch, a whole-page frame in `svh` on the phone, fit width on desktop, and a mounted viewer across page changes |
 | **iOS keyboard fallback unverified** — Safari and Chrome on iOS do not honour `interactive-widget=resizes-content`, so the phone strip relies on the `visualViewport` fallback there | Open, no device (plan 13 D5) | Unit-tested and simulated in Chromium only. Anyone demoing on an iPhone is the first real test |
 | **Mirrored EXIF orientations** (2, 4, 5, 7) are not applied when merge converts an image to a PDF page | Accepted (history/11 open item 2) | Phone cameras do not write them; such a page stays as drawn |
-| **Three suggestion pairs for a three-page payslip** photographed as three files | Accepted (history/11 open item 3, plan 11 D5) | After one merge, the re-extracted payslip pairs with the third. By design, but noisy |
+| **Three suggestion pairs for a three-page payslip** photographed as three files | **Closed** (Task 15b) | Suggestions are groups: three files of one payslip raise one banner and merge in one step |
 | **Forked PDF library** — `@cantoo/pdf-lib` replaces `pdf-lib` because only the fork decrypts permissions-only PDFs (plan 11 D1) | Watch | A fork's maintenance is the risk. Upload validation and merge both depend on it; `source-file.test.ts` and `payslip-merge.test.ts` are the regression checks |
 | **Inherited gaps** — no password reset, unverified emails, Render cold starts (22.3–22.4 s, Task 13) | Accepted | Documented, not fixed. CI exists since Task 01b |
 | **Direct-write gap** — a signed-in user can update their own payslip's `status` or `canonical_data` through PostgREST, bypassing the API | **Closed** (Task 09 step P, 2026-09-26) | Every write, retry included, goes through a `security definer` function. `update` is revoked and `insert` narrowed to the six upload columns (migration `20260926081337`); `direct-writes.integration.ts` proves both on every run. The functions still accept any `jsonb`, so a direct RPC can store fields that fail the canonical schema, on the caller's own payslip only |

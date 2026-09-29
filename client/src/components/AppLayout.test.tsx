@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Session } from "@supabase/supabase-js";
 import { AuthContext, type AuthContextValue } from "../auth/AuthContext";
 import { AppLayout } from "./AppLayout";
@@ -39,12 +39,24 @@ function renderLayout(options: { path?: string; value?: Partial<AuthContextValue
   return { signOut };
 }
 
+beforeEach(() => {
+  localStorage.clear();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+/** The desktop sidebar; the bottom bar is the second navigation landmark. */
+const desktopNav = () => screen.getAllByRole("navigation", { name: "Main navigation" })[0]!;
+
 describe("AppLayout", () => {
   it("offers no navigation to a signed-out visitor", () => {
     renderLayout({ value: { session: null } });
 
     expect(screen.queryAllByRole("navigation")).toHaveLength(0);
     expect(screen.queryByRole("button", { name: "User menu" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Collapse menu" })).not.toBeInTheDocument();
     expect(screen.getByRole("status")).toBeEmptyDOMElement();
   });
 
@@ -146,5 +158,66 @@ describe("AppLayout", () => {
     await user.click(screen.getByText("capture screen"));
 
     expect(screen.queryByText("Signed in as")).not.toBeInTheDocument();
+  });
+
+  describe("collapsible sidebar (Task 15 D6)", () => {
+    it("collapses to icons and keeps every link reachable by name", async () => {
+      const user = userEvent.setup();
+      renderLayout();
+
+      // Task 15b D2: the trigger is in the header, before the app name, not in the nav list.
+      const toggle = screen.getByRole("button", { name: "Collapse menu" });
+      expect(within(desktopNav()).queryByRole("button")).not.toBeInTheDocument();
+      expect(
+        toggle.compareDocumentPosition(screen.getByRole("link", { name: "Payslip Scanner" })) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(toggle).toHaveAttribute("aria-expanded", "true");
+      expect(toggle).toHaveAttribute("aria-controls", "sidebar-nav-list");
+      await user.click(toggle);
+
+      const expand = screen.getByRole("button", { name: "Expand menu" });
+      expect(expand).toHaveAttribute("aria-expanded", "false");
+      for (const name of ["Scan", "Payslips"]) {
+        expect(within(desktopNav()).getByRole("link", { name })).toHaveAttribute("title", name);
+      }
+      expect(localStorage.getItem("payslip-ocr:sidebar-collapsed")).toBe("1");
+    });
+
+    it("gives the toggle a tooltip equal to its name in both states (Task 15b D2)", async () => {
+      const user = userEvent.setup();
+      renderLayout();
+
+      const toggle = screen.getByRole("button", { name: "Collapse menu" });
+      expect(toggle).toHaveAttribute("title", "Collapse menu");
+      await user.click(toggle);
+
+      expect(screen.getByRole("button", { name: "Expand menu" })).toHaveAttribute(
+        "title",
+        "Expand menu",
+      );
+    });
+
+    it("stays collapsed across a remount", () => {
+      localStorage.setItem("payslip-ocr:sidebar-collapsed", "1");
+      renderLayout();
+
+      expect(screen.getByRole("button", { name: "Expand menu" })).toBeInTheDocument();
+    });
+
+    it("renders expanded and still toggles when storage throws", async () => {
+      vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+        throw new Error("blocked");
+      });
+      vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+        throw new Error("blocked");
+      });
+      const user = userEvent.setup();
+      renderLayout();
+
+      await user.click(screen.getByRole("button", { name: "Collapse menu" }));
+
+      expect(screen.getByRole("button", { name: "Expand menu" })).toBeInTheDocument();
+    });
   });
 });

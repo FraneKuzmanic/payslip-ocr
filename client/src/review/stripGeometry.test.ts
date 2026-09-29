@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isObscured, overflowAfter, stripView } from "./stripGeometry";
+import { isObscured, stripView } from "./stripGeometry";
 
 const box = { width: 375, height: 64 };
 describe("stripView", () => {
@@ -33,11 +33,4 @@ it("detects inputs above and below the visible area", () => {
   expect(isObscured({ top: 50, bottom: 100 }, 64, 400)).toBe(true);
   expect(isObscured({ top: 380, bottom: 430 }, 64, 400)).toBe(true);
   expect(isObscured({ top: 64, bottom: 400 }, 64, 400)).toBe(false);
-});
-it("counts chips after the last fully visible chip", () => {
-  expect(overflowAfter([true, true, false, false, false])).toEqual({ index: 1, count: 3 });
-  expect(overflowAfter([true, false])).toEqual({ index: 0, count: 1 });
-  expect(overflowAfter([false, true, true])).toBeNull();
-  expect(overflowAfter([false])).toBeNull();
-  expect(overflowAfter([true])).toBeNull();
 });

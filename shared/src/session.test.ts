@@ -108,7 +108,7 @@ function candidate(id: string, fields: Partial<MergeCandidate> = {}): MergeCandi
   };
 }
 
-describe("mergeSuggestions (plan 11 D5)", () => {
+describe("mergeSuggestions (plan 11 D5, Task 15b D7)", () => {
   it("pairs the same employee OIB and period", () => {
     expect(mergeSuggestions([candidate("a"), candidate("b")])).toEqual([["a", "b"]]);
   });
@@ -171,12 +171,67 @@ describe("mergeSuggestions (plan 11 D5)", () => {
     ]);
   });
 
-  it("returns every matching pair in list order", () => {
+  it("returns three pages of one payslip as one group", () => {
     expect(mergeSuggestions([candidate("a"), candidate("b"), candidate("c")])).toEqual([
-      ["a", "b"],
-      ["a", "c"],
-      ["b", "c"],
+      ["a", "b", "c"],
     ]);
+  });
+
+  it("joins an unread employee OIB to the one employee of its employer", () => {
+    expect(
+      mergeSuggestions([candidate("a"), candidate("b", { employeeOib: null }), candidate("c")]),
+    ).toEqual([["a", "b", "c"]]);
+  });
+
+  it("leaves an unread employee OIB out when its employer has two employees that period", () => {
+    expect(
+      mergeSuggestions([
+        candidate("a"),
+        candidate("b", { employeeOib: "94577403194" }),
+        candidate("c", { employeeOib: null }),
+      ]),
+    ).toEqual([]);
+  });
+
+  it("still groups the two employees' own pages when an unread one is ambiguous", () => {
+    expect(
+      mergeSuggestions([
+        candidate("a"),
+        candidate("b", { employeeOib: "94577403194" }),
+        candidate("c", { employeeOib: null }),
+        candidate("d"),
+      ]),
+    ).toEqual([["a", "d"]]);
+  });
+
+  it("groups unread employee OIBs of one employer when no employee is known", () => {
+    expect(
+      mergeSuggestions([
+        candidate("a", { employeeOib: null }),
+        candidate("b", { employeeOib: null }),
+        candidate("c", { employeeOib: null }),
+      ]),
+    ).toEqual([["a", "b", "c"]]);
+  });
+
+  it("returns one group per period, in the order of each group's first member", () => {
+    expect(
+      mergeSuggestions([
+        candidate("a", { period: "2026-07" }),
+        candidate("b"),
+        candidate("c", { period: "2026-07" }),
+        candidate("d"),
+      ]),
+    ).toEqual([
+      ["a", "c"],
+      ["b", "d"],
+    ]);
+  });
+
+  it("keeps members in list order when an unread one comes first", () => {
+    expect(
+      mergeSuggestions([candidate("a", { employeeOib: null }), candidate("b"), candidate("c")]),
+    ).toEqual([["a", "b", "c"]]);
   });
 
   it("compares OIBs and periods trimmed", () => {
@@ -186,12 +241,14 @@ describe("mergeSuggestions (plan 11 D5)", () => {
   });
 });
 
-describe("mergedFilename (plan 11 D9)", () => {
-  it("joins both names in page order", () => {
-    expect(mergedFilename("page-2.jpg", "page-1.jpg")).toBe("page-2.jpg + page-1.jpg");
+describe("mergedFilename (plan 11 D9, Task 15b D4)", () => {
+  it("joins every name in page order", () => {
+    expect(mergedFilename(["page-2.jpg", "page-1.jpg"])).toBe("page-2.jpg + page-1.jpg");
+    expect(mergedFilename(["a", "b", "c"])).toBe("a + b + c");
   });
 
   it("stays within 255 characters", () => {
-    expect(mergedFilename("a".repeat(200), "b".repeat(200))).toHaveLength(255);
+    expect(mergedFilename(["a".repeat(200), "b".repeat(200)])).toHaveLength(255);
+    expect(mergedFilename(["a".repeat(100), "b".repeat(100), "c".repeat(100)])).toHaveLength(255);
   });
 });

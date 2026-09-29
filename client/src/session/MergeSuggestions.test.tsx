@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PayslipSummary } from "@payslip/shared";
 import i18n from "../i18n";
@@ -51,10 +51,10 @@ describe("shortName", () => {
   });
 });
 
-describe("MergeSuggestions (plan 11 D11)", () => {
-  it("names each pair by file name and opens its review (Task 14 D11)", () => {
+describe("MergeSuggestions (plan 11 D11, Task 15b D7)", () => {
+  it("names each group by file name and opens its review (Task 14 D11)", () => {
     const onReview = vi.fn();
-    render(<MergeSuggestions pairs={[["b", "c"]]} payslips={payslips} onReview={onReview} />);
+    render(<MergeSuggestions groups={[["b", "c"]]} payslips={payslips} onReview={onReview} />);
 
     expect(screen.getByRole("status")).toHaveTextContent(
       "b.jpg and c.jpg look like pages of one payslip.",
@@ -63,24 +63,53 @@ describe("MergeSuggestions (plan 11 D11)", () => {
     expect(onReview).toHaveBeenCalledWith(["b", "c"]);
   });
 
-  it("hides a dismissed pair, including after a remount", () => {
+  it("names a group of three in one banner, in each language", async () => {
+    const onReview = vi.fn();
+    render(<MergeSuggestions groups={[["a", "b", "c"]]} payslips={payslips} onReview={onReview} />);
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "a.jpg, b.jpg, and c.jpg look like pages of one payslip.",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Review merge" }));
+    expect(onReview).toHaveBeenCalledWith(["a", "b", "c"]);
+
+    await act(() => i18n.changeLanguage("hr"));
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "a.jpg, b.jpg i c.jpg izgledaju kao stranice jedne platne liste.",
+    );
+  });
+
+  it("hides a dismissed group, including after a remount", () => {
     const { unmount } = render(
-      <MergeSuggestions pairs={[["a", "b"]]} payslips={payslips} onReview={vi.fn()} />,
+      <MergeSuggestions groups={[["a", "b"]]} payslips={payslips} onReview={vi.fn()} />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Not now" }));
     expect(screen.queryByRole("status")).toBeNull();
 
     unmount();
-    render(<MergeSuggestions pairs={[["a", "b"]]} payslips={payslips} onReview={vi.fn()} />);
+    render(<MergeSuggestions groups={[["a", "b"]]} payslips={payslips} onReview={vi.fn()} />);
     expect(screen.queryByRole("status")).toBeNull();
   });
 
-  it("skips a pair whose payslip is no longer listed", () => {
+  it("suggests a dismissed group again once it gains a member", () => {
+    const { rerender } = render(
+      <MergeSuggestions groups={[["a", "b"]]} payslips={payslips} onReview={vi.fn()} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Not now" }));
+
+    rerender(
+      <MergeSuggestions groups={[["a", "b", "c"]]} payslips={payslips} onReview={vi.fn()} />,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent("a.jpg, b.jpg, and c.jpg");
+  });
+
+  it("skips a group with a payslip no longer listed", () => {
     render(
       <MergeSuggestions
-        pairs={[
-          ["a", "gone"],
+        groups={[
+          ["a", "b", "gone"],
           ["a", "c"],
         ]}
         payslips={payslips}

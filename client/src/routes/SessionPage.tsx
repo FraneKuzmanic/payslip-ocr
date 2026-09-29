@@ -8,7 +8,7 @@ import {
   Loader2,
   X,
 } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { startTransition, useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useParams, useSearchParams } from "react-router";
 import {
@@ -41,7 +41,7 @@ function isSettled(payslip: PayslipSummary): boolean {
   return isMergeable(payslip.status, payslip.tablesStatus);
 }
 
-/** The action menu's only item needs this payslip and another one to be mergeable (plan 11 D11). */
+/** The Merge button needs this payslip and another one to be mergeable (plan 11 D11, Task 15 D4). */
 function canMerge(selected: PayslipSummary, payslips: readonly PayslipSummary[]): boolean {
   return (
     isSettled(selected) &&
@@ -77,26 +77,28 @@ function isOpenable(payslip: PayslipSummary): boolean {
 export function SessionPage() {
   const { t } = useTranslation();
   const { sessionId = "" } = useParams();
-  const { itemsFor, dismiss } = useUploadBatch();
+  const { itemsFor, dismiss, markListed } = useUploadBatch();
   const { unsaved, keep } = useUnsavedEdits();
   const [detail, setDetail] = useState<SessionDetailResponse | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [refreshKey, setRefreshKey] = useState(0);
   const [retrying, setRetrying] = useState<ReadonlySet<string>>(new Set());
   const [retryFailed, setRetryFailed] = useState<ReadonlySet<string>>(new Set());
-  // `pair: null` opens the dialog at its pick step. `opened` keys each opening (plan 11 D11).
-  const [merge, setMerge] = useState<{ pair: readonly [string, string] | null } | null>(null);
+  // `group: null` opens the dialog at its pick step. `opened` keys each opening (plan 11 D11).
+  const [merge, setMerge] = useState<{ group: readonly string[] | null } | null>(null);
   const [mergeOpened, setMergeOpened] = useState(0);
   const [downloading, setDownloading] = useState(false);
   // The payslip whose download failed, so the message does not follow the user to another one.
   const [exportFailedId, setExportFailedId] = useState<string | null>(null);
   const [lastMerge, setLastMerge] = useState<{
     id: string;
-    originals: readonly [string, string];
+    originals: readonly string[];
   } | null>(null);
   // The selection lives in the URL, so it survives a reload and the back button (D1).
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedId = searchParams.get("payslip");
+  // Task 15 D3: a Payslips link opens one payslip alone, without the upload's rail or merge.
+  const single = searchParams.get("view") === "single";
 
   const items = itemsFor(sessionId);
   const unsent = items.some(isUnsent);
@@ -201,42 +203,46 @@ export function SessionPage() {
     }
   }
 
-  function openMerge(pair: readonly [string, string] | null) {
-    setMerge({ pair });
+  function openMerge(group: readonly string[] | null) {
+    setMerge({ group });
     setMergeOpened((count) => count + 1);
   }
 
   /**
-   * Plan 11 D11: the merged payslip takes the earlier original's place and is selected.
-   * `originals` are in page order.
+   * Plan 11 D11: the merged payslip takes the earliest original's place and is selected.
+   * `originals` are in page order, two or more (Task 15b D4).
    */
-  function merged(id: string, originals: readonly [string, string]) {
+  function merged(id: string, originals: readonly string[]) {
     setMerge(null);
-    setDetail((current) => {
-      if (current === null) return current;
-      const replaced = current.payslips.filter((payslip) => originals.includes(payslip.id));
-      const [first, second] = originals;
-      const named = (payslipId: string) =>
-        replaced.find((payslip) => payslip.id === payslipId)?.originalFilename ?? "";
-      // Shown until the next read, which the refresh below starts at once.
-      const placeholder: PayslipSummary = {
-        id,
-        status: "processing",
-        tablesStatus: "pending",
-        period: null,
-        employeeName: null,
-        pageCount: replaced.reduce((pages, payslip) => pages + payslip.pageCount, 0),
-        failureReason: null,
-        warningCount: 0,
-        originalFilename: mergedFilename(named(first), named(second)),
-      };
-      const position = current.payslips.findIndex((payslip) => originals.includes(payslip.id));
-      const payslips = current.payslips.filter((payslip) => !originals.includes(payslip.id));
-      payslips.splice(position, 0, placeholder);
-      return { ...current, payslips };
+    // One transition for the list, the URL and the focus: the router applies a navigation in a
+    // transition, so the list updated outside it would render first, without the selected
+    // original, and the first-payslip selection below would take over the URL (Task 15b).
+    startTransition(() => {
+      setDetail((current) => {
+        if (current === null) return current;
+        const replaced = current.payslips.filter((payslip) => originals.includes(payslip.id));
+        const named = (payslipId: string) =>
+          replaced.find((payslip) => payslip.id === payslipId)?.originalFilename ?? "";
+        // Shown until the next read, which the refresh below starts at once.
+        const placeholder: PayslipSummary = {
+          id,
+          status: "processing",
+          tablesStatus: "pending",
+          period: null,
+          employeeName: null,
+          pageCount: replaced.reduce((pages, payslip) => pages + payslip.pageCount, 0),
+          failureReason: null,
+          warningCount: 0,
+          originalFilename: mergedFilename(originals.map(named)),
+        };
+        const position = current.payslips.findIndex((payslip) => originals.includes(payslip.id));
+        const payslips = current.payslips.filter((payslip) => !originals.includes(payslip.id));
+        payslips.splice(position, 0, placeholder);
+        return { ...current, payslips };
+      });
+      setSearchParams({ payslip: id }, { replace: true });
+      setLastMerge({ id, originals });
     });
-    setSearchParams({ payslip: id }, { replace: true });
-    setLastMerge({ id, originals });
     setRefreshKey((key) => key + 1);
   }
 
@@ -250,27 +256,35 @@ export function SessionPage() {
     document.getElementById(`payslip-tab-${lastMerge.id}`)?.focus();
   }, [lastMerge, keep]);
 
+  // Task 15 D2: once a read includes an upload's payslip, the read represents it for good.
+  useEffect(() => {
+    if (detail) markListed(sessionId, new Set(detail.payslips.map((payslip) => payslip.id)));
+  }, [detail, sessionId, markListed]);
+
   const selected = detail?.payslips.find((payslip) => payslip.id === selectedId) ?? null;
 
   // Task 14 D9: without a valid `?payslip=`, open the first payslip that has something to show,
   // preferring a form over a failure. Nothing is chosen while nothing is openable; the loading
   // screen covers that. An explicit `?payslip=` naming a payslip still being read is respected.
+  // The single view never rewrites its URL (Task 15 D3).
   useEffect(() => {
-    if (selected !== null || detail === null) return;
+    if (single || selected !== null || detail === null) return;
     const first = detail.payslips.find(isReadable) ?? detail.payslips.find(isOpenable);
     if (first) setSearchParams({ payslip: first.id }, { replace: true });
-  }, [detail, selectedId, setSearchParams]);
+  }, [detail, selectedId, setSearchParams, single]);
 
   const payslips = detail?.payslips ?? [];
   const listed = new Set(payslips.map((payslip) => payslip.id));
-  // An uploaded item is represented by its server row once the session read includes it.
+  // An uploaded item is represented by its server row once a session read includes it, and stays
+  // handed over after that (Task 15 D2): a merged or deleted payslip leaves the read for good, and
+  // its item would otherwise come back as "Processing" and be counted.
   const pending = items.filter(
-    (item) => item.state !== "uploaded" || !listed.has(item.payslipId ?? ""),
+    (item) => !item.listed && (item.state !== "uploaded" || !listed.has(item.payslipId ?? "")),
   );
   // Task 14 D8: a full-screen wait until the first payslip has something to show, while anything is
   // still on its way. With every payslip failed or every upload rejected, the page shows at once.
-  // Any `?payslip=` skips it, not only a valid one: a merge replaces the rows one render before it
-  // replaces the URL, and the screen would flash and take the merged tab's focus with it.
+  // Any `?payslip=` skips it, not only a valid one: until Task 15b a merge replaced the rows one
+  // render before the URL, and the screen flashed and took the merged tab's focus with it.
   const inFlight =
     payslips.some((payslip) => payslip.status === "processing") ||
     pending.some((item) => item.state !== "rejected");
@@ -304,38 +318,46 @@ export function SessionPage() {
     );
   }
 
-  // Plan 12 D5: Merge when it can apply, and downloads once the selected payslip is confirmed.
+  if (single && loadState === "ready" && selected === null) {
+    return (
+      <section className="mx-auto flex max-w-xl flex-col gap-4 px-4 py-8">
+        <p role="alert" className="text-slate-700">
+          {t("session.payslipNotFound")}
+        </p>
+        <Link to="/payslips" className={linkClass}>
+          {t("review.backToPayslips")}
+        </Link>
+      </section>
+    );
+  }
+
+  // Plan 12 D5: downloads once the selected payslip is confirmed. Merge is a button (Task 15 D4).
   const actions: ActionMenuItem[] =
-    selected === null
-      ? []
-      : [
-          ...(canMerge(selected, payslips)
-            ? [
-                {
-                  key: "merge",
-                  label: t("merge.mergeWith"),
-                  icon: Combine,
-                  onSelect: () => openMerge(null),
-                },
-              ]
-            : []),
-          ...(selected.status === "confirmed"
-            ? [
-                {
-                  key: "csv",
-                  label: t("history.downloadCsv"),
-                  icon: FileSpreadsheet,
-                  onSelect: () => void download(selected, "csv"),
-                },
-                {
-                  key: "json",
-                  label: t("history.downloadJson"),
-                  icon: FileJson,
-                  onSelect: () => void download(selected, "json"),
-                },
-              ]
-            : []),
-        ];
+    selected?.status === "confirmed"
+      ? [
+          {
+            key: "csv",
+            label: t("history.downloadCsv"),
+            icon: FileSpreadsheet,
+            onSelect: () => void download(selected, "csv"),
+          },
+          {
+            key: "json",
+            label: t("history.downloadJson"),
+            icon: FileJson,
+            onSelect: () => void download(selected, "json"),
+          },
+        ]
+      : [];
+  const actionMenu =
+    actions.length > 0 ? (
+      <ActionMenu
+        id="payslip-actions"
+        label={t("merge.actions")}
+        items={actions}
+        busy={downloading}
+      />
+    ) : null;
   const ready = payslips.filter((payslip) => payslip.status === "review").length;
   const confirmed = payslips.filter((payslip) => payslip.status === "confirmed").length;
   const total = payslips.length + pending.filter((item) => item.state !== "rejected").length;
@@ -360,10 +382,24 @@ export function SessionPage() {
           <ChevronLeft aria-hidden="true" className="size-4" />
           {t("review.backToPayslips")}
         </Link>
-        <h1 className="text-2xl font-semibold">{t("session.title", { count: total })}</h1>
-        <p role="status" className="text-slate-600">
-          {progress}
-        </p>
+        {single && selected !== null ? (
+          <>
+            <div className="flex items-start justify-between gap-2">
+              <h1 className="text-2xl font-semibold break-all">{selected.originalFilename}</h1>
+              {actionMenu}
+            </div>
+            <p role="status" className="text-slate-600">
+              {t(`historyStatus.${selected.status}`)}
+            </p>
+          </>
+        ) : (
+          <>
+            <h1 className="text-2xl font-semibold">{t("session.title", { count: total })}</h1>
+            <p role="status" className="text-slate-600">
+              {progress}
+            </p>
+          </>
+        )}
       </div>
 
       {loadState === "error" ? (
@@ -379,9 +415,9 @@ export function SessionPage() {
         </div>
       ) : null}
 
-      {payslips.length > 1 ? (
+      {!single && payslips.length > 1 ? (
         <MergeSuggestions
-          pairs={detail?.mergeSuggestions ?? []}
+          groups={detail?.mergeSuggestions ?? []}
           payslips={payslips}
           onReview={openMerge}
         />
@@ -390,33 +426,50 @@ export function SessionPage() {
       {/* The rail sits above the selected payslip at every width (Task 14 D10, D12). */}
       {payslips.length > 0 ? (
         <div className="flex min-w-0 flex-col gap-5">
-          <PayslipRail
-            payslips={payslips}
-            selectedId={selected?.id ?? null}
-            unsaved={unsaved}
-            onSelect={(id) => {
-              if (id !== selectedId) setSearchParams({ payslip: id });
-            }}
-          />
+          {single ? null : (
+            <PayslipRail
+              payslips={payslips}
+              selectedId={selected?.id ?? null}
+              unsaved={unsaved}
+              onSelect={(id) => {
+                if (id !== selectedId) setSearchParams({ payslip: id });
+              }}
+            />
+          )}
           {selected === null ? null : (
+            // The single view has no tab, so its panel is a plain container (Task 15 D3).
             <div
-              role="tabpanel"
-              id="payslip-panel"
-              tabIndex={0}
-              aria-labelledby={`payslip-tab-${selected.id}`}
+              {...(single
+                ? {}
+                : {
+                    role: "tabpanel",
+                    id: "payslip-panel",
+                    tabIndex: 0,
+                    "aria-labelledby": `payslip-tab-${selected.id}`,
+                  })}
               className="flex min-w-0 flex-col gap-3"
             >
-              <div className="flex items-start justify-between gap-2">
-                <h2 className="font-semibold break-all">{selected.originalFilename}</h2>
-                {actions.length > 0 ? (
-                  <ActionMenu
-                    id="payslip-actions"
-                    label={t("merge.actions")}
-                    items={actions}
-                    busy={downloading}
-                  />
-                ) : null}
-              </div>
+              {single ? null : (
+                <div className="flex items-start justify-between gap-2">
+                  <h2 className="font-semibold break-all">{selected.originalFilename}</h2>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {canMerge(selected, payslips) ? (
+                      // Task 15 D4: visible, not an item hidden in the menu. Task 15b D3: one short
+                      // label at every width, the long form as its tooltip.
+                      <button
+                        type="button"
+                        onClick={() => openMerge(null)}
+                        title={t("merge.mergeWith")}
+                        className="inline-flex min-h-12 shrink-0 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 font-semibold text-slate-700 hover:bg-slate-100"
+                      >
+                        <Combine aria-hidden="true" className="size-5" />
+                        {t("merge.mergeShort")}
+                      </button>
+                    ) : null}
+                    {actionMenu}
+                  </div>
+                </div>
+              )}
               {exportFailedId === selected.id ? (
                 <ErrorMessage message={t("history.errors.export")} />
               ) : null}
@@ -461,7 +514,7 @@ export function SessionPage() {
         </div>
       ) : null}
 
-      {pending.length > 0 ? (
+      {!single && pending.length > 0 ? (
         <ol className="flex flex-col gap-3">
           {pending.map((item) => (
             <Row
@@ -496,13 +549,13 @@ export function SessionPage() {
         </ol>
       ) : null}
 
-      {selected === null ? null : (
+      {single || selected === null ? null : (
         <MergeDialog
           key={mergeOpened}
           open={merge !== null}
           sessionId={sessionId}
           payslips={payslips}
-          pair={merge?.pair ?? null}
+          group={merge?.group ?? null}
           selectedId={selected.id}
           onMerged={merged}
           onRefused={() => setRefreshKey((key) => key + 1)}

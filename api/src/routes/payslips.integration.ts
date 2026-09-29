@@ -1247,6 +1247,83 @@ describe("merge (PRD §10.11, plan 11)", () => {
   it("answers 400 for a malformed body or session id", async () => {
     expect((await merge(mergeSessionId, [pdfId, pdfId])).status).toBe(400);
     expect((await merge("not-a-uuid", [pdfId, pngId])).status).toBe(400);
+    expect((await merge(mergeSessionId, [pdfId])).status).toBe(400);
+  });
+
+  it("merges three payslips in a chosen order into one (Task 15b D4)", async () => {
+    const threeSession = await newSession();
+    const first = await uploaded(threeSession, await pdf(1), "p-1.pdf", "application/pdf");
+    const middle = await uploaded(threeSession, png, "p-2.png", "image/png");
+    const last = await uploaded(threeSession, await pdf(2), "p-3.pdf", "application/pdf");
+    const kept = await uploaded(threeSession, png, "kept.png", "image/png");
+    await reviewed(first);
+    await failed(middle);
+    await failed(last);
+    enqueued.length = 0;
+    const order = [last, first, middle];
+
+    const id = merged(await merge(threeSession, [first, middle, last], order));
+
+    const detail = sessionDetailResponseSchema.parse(
+      (await getAsA(`/api/sessions/${threeSession}`)).body,
+    );
+    expect(detail.payslips.map((payslip) => payslip.id)).toEqual([id, kept]);
+    expect(detail.payslips[0]).toMatchObject({
+      pageCount: 4,
+      originalFilename: "p-3.pdf + p-1.pdf + p-2.png",
+    });
+    const stored = await downloadAsA(id);
+    expect((await PDFDocument.load(stored)).getPageCount()).toBe(4);
+    expect(enqueued).toHaveLength(1);
+    expect(enqueued[0]?.bytes).toEqual(stored);
+
+    const { data: storedRows } = await admin
+      .from("payslips")
+      .select("id, created_at, deleted_at, merged_from")
+      .in("id", [id, ...order]);
+    const byId = new Map(storedRows?.map((row) => [row.id, row]));
+    expect(byId.get(id)).toMatchObject({ merged_from: order, deleted_at: null });
+    expect(byId.get(id)?.created_at).toBe(byId.get(first)?.created_at);
+    for (const original of order) expect(byId.get(original)?.deleted_at).not.toBeNull();
+  });
+
+  it("refuses a group with a payslip still processing, changing nothing (Task 15b D4)", async () => {
+    const groupSession = await newSession();
+    const a = await uploaded(groupSession, png, "g-a.png", "image/png");
+    const b = await uploaded(groupSession, png, "g-b.png", "image/png");
+    const reading = await uploaded(groupSession, png, "g-c.png", "image/png");
+    await failed(a);
+    await failed(b);
+
+    const response = await merge(groupSession, [a, b, reading]);
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({ error: { code: "merge_not_allowed" } });
+    expect(await liveIds(groupSession)).toEqual([a, b, reading]);
+  });
+
+  it("refuses a direct call with one, a repeated or no id, inserting nothing (Task 15b D5)", async () => {
+    const guarded = await newSession();
+    const a = await uploaded(guarded, png, "d-a.png", "image/png");
+    const b = await uploaded(guarded, png, "d-b.png", "image/png");
+    await failed(a);
+    await failed(b);
+    const call = (order: string[] | null) =>
+      userA.rpc("merge_payslips", {
+        p_session_id: guarded,
+        p_new_id: randomUUID(),
+        // A null array is what a hand-written RPC call can send; the generated type forbids it.
+        p_order: order as string[],
+        p_original_filename: "direct.pdf",
+        p_page_count: 1,
+      });
+
+    for (const order of [[a], [a, a, b], null]) {
+      const { data, error } = await call(order);
+      expect(error).toBeNull();
+      expect(data).toBe(false);
+    }
+    expect(await liveIds(guarded)).toEqual([a, b]);
   });
 });
 

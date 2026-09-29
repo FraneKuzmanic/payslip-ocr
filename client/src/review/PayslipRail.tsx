@@ -1,8 +1,7 @@
 import { AlertCircle, CheckCircle2, Loader2, PencilLine } from "lucide-react";
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { PayslipSummary } from "@payslip/shared";
-import { overflowAfter } from "./stripGeometry";
 
 interface PayslipRailProps {
   payslips: readonly PayslipSummary[];
@@ -18,38 +17,16 @@ interface PayslipRailProps {
  * A payslip still being read has no form to open, so its chip is `aria-disabled` (Task 14 D10). It
  * stays focusable in the roving tablist, so arrow keys reach it and it is announced as unavailable,
  * as the APG tabs pattern allows; only activation is refused.
+ *
+ * There is no `+N` overflow badge (Task 15 D7); the next chip still peeks.
  */
 export function PayslipRail({ payslips, selectedId, unsaved, onSelect }: PayslipRailProps) {
   const { t } = useTranslation();
-  const rail = useRef<HTMLDivElement>(null);
   const tabs = useRef(new Map<string, HTMLButtonElement>());
-  const [visible, setVisible] = useState<readonly boolean[]>([]);
-  const overflow = overflowAfter(visible);
 
   useEffect(() => {
     tabs.current.get(selectedId ?? "")?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
   }, [selectedId]);
-
-  useEffect(() => {
-    setVisible([]);
-    if (typeof IntersectionObserver === "undefined") return;
-    const visibility = payslips.map(() => false);
-    const indices = new Map(
-      payslips.map((payslip, index) => [tabs.current.get(payslip.id), index]),
-    );
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          const index = indices.get(entry.target as HTMLButtonElement);
-          if (index !== undefined) visibility[index] = entry.intersectionRatio >= 1;
-        }
-        setVisible([...visibility]);
-      },
-      { root: rail.current, threshold: 1 },
-    );
-    for (const tab of tabs.current.values()) observer.observe(tab);
-    return () => observer.disconnect();
-  }, [payslips]);
 
   function move(event: KeyboardEvent<HTMLButtonElement>, index: number) {
     const target =
@@ -71,7 +48,6 @@ export function PayslipRail({ payslips, selectedId, unsaved, onSelect }: Payslip
 
   return (
     <div
-      ref={rail}
       role="tablist"
       aria-label={t("session.payslips")}
       aria-orientation="horizontal"
@@ -99,7 +75,7 @@ export function PayslipRail({ payslips, selectedId, unsaved, onSelect }: Payslip
             onClick={() => {
               if (!unavailable) onSelect(payslip.id);
             }}
-            className={`relative flex min-h-12 min-w-0 shrink-0 snap-start flex-col gap-1 rounded-lg bg-white p-3 text-left text-sm aria-disabled:cursor-not-allowed aria-disabled:opacity-60 lg:w-60 ${
+            className={`flex min-h-12 min-w-0 shrink-0 snap-start flex-col gap-1 rounded-lg bg-white p-3 text-left text-sm aria-disabled:cursor-not-allowed aria-disabled:opacity-60 lg:w-60 ${
               payslips.length > 2
                 ? "w-[calc((100%-2.5rem)/2)]"
                 : payslips.length === 2
@@ -120,14 +96,6 @@ export function PayslipRail({ payslips, selectedId, unsaved, onSelect }: Payslip
               {statusIcon(payslip)}
               {t(`payslipStatus.${payslip.status}`)}
             </span>
-            {overflow?.index === index ? (
-              <span
-                aria-hidden="true"
-                className="absolute top-1 right-1 rounded bg-slate-100 px-1 text-xs"
-              >
-                +{overflow.count}
-              </span>
-            ) : null}
           </button>
         );
       })}

@@ -248,4 +248,56 @@ describe("UploadBatchProvider", () => {
 
     expect(batch.itemsFor(SESSION_ID).map((item) => item.name)).toEqual(["b.jpg"]);
   });
+
+  describe("markListed (Task 15 D2)", () => {
+    it("marks an uploaded item listed once its payslip appears in a session read", async () => {
+      vi.mocked(uploadPayslip).mockResolvedValueOnce(created("p1"));
+      renderProvider();
+      await act(async () => {
+        await batch.startBatch([file("a.jpg")]);
+      });
+
+      act(() => batch.markListed(SESSION_ID, new Set(["p1"])));
+
+      expect(batch.itemsFor(SESSION_ID)[0]).toMatchObject({ state: "uploaded", listed: true });
+    });
+
+    it("keeps the same items array when nothing changes", async () => {
+      vi.mocked(uploadPayslip).mockResolvedValueOnce(created("p1"));
+      renderProvider();
+      await act(async () => {
+        await batch.startBatch([file("a.jpg")]);
+      });
+      act(() => batch.markListed(SESSION_ID, new Set(["p1"])));
+      const once = batch.itemsFor(SESSION_ID);
+
+      act(() => batch.markListed(SESSION_ID, new Set(["p1"])));
+      expect(batch.itemsFor(SESSION_ID)).toBe(once);
+
+      act(() => batch.markListed(SESSION_ID, new Set(["unknown"])));
+      expect(batch.itemsFor(SESSION_ID)).toBe(once);
+    });
+
+    it("never marks a waiting or rejected item", async () => {
+      const upload = deferred<CreatePayslipResponse>();
+      vi.mocked(uploadPayslip)
+        .mockRejectedValueOnce(new ApiError(413, "file_too_large"))
+        .mockReturnValueOnce(upload.promise);
+      renderProvider();
+      await act(async () => {
+        void batch.startBatch([file("a.jpg"), file("b.jpg"), file("c.jpg")]);
+      });
+      await flush();
+
+      act(() => batch.markListed(SESSION_ID, new Set(["p1", "p2", "p3"])));
+
+      expect(batch.itemsFor(SESSION_ID).map((item) => item.listed)).toEqual([
+        undefined,
+        undefined,
+        undefined,
+      ]);
+      upload.resolve(created("p2"));
+      await flush();
+    });
+  });
 });

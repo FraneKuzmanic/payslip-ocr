@@ -34,6 +34,8 @@ describe("history row formatting", () => {
   });
 
   it("links into the row's session, on that payslip", () => {
-    expect(rowRoute({ id: "p/1", sessionId: "s 1" })).toBe("/sessions/s%201?payslip=p%2F1");
+    expect(rowRoute({ id: "p/1", sessionId: "s 1" })).toBe(
+      "/sessions/s%201?payslip=p%2F1&view=single",
+    );
   });
 });

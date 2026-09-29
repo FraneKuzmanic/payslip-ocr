@@ -2,8 +2,9 @@ import { useSyncExternalStore } from "react";
 
 /**
  * Merge suggestions the user answered "Not now" (plan 11 D6). Module state, so a dismissal
- * survives route changes in this tab and is lost on reload. Keys are `${a}:${b}` in the
- * suggestion's order; payslip ids are UUIDs, so a key never matches another session's pair.
+ * survives route changes in this tab and is lost on reload. Keys are the group's ids joined by `:`
+ * in the suggestion's order (Task 15b D7); payslip ids are UUIDs, so a key never matches another
+ * session's group. A group that gains a member has a new key, so it is suggested again.
  */
 let dismissed: ReadonlySet<string> = new Set();
 const listeners = new Set<() => void>();
@@ -17,8 +18,8 @@ function snapshot(): ReadonlySet<string> {
   return dismissed;
 }
 
-export function suggestionKey([a, b]: readonly [string, string]): string {
-  return `${a}:${b}`;
+export function suggestionKey(ids: readonly string[]): string {
+  return ids.join(":");
 }
 
 export function useDismissedSuggestions(): {

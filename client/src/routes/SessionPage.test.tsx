@@ -29,6 +29,14 @@ vi.mock("../history/download", () => ({
 
 let batchItems: readonly BatchItem[] = [];
 const dismiss = vi.fn();
+// As the provider does (Task 15 D2); the page reads the flag on its next render.
+function markListed(_sessionId: string, ids: ReadonlySet<string>) {
+  batchItems = batchItems.map((item) =>
+    item.state === "uploaded" && item.payslipId !== undefined && ids.has(item.payslipId)
+      ? { ...item, listed: true }
+      : item,
+  );
+}
 
 const unsaved = new Set<string>();
 const keep = vi.fn();
@@ -38,9 +46,9 @@ vi.mock("../review/unsaved/useUnsavedEdits", () => ({
 // Its own tests cover the dialog; here only what the page hands it and does with its answer.
 interface DialogProps {
   open: boolean;
-  pair: readonly [string, string] | null;
+  group: readonly string[] | null;
   selectedId: string;
-  onMerged: (id: string, originals: readonly [string, string]) => void;
+  onMerged: (id: string, originals: readonly string[]) => void;
   onRefused: () => void;
 }
 let dialogProps: DialogProps | null = null;
@@ -48,7 +56,7 @@ vi.mock("../session/MergeDialog", () => ({
   MergeDialog: (props: DialogProps) => {
     dialogProps = props;
     return props.open ? (
-      <p data-testid="merge-dialog">{props.pair ? props.pair.join(",") : "pick"}</p>
+      <p data-testid="merge-dialog">{props.group ? props.group.join(",") : "pick"}</p>
     ) : null;
   },
 }));
@@ -64,7 +72,12 @@ vi.mock("../review/PayslipReview", async () => {
 });
 
 vi.mock("../upload/useUploadBatch", () => ({
-  useUploadBatch: () => ({ startBatch: vi.fn(), itemsFor: () => batchItems, dismiss }),
+  useUploadBatch: () => ({
+    startBatch: vi.fn(),
+    itemsFor: () => batchItems,
+    dismiss,
+    markListed,
+  }),
 }));
 
 const { ApiError } = await import("../api/client");
@@ -130,10 +143,12 @@ const tick = () =>
 const rows = () => within(screen.getByRole("list")).getAllByRole("listitem");
 const tabs = () => screen.getAllByRole("tab");
 const preparing = () => screen.queryByRole("heading", { name: "Preparing your payslips" });
+/** Task 15b D3: one label at every width, the long form as its tooltip. */
+const mergeButton = () => screen.queryByRole("button", { name: "Merge" });
 /** Opens the panel's menu and names the items it offers, in order. */
 const menuItems = () => {
   fireEvent.click(screen.getByRole("button", { name: "Payslip actions" }));
-  return ["Merge with another payslip…", "Download CSV", "Download JSON"].filter(
+  return ["Download CSV", "Download JSON"].filter(
     (name) => screen.queryByRole("button", { name }) !== null,
   );
 };
@@ -238,6 +253,49 @@ describe("SessionPage", () => {
 
     fireEvent.click(within(second!).getByRole("button", { name: "Dismiss b.pdf" }));
     expect(dismiss).toHaveBeenCalledWith(SESSION_ID, "l2");
+  });
+
+  it("a merge leaves no Processing row and counts one payslip (Task 15 D2)", async () => {
+    batchItems = [
+      { localId: "l1", name: "a.jpg", state: "uploaded", payslipId: "a" },
+      { localId: "l2", name: "b.jpg", state: "uploaded", payslipId: "b" },
+    ];
+    mockedDetail.mockResolvedValue(
+      session(
+        summary("a", { status: "review", tablesStatus: "ready" }),
+        summary("b", { status: "review", tablesStatus: "ready" }),
+      ),
+    );
+    renderPage("?payslip=a");
+    await flush();
+
+    mockedDetail.mockReturnValue(new Promise(() => {}));
+    act(() => dialogProps?.onMerged("merged", ["a", "b"]));
+    await flush();
+
+    expect(screen.queryByRole("list")).toBeNull();
+    expect(screen.queryByText("Processing")).toBeNull();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Review payslip");
+    expect(screen.getAllByRole("status")[0]).toHaveTextContent("0 of 1 ready to review");
+  });
+
+  it("does not count a payslip deleted elsewhere (Task 15 D2)", async () => {
+    batchItems = [
+      { localId: "l1", name: "a.jpg", state: "uploaded", payslipId: "a" },
+      { localId: "l2", name: "b.jpg", state: "uploaded", payslipId: "b" },
+    ];
+    mockedDetail
+      .mockResolvedValueOnce(
+        session(summary("a", { status: "review", tablesStatus: "ready" }), summary("b")),
+      )
+      .mockResolvedValue(session(summary("a", { status: "review", tablesStatus: "ready" })));
+    renderPage("?payslip=a");
+    await flush();
+    await tick();
+
+    expect(tabs()).toHaveLength(1);
+    expect(screen.queryByRole("list")).toBeNull();
+    expect(screen.getByRole("status").textContent).toBe("1 of 1 ready to review");
   });
 
   it("keeps polling while a batch item is unsent, even when the server rows are settled", async () => {
@@ -654,7 +712,7 @@ describe("SessionPage merge (plan 11 D11)", () => {
       summary("b", { status: "failed", failureReason: "unreadable_document", pageCount: 2 }),
       summary("c"),
     ),
-    mergeSuggestions: [["a", "b"]] as [string, string][],
+    mergeSuggestions: [["a", "b"]],
   });
 
   it("shows a suggestion that opens the dialog at its confirm step with the pair", async () => {
@@ -678,12 +736,13 @@ describe("SessionPage merge (plan 11 D11)", () => {
     expect(screen.queryByText(/look like pages of one payslip/)).toBeNull();
   });
 
-  it("offers the menu only on a mergeable payslip with a mergeable sibling", async () => {
+  it("offers the Merge button only on a mergeable payslip with a mergeable sibling (Task 15 D4)", async () => {
     mockedDetail.mockResolvedValue(pair());
     renderPage("?payslip=a");
     await flush();
-    fireEvent.click(screen.getByRole("button", { name: "Payslip actions" }));
-    fireEvent.click(screen.getByRole("button", { name: "Merge with another payslip…" }));
+    expect(screen.queryByRole("button", { name: "Payslip actions" })).toBeNull();
+    expect(mergeButton()).toHaveAttribute("title", "Merge with another payslip");
+    fireEvent.click(mergeButton()!);
     expect(screen.getByTestId("merge-dialog")).toHaveTextContent("pick");
     expect(dialogProps?.selectedId).toBe("a");
 
@@ -693,23 +752,24 @@ describe("SessionPage merge (plan 11 D11)", () => {
     expect(screen.getByTestId("location")).toHaveTextContent("?payslip=a");
   });
 
-  it("has no menu on a payslip still being read", async () => {
+  it("has no Merge button or menu on a payslip still being read", async () => {
     mockedDetail.mockResolvedValue(pair());
     renderPage("?payslip=c");
     await flush();
 
     expect(screen.getByRole("tabpanel")).toHaveTextContent("This payslip is still being read.");
+    expect(mergeButton()).toBeNull();
     expect(screen.queryByRole("button", { name: "Payslip actions" })).toBeNull();
   });
 
-  it("has no menu when no other payslip is mergeable", async () => {
+  it("has no Merge button when no other payslip is mergeable", async () => {
     mockedDetail.mockResolvedValue(
       session(summary("a", { status: "review", tablesStatus: "ready" }), summary("c")),
     );
     renderPage("?payslip=a");
     await flush();
 
-    expect(screen.queryByRole("button", { name: "Payslip actions" })).toBeNull();
+    expect(mergeButton()).toBeNull();
   });
 
   it("selects the merged payslip in the earlier one's place by replacement, and drops the originals' edits", async () => {
@@ -739,6 +799,36 @@ describe("SessionPage merge (plan 11 D11)", () => {
     expect(keep).toHaveBeenCalledWith("b", null);
   });
 
+  it("opens a suggested group of three and replaces all three with the merge (Task 15b D6, D7)", async () => {
+    mockedDetail.mockResolvedValue({
+      ...session(
+        summary("x", { status: "review", tablesStatus: "ready" }),
+        summary("a", { status: "review", tablesStatus: "ready", pageCount: 2 }),
+        summary("b", { status: "review", tablesStatus: "ready" }),
+        summary("c", { status: "review", tablesStatus: "ready" }),
+      ),
+      mergeSuggestions: [["a", "b", "c"]],
+    });
+    renderPage("?payslip=b");
+    await flush();
+
+    expect(
+      screen.getByText("a.jpg, b.jpg, and c.jpg look like pages of one payslip."),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Review merge" }));
+    expect(screen.getByTestId("merge-dialog")).toHaveTextContent("a,b,c");
+
+    mockedDetail.mockReturnValue(new Promise(() => {}));
+    keep.mockClear();
+    act(() => dialogProps?.onMerged("merged", ["c", "a", "b"]));
+    await flush();
+
+    expect(tabs().map((tab) => tab.id)).toEqual(["payslip-tab-x", "payslip-tab-merged"]);
+    expect(screen.getByRole("heading", { name: "c.jpg + a.jpg + b.jpg" })).toBeInTheDocument();
+    expect(tabs()[1]).toHaveTextContent("Reading the payslip");
+    for (const id of ["a", "b", "c"]) expect(keep).toHaveBeenCalledWith(id, null);
+  });
+
   it("reads the session again when the merge is refused, so the list shows why", async () => {
     mockedDetail.mockResolvedValue(pair());
     renderPage("?payslip=a");
@@ -762,6 +852,75 @@ describe("SessionPage merge (plan 11 D11)", () => {
   });
 });
 
+describe("SessionPage single view (Task 15 D3)", () => {
+  const three = () => ({
+    ...session(
+      summary("a", { status: "review", tablesStatus: "ready" }),
+      summary("b", { status: "review", tablesStatus: "ready" }),
+      summary("c", { status: "confirmed", tablesStatus: "ready" }),
+    ),
+    mergeSuggestions: [["a", "b"]],
+  });
+
+  it("shows only the one payslip: no rail, suggestion, Merge button or batch rows", async () => {
+    batchItems = [{ localId: "l1", name: "x.pdf", state: "rejected", errorCode: "file_too_large" }];
+    mockedDetail.mockResolvedValue(three());
+    renderPage("?payslip=b&view=single");
+    await flush();
+
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(screen.queryByRole("tabpanel")).toBeNull();
+    expect(screen.queryByText(/look like pages of one payslip/)).toBeNull();
+    expect(mergeButton()).toBeNull();
+    expect(screen.queryByRole("list")).toBeNull();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("b.jpg");
+    expect(screen.getByRole("status").textContent).toBe("Needs review");
+    expect(screen.getByTestId("preview")).toHaveTextContent("b ready");
+  });
+
+  it("words a payslip whose tables are still pending as the list does", async () => {
+    mockedDetail.mockResolvedValue(
+      session(summary("a", { status: "review", tablesStatus: "pending" })),
+    );
+    renderPage("?payslip=a&view=single");
+    await flush();
+
+    expect(screen.getByRole("status").textContent).toBe("Needs review");
+  });
+
+  it("keeps the single view in the URL and offers the downloads on a confirmed payslip", async () => {
+    mockedDetail.mockResolvedValue(three());
+    renderPage("?payslip=c&view=single");
+    await flush();
+
+    expect(screen.getByTestId("location")).toHaveTextContent("?payslip=c&view=single");
+    expect(screen.getByTestId("navigation")).toHaveTextContent("POP");
+    expect(menuItems()).toEqual(["Download CSV", "Download JSON"]);
+  });
+
+  it("says a missing payslip does not exist, with a link to the Payslips list", async () => {
+    mockedDetail.mockResolvedValue(three());
+    renderPage("?payslip=gone&view=single");
+    await flush();
+
+    expect(screen.getByRole("alert")).toHaveTextContent("This payslip does not exist.");
+    expect(screen.getByRole("link", { name: "Back to payslips" })).toHaveAttribute(
+      "href",
+      "/payslips",
+    );
+    expect(screen.getByTestId("location")).toHaveTextContent("?payslip=gone&view=single");
+  });
+
+  it("keeps the rail in the upload view", async () => {
+    mockedDetail.mockResolvedValue(three());
+    renderPage("?payslip=b");
+    await flush();
+
+    expect(tabs()).toHaveLength(3);
+    expect(mergeButton()).toBeInTheDocument();
+  });
+});
+
 describe("SessionPage export (plan 12 D5, D6)", () => {
   const mockedExport = vi.mocked(exportPayslip);
   const mockedSave = vi.mocked(saveBlob);
@@ -778,10 +937,11 @@ describe("SessionPage export (plan 12 D5, D6)", () => {
     renderPage("?payslip=a");
     await flush();
 
+    expect(mergeButton()).toBeNull();
     expect(menuItems()).toEqual(["Download CSV", "Download JSON"]);
   });
 
-  it("offers only Merge on a payslip in review with a mergeable sibling", async () => {
+  it("offers only the Merge button on a payslip in review with a mergeable sibling", async () => {
     mockedDetail.mockResolvedValue(
       session(
         summary("a", { status: "review", tablesStatus: "ready" }),
@@ -791,10 +951,11 @@ describe("SessionPage export (plan 12 D5, D6)", () => {
     renderPage("?payslip=a");
     await flush();
 
-    expect(menuItems()).toEqual(["Merge with another payslip…"]);
+    expect(mergeButton()).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Payslip actions" })).toBeNull();
   });
 
-  it("offers all three on a confirmed payslip with a mergeable sibling", async () => {
+  it("offers the Merge button and both downloads on a confirmed payslip with a mergeable sibling", async () => {
     mockedDetail.mockResolvedValue(
       session(
         summary("a", { status: "confirmed", tablesStatus: "ready" }),
@@ -804,7 +965,8 @@ describe("SessionPage export (plan 12 D5, D6)", () => {
     renderPage("?payslip=a");
     await flush();
 
-    expect(menuItems()).toEqual(["Merge with another payslip…", "Download CSV", "Download JSON"]);
+    expect(mergeButton()).toBeInTheDocument();
+    expect(menuItems()).toEqual(["Download CSV", "Download JSON"]);
   });
 
   it.each(["csv", "json"] as const)("downloads the selected payslip as %s", async (format) => {

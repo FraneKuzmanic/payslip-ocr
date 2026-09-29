@@ -1,4 +1,4 @@
-import { ArrowUpDown } from "lucide-react";
+import { ArrowDown, ArrowUp } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -13,34 +13,34 @@ import { formatField } from "../review/reviewForm";
 import { statusIcon } from "../review/PayslipRail";
 import { SourceThumbnail } from "./SourceThumbnail";
 
-type Pair = readonly [string, string];
-
 interface MergeDialogProps {
   open: boolean;
   sessionId: string;
   payslips: readonly PayslipSummary[];
-  /** The pair to confirm, from a suggestion; `null` asks the user to pick the second payslip. */
-  pair: Pair | null;
-  /** The payslip the pick step merges another one into. */
+  /** The group to confirm, from a suggestion; `null` asks the user to pick the others. */
+  group: readonly string[] | null;
+  /** The payslip the pick step merges the others into. */
   selectedId: string;
   /** `originals` in page order, as sent. */
-  onMerged: (id: string, originals: Pair) => void;
+  onMerged: (id: string, originals: readonly string[]) => void;
   /** A `409`: the list is stale, so the caller re-reads it and shows why. */
   onRefused: () => void;
   onClose: () => void;
 }
 
 /**
- * The merge confirmation (PRD §7.8, plan 11 D11). A native `<dialog>` opened with `showModal()`,
- * like `ConfirmDialog`, which it cannot reuse because it shows the two documents and a swap. The
- * pages start in upload order, and the consequence is stated in words: both payslips, with their
- * edits and confirmation, are replaced by a fresh extraction.
+ * The merge confirmation (PRD §7.8, plan 11 D11, Task 15b D6). A native `<dialog>` opened with
+ * `showModal()`, like `ConfirmDialog`, which it cannot reuse because it shows the documents and
+ * reorders them. The pick step takes one or more other payslips; the confirm step lists two or
+ * more documents in upload order, reordered with Move up / Move down, the single-pointer
+ * alternative to dragging (WCAG 2.2 SC 2.5.7, locked decision 4). No warning paragraph (Task 15
+ * D5): the pages and their order are the confirmation.
  */
 export function MergeDialog({
   open,
   sessionId,
   payslips,
-  pair,
+  group,
   selectedId,
   onMerged,
   onRefused,
@@ -51,11 +51,14 @@ export function MergeDialog({
   const cancelRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const index = (id: string) => payslips.findIndex((payslip) => payslip.id === id);
-  const inListOrder = (a: string, b: string): Pair => (index(a) <= index(b) ? [a, b] : [b, a]);
+  const inListOrder = (ids: readonly string[]) => ids.toSorted((a, b) => index(a) - index(b));
   // Keyed per opening by the caller, so this state starts fresh each time the dialog opens.
-  const [chosen, setChosen] = useState<string | null>(null);
-  const [order, setOrder] = useState<Pair | null>(() => (pair ? inListOrder(...pair) : null));
-  const [swapped, setSwapped] = useState(false);
+  const [chosen, setChosen] = useState<ReadonlySet<string>>(new Set());
+  const [order, setOrder] = useState<readonly string[] | null>(() =>
+    group ? inListOrder(group) : null,
+  );
+  // The last move, so its button keeps focus and the status line can announce it.
+  const [moved, setMoved] = useState<{ id: string; direction: "up" | "down" } | null>(null);
   const [busy, setBusy] = useState(false);
   const [errorCode, setErrorCode] = useState<MergeErrorCode | "network" | null>(null);
   const confirming = order !== null;
@@ -66,7 +69,7 @@ export function MergeDialog({
     if (open) {
       if (!dialog.open) dialog.showModal();
     } else if (dialog.open) {
-      // Returns focus to whatever opened the dialog: the menu trigger or the banner's button.
+      // Returns focus to whatever opened the dialog: the Merge button or the banner's button.
       dialog.close();
     }
   }, [open]);
@@ -76,6 +79,23 @@ export function MergeDialog({
     if (open && confirming) cancelRef.current?.focus();
   }, [open, confirming]);
 
+  // Moving a card moves its DOM node, which can blur the pressed button: focus it again, even when
+  // it has just become aria-disabled at an end, since it stays focusable.
+  useEffect(() => {
+    if (moved) document.getElementById(`merge-move-${moved.direction}-${moved.id}`)?.focus();
+  }, [moved, order]);
+
+  function move(id: string, direction: "up" | "down") {
+    if (busy || order === null) return;
+    const from = order.indexOf(id);
+    const to = direction === "up" ? from - 1 : from + 1;
+    if (to < 0 || to >= order.length) return;
+    const next = [...order];
+    [next[from], next[to]] = [next[to]!, next[from]!];
+    setOrder(next);
+    setMoved({ id, direction });
+  }
+
   function cancel() {
     if (!busy) onClose();
   }
@@ -84,10 +104,9 @@ export function MergeDialog({
     if (busy || order === null) return;
     setBusy(true);
     setErrorCode(null);
-    const payslipIds = inListOrder(order[0], order[1]);
     try {
       const { id } = await mergePayslips(sessionId, {
-        payslipIds: [...payslipIds],
+        payslipIds: inListOrder(order),
         order: [...order],
       });
       onMerged(id, order);
@@ -107,9 +126,10 @@ export function MergeDialog({
       : null;
   }
 
-  /** Where this document's pages land in the merged payslip. */
+  /** Where this document's pages land in the merged payslip: after every document above it. */
   function pagesOf(position: number, pageCount: number): string {
-    const from = position === 0 ? 1 : (ordered[0]?.pageCount ?? 0) + 1;
+    const from =
+      1 + ordered.slice(0, position).reduce((pages, payslip) => pages + payslip.pageCount, 0);
     return pageCount === 1
       ? t("merge.pagePosition", { page: from })
       : t("merge.pageRange", { from, to: from + pageCount - 1 });
@@ -143,39 +163,51 @@ export function MergeDialog({
         <>
           <ol className="mt-4 flex flex-col gap-2">
             {ordered.map((payslip, position) => (
-              <li key={payslip.id} className="flex flex-col gap-2">
-                {position === 1 ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (busy) return;
-                      setOrder((current) => current && [current[1], current[0]]);
-                      setSwapped(true);
-                    }}
-                    aria-disabled={busy}
-                    className="inline-flex min-h-12 items-center justify-center gap-2 self-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-100 aria-disabled:text-slate-400"
-                  >
-                    <ArrowUpDown aria-hidden="true" className="size-5" />
-                    {t("merge.swap")}
-                  </button>
-                ) : null}
-                <div className="flex gap-3 rounded-lg border border-slate-200 p-3">
-                  <SourceThumbnail payslipId={payslip.id} />
-                  <div className="flex min-w-0 flex-col gap-1 text-sm">
-                    <p className="font-semibold">{pagesOf(position, payslip.pageCount)}</p>
-                    <p className="break-all text-slate-700">{payslip.originalFilename}</p>
-                    <p className="text-slate-600">
-                      {t("merge.pageCount", { count: payslip.pageCount })}
-                    </p>
-                  </div>
+              <li
+                key={payslip.id}
+                className="flex items-start gap-3 rounded-lg border border-slate-200 p-3"
+              >
+                <SourceThumbnail payslipId={payslip.id} />
+                <div className="flex min-w-0 flex-1 flex-col gap-1 text-sm">
+                  <p className="font-semibold">{pagesOf(position, payslip.pageCount)}</p>
+                  <p className="break-all text-slate-700">{payslip.originalFilename}</p>
+                  <p className="text-slate-600">
+                    {t("merge.pageCount", { count: payslip.pageCount })}
+                  </p>
+                </div>
+                <div className="flex shrink-0 flex-col">
+                  {(["up", "down"] as const).map((direction) => {
+                    const atEnd =
+                      direction === "up" ? position === 0 : position === ordered.length - 1;
+                    const Icon = direction === "up" ? ArrowUp : ArrowDown;
+                    return (
+                      <button
+                        key={direction}
+                        type="button"
+                        id={`merge-move-${direction}-${payslip.id}`}
+                        onClick={() => move(payslip.id, direction)}
+                        aria-label={t(direction === "up" ? "merge.moveUp" : "merge.moveDown", {
+                          name: payslip.originalFilename,
+                        })}
+                        aria-disabled={busy || atEnd}
+                        className="grid size-12 place-items-center rounded-lg text-slate-700 hover:bg-slate-100 aria-disabled:text-slate-300 aria-disabled:hover:bg-transparent"
+                      >
+                        <Icon aria-hidden="true" className="size-5" />
+                      </button>
+                    );
+                  })}
                 </div>
               </li>
             ))}
           </ol>
           <p role="status" className="sr-only">
-            {swapped && ordered[0] ? t("merge.swapped", { name: ordered[0].originalFilename }) : ""}
+            {moved === null
+              ? ""
+              : t("merge.moved", {
+                  name: payslips[index(moved.id)]?.originalFilename ?? "",
+                  position: (order?.indexOf(moved.id) ?? 0) + 1,
+                })}
           </p>
-          <p className="mt-4 text-sm text-slate-700">{t("merge.consequence")}</p>
         </>
       ) : (
         <fieldset className="mt-4 flex flex-col gap-2">
@@ -186,11 +218,16 @@ export function MergeDialog({
               className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg border border-slate-300 px-3 py-2 text-sm has-checked:border-2 has-checked:border-accent"
             >
               <input
-                type="radio"
+                type="checkbox"
                 name="merge-with"
                 value={payslip.id}
-                checked={chosen === payslip.id}
-                onChange={() => setChosen(payslip.id)}
+                checked={chosen.has(payslip.id)}
+                onChange={(event) => {
+                  const next = new Set(chosen);
+                  if (event.target.checked) next.add(payslip.id);
+                  else next.delete(payslip.id);
+                  setChosen(next);
+                }}
                 className="size-5 accent-accent"
               />
               <span className="flex min-w-0 flex-col">
@@ -239,9 +276,9 @@ export function MergeDialog({
           <button
             type="button"
             onClick={() => {
-              if (chosen !== null) setOrder(inListOrder(selectedId, chosen));
+              if (chosen.size > 0) setOrder(inListOrder([selectedId, ...chosen]));
             }}
-            aria-disabled={chosen === null}
+            aria-disabled={chosen.size === 0}
             className="min-h-12 rounded-lg bg-accent px-4 text-sm font-semibold text-white hover:bg-accent-hover aria-disabled:bg-slate-400"
           >
             {t("merge.continue")}

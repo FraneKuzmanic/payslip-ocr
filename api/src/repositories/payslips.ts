@@ -112,7 +112,7 @@ export interface MergePayslipsInput {
   readonly sessionId: string;
   readonly id: string;
   /** Page order; also stored as `merged_from`. */
-  readonly order: readonly [string, string];
+  readonly order: readonly string[];
   readonly originalFilename: string;
   readonly pageCount: number;
 }
@@ -375,10 +375,10 @@ export class PayslipRepository {
   }
 
   /**
-   * Plan 11 D8: soft-deletes both originals and inserts the merged payslip, in one transaction
-   * through `merge_payslips`. The merged row is `processing` with pending tables, and takes the
-   * earlier original's `created_at`. False: either original is missing, foreign, deleted, in
-   * another session, or still extracting.
+   * Plan 11 D8, Task 15b D4: soft-deletes the originals and inserts the merged payslip, in one
+   * transaction through `merge_payslips`. The merged row is `processing` with pending tables, and
+   * takes the earliest original's `created_at`. False: any original is missing, foreign, deleted,
+   * in another session, or still extracting.
    */
   async merge(input: MergePayslipsInput): Promise<boolean> {
     const { data, error } = await this.#client.rpc("merge_payslips", {

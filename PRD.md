@@ -128,7 +128,7 @@ The downstream consumer of the exported data is **deliberately unspecified**. Th
 
 - ❌ Payslip **validation as a product feature** (doc-guard's cross-total checking). Arithmetic identities are computed, but only to raise review warnings — never to accept or reject a document.
 - ❌ Splitting one uploaded file into several payslips
-- ❌ Reordering pages within a payslip beyond the swap offered at merge time
+- ❌ Reordering pages within a payslip beyond the order chosen at merge time
 - ❌ Drag-and-drop as a navigation or merge affordance
 - ❌ Cross-payslip aggregation (e.g. "average net over three months")
 - ❌ Bulk actions across a session (confirm all, export all as one operation beyond the existing all-confirmed export)
@@ -522,7 +522,7 @@ Since Task 08: a value printed across several lines has one outline per line. Ev
 
 **Requirements.** Two controls, deliberately not one — established document-review practice splits document selection from page navigation, and the two levels are semantically different (payslips are alternatives to each other; pages are sequential parts of one thing).
 
-- **Payslips:** a horizontal scroll-snap chip rail above the selected payslip at every width (Task 14; the vertical list at `xl` is superseded). Each chip carries the file name, its status icon with text, and an unsaved-edits mark when needed; there is no position number and no period. No thumbnails: letterheads within a session look alike. A chip whose payslip is still being read is `aria-disabled`: arrow keys still reach it, it does not open, and it is dimmed besides carrying its status text. Implemented as a `tablist` with **manual activation**, since the panel swaps a rendered preview and a whole form. A truncated rail shows a `+N` badge on the last visible chip, and the next chip peeks ~24 px.
+- **Payslips:** a horizontal scroll-snap chip rail above the selected payslip at every width (Task 14; the vertical list at `xl` is superseded). Each chip carries the file name, its status icon with text, and an unsaved-edits mark when needed; there is no position number and no period. No thumbnails: letterheads within a session look alike. A chip whose payslip is still being read is `aria-disabled`: arrow keys still reach it, it does not open, and it is dimmed besides carrying its status text. Implemented as a `tablist` with **manual activation**, since the panel swaps a rendered preview and a whole form. The next chip peeks ~24 px; there is no `+N` count badge (Task 15).
 - **Pages:** a pager pill inside the preview (`‹ Stranica 2 od 3 ›`) that opens a thumbnail sheet on tap; at `lg`, a 72 px vertical page rail inside the source panel. Marked up as a `<nav>` with `aria-current="page"`, never a tablist nested inside a tabpanel.
 
 **Rules.** Every rail control has a hit box of at least 48 CSS px. Selection is never indicated by colour alone. The preview displays one page at a time; every page is reachable from the pager, sheet or rail, none only by horizontal scroll. Single-page payslips show no page navigator.
@@ -531,10 +531,17 @@ Settled in Task 14:
 
 - **Loading screen.** Until one payslip can be opened (`review`, `confirmed` or `failed`) and while anything is still being read or uploaded, the review route shows a full-screen "Preparing your payslips" state. Without a `?payslip=`, the first readable payslip in list order opens, or else the first failed one. A failed payslip ends the wait, since it is a result the user can act on. Every payslip failed, or every upload rejected, shows the page at once.
 - **Layout.** A "Back to payslips" link and a heading counted by payslip ("Review payslips") sit above the rail. At `lg` the page uses the full main width and splits form and document 1:1.
-- **The document fits its column's width on desktop.** At `lg` the frame is the column's width by the screen height below the header, and zoom 1 is the page at that width. A plain wheel scrolls the document and, at its top or bottom edge, the page; Ctrl + wheel (and a trackpad pinch) zooms about the cursor; zoom-out stops at the whole page; reset returns to the page's width at the top. A phone keeps the whole page at zoom 1, in a frame budgeted in `svh`, so it does not resize as the address bar hides.
+- **The document fits its column's width on desktop.** At `lg` the frame is the column's width by the screen height below the header, and zoom 1 is the page at that width. A plain wheel zooms about the cursor, proportionally to its delta, and the page never scrolls from the preview (Task 15, superseding Task 14's wheel pan); drag pans; zoom-out stops at the whole page; reset returns to the page's width at the top. A phone keeps the whole page at zoom 1, in a frame budgeted in `svh`, so it does not resize as the address bar hides.
 - **Pinch.** Two fingers on the document zoom it about their midpoint, not the page; one finger pans once it overflows. Lifting the fingers opens no outline.
-- **Sharp PDFs.** 200 ms after the zoom settles, a PDF page is redrawn at that zoom within a pixel budget (16,777,216 px on a coarse pointer, 33,554,432 otherwise), off screen, and copied over so nothing blanks. At fit it is drawn at 2.5× as before.
+- **Sharp PDFs.** 200 ms after the zoom settles, a PDF page is redrawn at that zoom within a pixel budget (9,560,000 px on a coarse pointer, 33,554,432 otherwise), off screen, and copied over so nothing blanks. At fit it is drawn at 2.5× as before.
 - **Page changes** keep the viewer mounted with a spinner over it until the next page is measured, so the page does not jump.
+
+Settled in Task 15:
+
+- **The single view.** A Payslips link opens `/sessions/:id?payslip=:pid&view=single`: that payslip alone, headed by its file name and its status in the list's words, with its downloads once confirmed. No rail, no merge suggestions, no Merge button and no upload rows. A payslip that no longer exists (deleted, merged away) says so, with a link back to Payslips. The session URL without `view=single` is the upload view, unchanged.
+- **The upload batch hands over.** A file's row below the form stands for it only until its payslip first appears in a session read; from then on the server row represents it, even after the payslip is merged or deleted. The header counts live payslips plus files still being sent.
+- **The sidebar collapses** at `lg` to a 76 px icon rail, remembered in the browser, with each link's name kept for assistive technology and shown as a tooltip. Task 15b follows shadcn/ui's Sidebar (`collapsible="icon"`, the `sidebar-07` block): the trigger is a quiet panel-icon button at the left of the top bar, followed by a thin vertical separator, sized like the bar's other controls and with its name as a tooltip. Collapsing animates the width over 200 ms, linear (none under reduced motion); the links keep the same padding, so the icons stay in place, directly below the trigger's icon, while the labels fade and are clipped.
+- **Outlines sit beside the text.** Each is padded outward by 1.5 screen pixels and drawn 1 px at rest, 2 px when active.
 
 ### 7.7 Review form
 
@@ -556,21 +563,28 @@ Settled in Task 09:
 - **Format errors** (text that will not parse on save) are validation failures: red text under the input, `aria-invalid`, and a form-level alert on a failed save. They are visible in both the table and the card layout.
 - **Region interaction.** At `lg`, clicking an outline focuses its input; on a phone it opens the popover, whose Edit does. Escape closes the popover.
 
+Settled in Task 15:
+
+- **Sections are disclosures.** Employer, employee, period and the pay calculation start open; the three tables start closed. Each header names the section with its colour dot, a table's row count (or that it is still loading), and, when anything inside needs attention, "N to check". A closed section stays in the form, hidden, and opens by itself when an outline click or the popover's Edit targets a field in it, and when a failed save finds an error in it. Every payslip opens with these defaults; a toggle lasts until the payslip is left (Task 15b; Task 15 kept it for the browser tab).
+- **Edited and Discard changes.** An "Edited" badge sits above the form while it has unsaved changes or the payslip has saved edits. "Discard changes" appears only with unsaved changes and returns the form to the last save, rows included, without a prompt. Restoring the original extraction is not offered.
+- **"+ Add row"** is an underlined text action at every width.
+- **Save and Confirm** are full width and stacked below `lg`, a row at `lg`. "Show document" is the same light disclosure as the section headers.
+
 ### 7.8 Merge
 
-**Purpose.** Recover when one payslip was photographed as two files.
+**Purpose.** Recover when one payslip was photographed as two or more files.
 
-**Expected flow.** After extraction, two Payslips in the same Session that share an employee OIB and period — or, when the employee OIB is missing on one side, an employer OIB and period — raise a non-blocking suggestion. The user can also trigger a merge manually from a payslip's action menu at any time, which is the path that matters when OCR failed to read the key at all.
+**Expected flow.** After extraction, Payslips in the same Session that share an employee OIB and period — or, when the employee OIB is missing, an employer OIB and period — raise one non-blocking suggestion per group. The user can also trigger a merge manually from the payslip's Merge button in the upload view at any time (Task 15; before, an item in its action menu), which is the path that matters when OCR failed to read the key at all. The button reads "Merge" at every width, with "Merge with another payslip" as its tooltip (Task 15b).
 
-**Rules.** Never merge silently. The merge confirmation shows both documents in upload order with a swap control. Merging **combines the source files into a single PDF and re-extracts** — stitching two independently extracted results would require reconciling two disagreeing `bruto` values with no principled tiebreak. The two source Payslips are soft-deleted and replaced by one. There is no drag affordance: WCAG 2.2 SC 2.5.7 would require a non-dragging equivalent anyway, so only the menu action is built.
+**Rules.** Never merge silently. A merge takes two or more payslips in one step (Task 15b). The manual path picks the others with checkboxes; the confirmation shows every document in upload order, each with Move up and Move down, and where its pages land. Merging **combines the source files into a single PDF and re-extracts** — stitching independently extracted results would require reconciling disagreeing `bruto` values with no principled tiebreak. The source Payslips are soft-deleted and replaced by one. There is no drag affordance: WCAG 2.2 SC 2.5.7 would require a non-dragging equivalent anyway, so only the buttons are built.
 
 Settled in Task 11:
 
-- **The suggestion is computed on the server** and returned as `mergeSuggestions` on the session read, so OIBs never leave the API in the summary. A pair qualifies when both payslips are in `review` or `confirmed` and settled, share a period, and share an employee OIB, or, when either employee OIB is unread, an employer OIB. Two different employee OIBs never match. Every matching pair is returned in upload order, so three pages of one payslip give three pairs.
-- **Dismissing a suggestion** ("Not now") lasts for the browser tab and is lost on reload.
-- **What may be merged:** anything not still extracting. Not `processing`, and not `review` while the tables pass is pending. A failed payslip merges (a page 2 alone is often unreadable), and so does a confirmed one: the dialog says in words that edits, unsaved changes and confirmation on both are replaced by a fresh extraction.
+- **The suggestion is computed on the server** and returned as `mergeSuggestions` on the session read, so OIBs never leave the API in the summary. A pair qualifies when both payslips are in `review` or `confirmed` and settled, share a period, and share an employee OIB, or, when either employee OIB is unread, an employer OIB. Two different employee OIBs never match. Task 15b returns **groups** instead of pairs, so three pages of one payslip give one group and one banner. The rule is not transitive, so groups are not its connected components: payslips with a known employee OIB group by period and employee OIB; one with an unread employee OIB joins the group of its period with a member of the same employer when there is exactly one such group, groups with the other unattached payslips of its period and employer when there is none, and joins nothing when there are several (the manual Merge covers it). Members are in upload order, groups in the order of their first member.
+- **Dismissing a suggestion** ("Not now") lasts for the browser tab and is lost on reload. A group that later gains a member is suggested again.
+- **What may be merged:** anything not still extracting. Not `processing`, and not `review` while the tables pass is pending. A failed payslip merges (a page 2 alone is often unreadable), and so does a confirmed one: a merge replaces the payslips, their edits and confirmation with a fresh extraction; the dialog shows the pages and their order, without a warning (Task 15).
 - **The upload caps apply to the combined PDF:** more than 10 pages is `422 pdf_too_many_pages`, more than 10 MB is `422 file_too_large`, both before anything is stored.
-- **Position:** the merged payslip takes the earlier original's upload time, so it keeps that one's place in the session and nothing renumbers. Its name is both filenames in page order, joined by " + ".
+- **Position:** the merged payslip takes the earliest original's upload time, so it keeps that one's place in the session and nothing renumbers. Its name is every filename in page order, joined by " + ", within 255 characters.
 - **Combining:** a permissions-only PDF (golden-set B01) is decrypted before its pages are copied, or its text would be lost. HEIC is converted to JPEG on the server. A JPEG's EXIF orientation becomes the page's `/Rotate`, which the extraction service applies. An image page's long edge is A4's 842 pt, at full pixel resolution.
 
 ### 7.9 Warnings
@@ -603,7 +617,7 @@ Task 09 narrowed both:
 
 **Purpose.** Find and re-open past work.
 
-**Requirements.** A flat, paginated list of payslips — mirroring receipt-ocr's existing screen rather than redesigning it — with a status filter, cards on phone and a table at `lg`. Since Task 14 it is reached as **Payslips** / **Platne liste** at `/payslips` (no redirect from `/history`), titled "Your payslips", and words its statuses for a list (Processing, Needs review, Confirmed, Failed / U obradi, Za pregled, Potvrđena, Neuspješna). Each row links back into its Session's review screen. Soft delete. Per-payslip and all-confirmed export.
+**Requirements.** A flat, paginated list of payslips — mirroring receipt-ocr's existing screen rather than redesigning it — with a status filter, cards on phone and a table at `lg`. Since Task 14 it is reached as **Payslips** / **Platne liste** at `/payslips` (no redirect from `/history`), titled "Your payslips", and words its statuses for a list (Processing, Needs review, Confirmed, Failed / U obradi, Za pregled, Potvrđena, Neuspješna). Each row opens that payslip alone (`view=single`, Task 15): no rail and no merge. Soft delete. Per-payslip and all-confirmed export.
 
 ### 7.11 Export
 
@@ -781,8 +795,8 @@ A retry is a full reset to a fresh extraction: status `processing`, `tablesStatu
 Coordinates are page-relative fractions in `[0,1]`. Returns empty arrays when no raw response is retained, and for any payslip not in `review` or `confirmed`. While `tablesStatus` is `pending`, the regions cover the scalars only (Task 08).
 
 **10.11** `POST /api/sessions/:id/merge`
-Body `{payslipIds: [string, string], order: [string, string]}`. Builds a combined PDF from the sources, creates a new Payslip, re-extracts, soft-deletes the originals.
-→ `202 {id, status: "processing"}` · `400 invalid_request` for a bad id or body · `404 not_found` for a missing, foreign or deleted session · `409 merge_not_allowed` if either payslip is not a live payslip of this session, is still extracting, or was merged or deleted meanwhile · `422 pdf_too_many_pages` or `422 file_too_large` when the combined PDF exceeds an upload cap · `422 merge_source_unreadable` when a source cannot be loaded, converted or embedded. The merged payslip takes the earlier original's position, records `merged_from` in page order, and re-extracts; the originals are soft-deleted and keep their sources (Task 11).
+Body `{payslipIds: string[], order: string[]}`: 2–10 distinct ids, with `order` the same ids in page order (Task 15b; a two-payslip body is unchanged). Builds a combined PDF from the sources, creates a new Payslip, re-extracts, soft-deletes the originals.
+→ `202 {id, status: "processing"}` · `400 invalid_request` for a bad id or body · `404 not_found` for a missing, foreign or deleted session · `409 merge_not_allowed` if any payslip is not a live payslip of this session, is still extracting, or was merged or deleted meanwhile · `422 pdf_too_many_pages` or `422 file_too_large` when the combined PDF exceeds an upload cap · `422 merge_source_unreadable` when a source cannot be loaded, converted or embedded. The merged payslip takes the earliest original's position, records `merged_from` in page order, and re-extracts; the originals are soft-deleted and keep their sources (Task 11).
 
 **10.12** `GET /api/payslips?page&limit&status` → `200 {items, page, limit, total}`, newest first. Each item carries `originalFilename`, which names a row before extraction has read an employee (Task 12).
 

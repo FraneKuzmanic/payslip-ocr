@@ -94,35 +94,66 @@ export type MergeCandidate = Pick<
 >;
 
 /**
- * Pairs of payslips that look like pages of one (PRD §7.8, plan 11 D5): both readable and settled,
- * the same period, and the same employee OIB, or, when an employee OIB is unread on either side,
- * the same employer OIB. Two different employee OIBs never match: that is two employees.
+ * Groups of two or more payslips that look like pages of one (PRD §7.8, Task 15b D7): readable
+ * and settled, the same period, and the same employee OIB, or, when an employee OIB is unread, the
+ * same employer OIB. Two different employee OIBs never match: that is two employees.
  *
- * Pairs come in list order, `a` before `b`, and every matching pair is returned.
+ * That rule is not transitive, so the groups are not its connected components: a payslip with an
+ * unread employee OIB would otherwise chain two employees of one employer into one group. Instead:
+ *
+ * 1. payslips with a known employee OIB group by period and employee OIB;
+ * 2. one with an unread employee OIB joins the step 1 group of its period that has a member with
+ *    its employer OIB, when there is exactly one; with none it groups with the other such payslips
+ *    of its period and employer OIB; with several it is ambiguous and joins nothing (the manual
+ *    merge still covers it);
+ * 3. groups of one are dropped.
+ *
+ * Members come in list order, and groups in the order of their first member.
  */
-export function mergeSuggestions(payslips: readonly MergeCandidate[]): [string, string][] {
+export function mergeSuggestions(payslips: readonly MergeCandidate[]): string[][] {
   const candidates = payslips.filter(
     (payslip) =>
       (payslip.status === "review" || payslip.status === "confirmed") &&
-      isMergeable(payslip.status, payslip.tablesStatus),
+      isMergeable(payslip.status, payslip.tablesStatus) &&
+      known(payslip.period) !== null,
   );
-  const pairs: [string, string][] = [];
-  for (const [index, a] of candidates.entries()) {
-    for (const b of candidates.slice(index + 1)) {
-      if (looksLikeOnePayslip(a, b)) pairs.push([a.id, b.id]);
+  const byEmployee = new Map<string, MergeCandidate[]>();
+  const unread: MergeCandidate[] = [];
+  for (const payslip of candidates) {
+    const employee = known(payslip.employeeOib);
+    if (employee === null) {
+      unread.push(payslip);
+    } else {
+      const key = `${known(payslip.period)} ${employee}`;
+      byEmployee.set(key, [...(byEmployee.get(key) ?? []), payslip]);
     }
   }
-  return pairs;
-}
 
-function looksLikeOnePayslip(a: MergeCandidate, b: MergeCandidate): boolean {
-  const period = known(a.period);
-  if (period === null || period !== known(b.period)) return false;
-  const employeeA = known(a.employeeOib);
-  const employeeB = known(b.employeeOib);
-  if (employeeA !== null && employeeB !== null) return employeeA === employeeB;
-  const employer = known(a.employerOib);
-  return employer !== null && employer === known(b.employerOib);
+  const knownGroups = [...byEmployee.values()];
+  const byEmployer = new Map<string, MergeCandidate[]>();
+  for (const payslip of unread) {
+    const employer = known(payslip.employerOib);
+    if (employer === null) continue;
+    const period = known(payslip.period);
+    const matching = knownGroups.filter((group) =>
+      group.some(
+        (member) => known(member.period) === period && known(member.employerOib) === employer,
+      ),
+    );
+    if (matching.length === 1) {
+      matching[0]!.push(payslip);
+    } else if (matching.length === 0) {
+      const key = `${period} ${employer}`;
+      byEmployer.set(key, [...(byEmployer.get(key) ?? []), payslip]);
+    }
+  }
+
+  const position = new Map(candidates.map((payslip, index) => [payslip.id, index]));
+  const at = (id: string) => position.get(id) ?? 0;
+  return [...knownGroups, ...byEmployer.values()]
+    .filter((group) => group.length >= 2)
+    .map((group) => group.map((payslip) => payslip.id).toSorted((a, b) => at(a) - at(b)))
+    .toSorted((a, b) => at(a[0]!) - at(b[0]!));
 }
 
 function known(value: string | null | undefined): string | null {
@@ -130,7 +161,10 @@ function known(value: string | null | undefined): string | null {
   return trimmed ? trimmed : null;
 }
 
-/** The merged payslip's name: both originals in page order (plan 11 D9), within 255 characters. */
-export function mergedFilename(first: string, second: string): string {
-  return `${first} + ${second}`.slice(0, 255);
+/**
+ * The merged payslip's name: every original in page order (plan 11 D9, Task 15b D4), within 255
+ * characters.
+ */
+export function mergedFilename(names: readonly string[]): string {
+  return names.join(" + ").slice(0, 255);
 }

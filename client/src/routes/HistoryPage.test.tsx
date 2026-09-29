@@ -160,7 +160,7 @@ describe("HistoryPage", () => {
     const row = within(table).getAllByRole("row")[1];
     expect(within(row!).getByRole("link", { name: "Ana Horvat" })).toHaveAttribute(
       "href",
-      `/sessions/${SESSION_ID}?payslip=${PAYSLIP_ID}`,
+      `/sessions/${SESSION_ID}?payslip=${PAYSLIP_ID}&view=single`,
     );
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
   });
@@ -180,7 +180,7 @@ describe("HistoryPage", () => {
 
     await user.click(await screen.findByText("Primjer d.o.o."));
     expect(
-      await screen.findByText(`Session /sessions/${SESSION_ID}?payslip=${PAYSLIP_ID}`),
+      await screen.findByText(`Session /sessions/${SESSION_ID}?payslip=${PAYSLIP_ID}&view=single`),
     ).toBeInTheDocument();
     unmount();
 
@@ -188,7 +188,7 @@ describe("HistoryPage", () => {
     renderPage();
     await user.click(await screen.findByRole("link", { name: /Ana Horvat/ }));
     expect(
-      await screen.findByText(`Session /sessions/${SESSION_ID}?payslip=${PAYSLIP_ID}`),
+      await screen.findByText(`Session /sessions/${SESSION_ID}?payslip=${PAYSLIP_ID}&view=single`),
     ).toBeInTheDocument();
   });
 

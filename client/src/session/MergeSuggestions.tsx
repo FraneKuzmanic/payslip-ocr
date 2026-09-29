@@ -20,50 +20,51 @@ export function shortName(name: string, max = MAX_NAME): string {
 }
 
 interface MergeSuggestionsProps {
-  pairs: readonly (readonly [string, string])[];
+  groups: readonly (readonly string[])[];
   payslips: readonly PayslipSummary[];
-  onReview: (pair: readonly [string, string]) => void;
+  onReview: (group: readonly string[]) => void;
 }
 
 /**
- * One non-blocking banner per suggested pair (PRD §7.8, plan 11 D11). Never merges by itself:
- * Review merge opens the confirmation, Not now hides the pair for this tab (D6).
+ * One non-blocking banner per suggested group of two or more (PRD §7.8, plan 11 D11, Task 15b D7).
+ * Never merges by itself: Review merge opens the confirmation, Not now hides the group for this
+ * tab (D6).
  */
-export function MergeSuggestions({ pairs, payslips, onReview }: MergeSuggestionsProps) {
+export function MergeSuggestions({ groups, payslips, onReview }: MergeSuggestionsProps) {
   const { t } = useTranslation();
   const { dismissed, dismiss } = useDismissedSuggestions();
   const position = (id: string) => payslips.findIndex((payslip) => payslip.id === id) + 1;
   const name = (id: string) =>
     shortName(payslips.find((payslip) => payslip.id === id)?.originalFilename ?? "");
-  // A pair whose payslips have just been merged or deleted is stale until the next read.
-  const shown = pairs.filter(
-    (pair) => !dismissed.has(suggestionKey(pair)) && pair.every((id) => position(id) > 0),
+  // A group with a payslip just merged or deleted is stale until the next read.
+  const shown = groups.filter(
+    (group) => !dismissed.has(suggestionKey(group)) && group.every((id) => position(id) > 0),
   );
   if (shown.length === 0) return null;
 
   return (
     <div className="flex flex-col gap-2">
-      {shown.map((pair) => (
+      {shown.map((group) => (
         <div
-          key={suggestionKey(pair)}
+          key={suggestionKey(group)}
           role="status"
           className="flex flex-col gap-3 rounded-lg border border-sky-200 bg-sky-50 p-4 text-sky-950 sm:flex-row sm:items-center sm:justify-between"
         >
           <p className="flex items-start gap-2">
             <Combine aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
-            {t("merge.suggestion", { a: name(pair[0]), b: name(pair[1]) })}
+            {t("merge.suggestion", { names: group.map(name) })}
           </p>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => onReview(pair)}
+              onClick={() => onReview(group)}
               className="min-h-12 rounded-lg bg-accent px-4 text-sm font-semibold text-white hover:bg-accent-hover"
             >
               {t("merge.reviewSuggestion")}
             </button>
             <button
               type="button"
-              onClick={() => dismiss(suggestionKey(pair))}
+              onClick={() => dismiss(suggestionKey(group))}
               className="min-h-12 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-100"
             >
               {t("merge.dismissSuggestion")}

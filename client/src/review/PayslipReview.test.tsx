@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StrictMode, useEffect } from "react";
 import { Link, MemoryRouter, Outlet, Route, Routes, useNavigate, useParams } from "react-router";
@@ -31,6 +31,9 @@ vi.mock("./SourceDocumentPanel", () => ({
         <pre data-testid="panel">{JSON.stringify(props)}</pre>
         <button type="button" onClick={() => onSelect?.("netoPlaca")}>
           outline
+        </button>
+        <button type="button" onClick={() => onSelect?.("obustave.0.iznos")}>
+          table outline
         </button>
       </>
     );
@@ -76,7 +79,8 @@ function stubWide(wide: boolean, coarse = false) {
   );
 }
 
-function review(tablesStatus: "pending" | "ready" = "pending") {
+/** Keyed by payslip, as `SessionPage` mounts it. */
+function review(tablesStatus: "pending" | "ready" = "pending", payslipId = "payslip-1") {
   return (
     <ToastProvider>
       <MemoryRouter>
@@ -85,11 +89,15 @@ function review(tablesStatus: "pending" | "ready" = "pending") {
             <Route
               index
               element={
-                <PayslipReview
-                  payslipId="payslip-1"
-                  tablesStatus={tablesStatus}
-                  onChanged={onChanged}
-                />
+                <>
+                  <PayslipReview
+                    key={payslipId}
+                    payslipId={payslipId}
+                    tablesStatus={tablesStatus}
+                    onChanged={onChanged}
+                  />
+                  <UnsavedProbe />
+                </>
               }
             />
           </Route>
@@ -100,6 +108,12 @@ function review(tablesStatus: "pending" | "ready" = "pending") {
 }
 
 const onChanged = vi.fn();
+
+/** What the rail's unsaved pencil reads. */
+function UnsavedProbe() {
+  const { unsaved } = useUnsavedEdits();
+  return <p data-testid="unsaved">{[...unsaved].join(",")}</p>;
+}
 
 beforeEach(async () => {
   await i18n.changeLanguage("en");
@@ -246,6 +260,45 @@ describe("PayslipReview", () => {
 
     expect(document.getElementById("review-field-netoPlaca")).toHaveFocus();
     expect(panelProps()).toMatchObject({ activeField: "netoPlaca" });
+  });
+
+  it("opens a collapsed table before focusing a selected cell (Task 15 D9)", async () => {
+    vi.mocked(getPayslipDetail).mockResolvedValue(
+      detail({
+        tablesStatus: "ready",
+        obustave: [{ naziv: "KREDIT", iznos: "50.00" }],
+      }),
+    );
+    render(review("ready"));
+    await screen.findByTestId("panel");
+    const toggle = screen.getByRole("button", { name: /^Obustave/ });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+    await userEvent.click(screen.getByRole("button", { name: "table outline" }));
+
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(document.getElementById("review-field-obustave-0-iznos")).toHaveFocus();
+  });
+
+  it("opens another payslip at the default sections (Task 15b D8)", async () => {
+    vi.mocked(getPayslipDetail).mockResolvedValue(
+      detail({ tablesStatus: "ready", obustave: [{ naziv: "KREDIT", iznos: "50.00" }] }),
+    );
+    const { rerender } = render(review("ready"));
+    await screen.findByTestId("panel");
+    await userEvent.click(screen.getByRole("button", { name: /^Obustave/ }));
+    expect(screen.getByRole("button", { name: /^Obustave/ })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+
+    rerender(review("ready", "payslip-2"));
+    await screen.findByTestId("panel");
+
+    expect(screen.getByRole("button", { name: /^Obustave/ })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
   });
 
   it("makes a focused field's region the active one", async () => {
@@ -407,5 +460,77 @@ describe("liveRegions", () => {
       region("netoPlaca"),
       region("obustave.0.iznos"),
     ]);
+  });
+});
+
+const discard = () => screen.queryByRole("button", { name: "Discard changes" });
+
+describe("PayslipReview Edited and Discard changes (Task 15 D11)", () => {
+  it("shows neither on an untouched payslip without saved edits", async () => {
+    render(review());
+    await screen.findByTestId("panel");
+
+    expect(screen.queryByText("Edited")).toBeNull();
+    expect(discard()).toBeNull();
+  });
+
+  it("discards unsaved typing back to the last save and reports the form clean", async () => {
+    render(review());
+    await screen.findByTestId("panel");
+
+    await userEvent.clear(input());
+    await userEvent.type(input(), "1.00");
+    expect(screen.getByText("Edited")).toBeInTheDocument();
+    expect(screen.getByTestId("unsaved")).toHaveTextContent("payslip-1");
+
+    await userEvent.click(discard()!);
+
+    expect(input()).toHaveValue("2298.97");
+    expect(discard()).toBeNull();
+    expect(screen.queryByText("Edited")).toBeNull();
+    expect(screen.getByTestId("unsaved")).toBeEmptyDOMElement();
+  });
+
+  it("clears a failed save's alert along with the typing", async () => {
+    render(review());
+    await screen.findByTestId("panel");
+    await userEvent.clear(input());
+    await userEvent.type(input(), "abc");
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+
+    await userEvent.click(discard()!);
+
+    expect(input()).toHaveValue("2298.97");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("removes a row added since the last save", async () => {
+    vi.mocked(getPayslipDetail).mockResolvedValue(
+      detail({
+        tablesStatus: "ready",
+        obustave: [{ naziv: "KREDIT", iznos: "50.00" }],
+      }),
+    );
+    render(review("ready"));
+    await screen.findByTestId("panel");
+    const obustave = screen.getByRole("group", { name: /^Obustave/ });
+    await userEvent.click(within(obustave).getByRole("button", { name: /^Obustave/ }));
+    await userEvent.click(within(obustave).getByRole("button", { name: "Add row" }));
+    expect(document.getElementById("review-field-obustave-1-naziv")).toBeInTheDocument();
+
+    await userEvent.click(discard()!);
+
+    expect(document.getElementById("review-field-obustave-1-naziv")).toBeNull();
+    expect(within(obustave).getByRole("button", { name: /^Obustave/ })).toHaveTextContent("1 row");
+  });
+
+  it("keeps the badge for saved edits, without the discard action", async () => {
+    vi.mocked(getPayslipDetail).mockResolvedValue(detail({ editedFields: ["netoPlaca"] }));
+    render(review());
+    await screen.findByTestId("panel");
+
+    expect(screen.getByText("Edited")).toBeInTheDocument();
+    expect(discard()).toBeNull();
   });
 });

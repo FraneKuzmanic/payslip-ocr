@@ -10,6 +10,8 @@ export interface BatchItem {
   readonly state: "waiting" | "uploading" | "uploaded" | "rejected";
   readonly payslipId?: string;
   readonly errorCode?: BatchErrorCode;
+  /** Its payslip has appeared in a session read; from then on the session read represents it. */
+  readonly listed?: true;
 }
 
 /**
@@ -25,6 +27,8 @@ export interface UploadBatchContextValue {
   /** The batch items for a session, in tray order; empty for a session this tab did not upload. */
   itemsFor(sessionId: string): readonly BatchItem[];
   dismiss(sessionId: string, localId: string): void;
+  /** Hands every uploaded item whose payslip is in `payslipIds` over to the session read. */
+  markListed(sessionId: string, payslipIds: ReadonlySet<string>): void;
 }
 
 export const UploadBatchContext = createContext<UploadBatchContextValue | null>(null);

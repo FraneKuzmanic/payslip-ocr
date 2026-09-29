@@ -14,7 +14,6 @@ import {
   clampPan,
   isRegionVisible,
   minZoomFor,
-  panBy,
   pinchZoom,
   zoomAbout,
   type PinchPoint,
@@ -229,29 +228,15 @@ export function ZoomableSourceViewport({
         return;
       }
 
-      // Fit width (Task 14 D17). Ctrl + wheel zooms, which is also what a trackpad pinch sends in
-      // Chromium and Firefox: proportionally to the delta, so a pinch's many small events stay
-      // smooth while a mouse notch still moves one step.
-      if (event.ctrlKey) {
-        event.preventDefault();
-        const factor = Math.min(
-          ZOOM_STEP,
-          Math.max(1 / ZOOM_STEP, ZOOM_STEP ** (-event.deltaY / 100)),
-        );
-        setView((state) => zoomAbout(state, frame, state.zoom * factor, anchor, current.content));
-        return;
-      }
-
-      // A plain wheel scrolls the document, and only consumes the event when the document moved, so
-      // at its top or bottom edge the page scrolls on, as nested scrolling does.
-      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? frame.height : 1;
-      const dx = (event.shiftKey && event.deltaX === 0 ? event.deltaY : event.deltaX) * unit;
-      const dy = (event.shiftKey ? 0 : event.deltaY) * unit;
-      const next = panBy(current.view, frame, current.content, -dx, -dy);
-      if (sameView(next, current.view)) return;
+      // Fit width. Task 15 D8: a plain wheel zooms again, proportionally so a trackpad's many
+      // small events (and a pinch's Ctrl + wheel) stay smooth while a mouse notch still moves one
+      // step; drag pans. Every event is consumed, so the page never scrolls from the preview.
       event.preventDefault();
-      latest.current = { ...current, view: next };
-      setView(next);
+      const factor = Math.min(
+        ZOOM_STEP,
+        Math.max(1 / ZOOM_STEP, ZOOM_STEP ** (-event.deltaY / 100)),
+      );
+      setView((state) => zoomAbout(state, frame, state.zoom * factor, anchor, current.content));
     }
     element.addEventListener("wheel", onWheel, { passive: false });
     return () => element.removeEventListener("wheel", onWheel);
@@ -460,6 +445,7 @@ export function ZoomableSourceViewport({
                 activeField={inspected ?? activeField}
                 editedFields={editedFields}
                 onSelect={handleRegionClick}
+                rendered={{ width: content.width * view.zoom, height: content.height * view.zoom }}
               />
             ) : null}
           </div>

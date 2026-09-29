@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { attentionFor, sectionWarnings } from "./fieldAttention";
+import { attentionCount, attentionFor, sectionWarnings } from "./fieldAttention";
 
 const none = { warnings: [], lowConfidenceFields: [], ungroundableFields: [] };
 
@@ -56,5 +56,21 @@ describe("sectionWarnings", () => {
         { code: "unparseable_amount", field: "payComponents.0.iznos" },
       ]),
     ).toEqual(["pay_components_sum_mismatch"]);
+  });
+});
+
+describe("attentionCount (Task 15 D9)", () => {
+  it("counts the paths with a note, once each, plus the section's own warnings", () => {
+    const signals = {
+      warnings: [{ code: "missing_critical_field" as const, field: "netoPlaca" }],
+      lowConfidenceFields: ["netoPlaca", "brutoPlaca"],
+      ungroundableFields: ["dohodak"],
+    };
+
+    expect(attentionCount(["netoPlaca", "brutoPlaca", "dohodak", "porezNaDohodak"], signals)).toBe(
+      3,
+    );
+    expect(attentionCount([], signals, ["pay_components_sum_mismatch"])).toBe(1);
+    expect(attentionCount(["porezNaDohodak"], none)).toBe(0);
   });
 });

@@ -73,6 +73,8 @@ export function SourceStrip({
             activeField={activeField}
             editedFields={editedFields}
             onSelect={() => {}}
+            // The strip's surface is unscaled, so its own size is the rendered size.
+            rendered={{ width: view.surfaceWidth, height: view.surfaceWidth / ratio }}
           />
         </div>
       )}

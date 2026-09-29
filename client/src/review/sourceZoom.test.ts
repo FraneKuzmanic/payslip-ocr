@@ -9,7 +9,6 @@ import {
   boundsOf,
   isRegionVisible,
   minZoomFor,
-  panBy,
   pinchZoom,
   zoomAbout,
 } from "./sourceZoom";
@@ -199,21 +198,6 @@ describe("fit width: content larger than its frame", () => {
     const contentY = (anchor.y - start.y) / start.zoom;
     const next = zoomAbout(start, frame, 2, anchor, content);
     expect(next.y + next.zoom * contentY).toBeCloseTo(anchor.y, 6);
-  });
-});
-
-describe("panBy", () => {
-  const frame = { width: 600, height: 500 };
-  const content = { width: 600, height: 849 };
-
-  it("moves the page and clamps it", () => {
-    expect(panBy(FIT, frame, content, 0, -100)).toEqual({ zoom: 1, x: 0, y: -100 });
-    expect(panBy(FIT, frame, content, 0, -1000)).toEqual({ zoom: 1, x: 0, y: -349 });
-  });
-
-  it("returns an equal state at the edge, so the caller lets the page scroll on", () => {
-    const bottom = { zoom: 1, x: 0, y: -349 };
-    expect(panBy(bottom, frame, content, 0, -60)).toEqual(bottom);
   });
 });
 

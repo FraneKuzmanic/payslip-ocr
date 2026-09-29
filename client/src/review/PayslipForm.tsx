@@ -1,18 +1,20 @@
 import { CheckCircle2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import type { ConfirmPayslipResponse, PayslipDetailResponse } from "@payslip/shared";
 import { ApiError, confirmPayslip, updatePayslip } from "../api/client";
 import { Spinner } from "../components/Spinner";
 import { useToast } from "../components/Toast";
-import { attentionFor, type AttentionSignals } from "./fieldAttention";
+import { attentionCount, attentionFor, type AttentionSignals } from "./fieldAttention";
 import { LineItemSection } from "./LineItemSection";
 import { ReviewField, pathOfFieldId } from "./ReviewField";
 import {
   SCALAR_LABEL_KEYS,
   SCALAR_SECTIONS,
   SECTION_LABEL_KEYS,
+  sectionOf,
   type ScalarField,
   type Section,
 } from "./regionSections";
@@ -26,7 +28,7 @@ import {
   type ReviewErrorKey,
   type ReviewFormValues,
 } from "./reviewForm";
-import { SectionLegend } from "./SectionLegend";
+import { SectionLegend, ToCheck } from "./SectionLegend";
 import type { UnsavedEdits } from "./unsaved/UnsavedEditsContext";
 
 const SCALAR_SECTION_ORDER = ["employer", "employee", "period", "reconciliation"] as const;
@@ -63,6 +65,16 @@ interface PayslipFormProps {
   onClose: (edits: UnsavedEdits | null) => void;
   /** The focused input's canonical path, or null once focus leaves the form (D9). */
   onFieldFocus: (path: string | null) => void;
+  /** Which sections are open (Task 15 D9); closed ones stay mounted and hidden. */
+  open: Readonly<Record<Section, boolean>>;
+  onToggleSection: (section: Section) => void;
+  /** Opens the sections a failed save has errors in, before the first error is focused. */
+  onOpenSections: (sections: Section[]) => void;
+}
+
+/** The section of a top-level form key: a table's own name, or a scalar's section. */
+function sectionOfKey(key: string): Section | null {
+  return (TABLE_FIELDS as readonly string[]).includes(key) ? (key as Section) : sectionOf(key);
 }
 
 /**
@@ -79,6 +91,9 @@ export function PayslipForm({
   initialEdits,
   onClose,
   onFieldFocus,
+  open,
+  onToggleSection,
+  onOpenSections,
 }: PayslipFormProps) {
   const { t, i18n } = useTranslation();
   const { show } = useToast();
@@ -179,8 +194,25 @@ export function PayslipForm({
 
   return (
     <form
+      id="review-form"
       noValidate
-      onSubmit={handleSubmit(save, () => setError(t("review.invalidForm")))}
+      // Task 15 D11: "Discard changes" is a reset button outside the form. Resetting to the saved
+      // values restores the field arrays' length too. `reset` merges the form's `resetOptions`
+      // into every call, so `keepDirtyValues` must be turned off here or the typing would stay.
+      onReset={(event) => {
+        event.preventDefault();
+        reset(values, { keepDirtyValues: false });
+        setError(null);
+      }}
+      // react-hook-form runs this before it focuses the first error, and a hidden input cannot
+      // take focus, so the sections holding errors open synchronously first (Task 15 D9).
+      onSubmit={handleSubmit(save, (invalid) => {
+        const sections = Object.keys(invalid)
+          .map(sectionOfKey)
+          .filter((section) => section !== null);
+        flushSync(() => onOpenSections(sections));
+        setError(t("review.invalidForm"));
+      })}
       onFocusCapture={(event) => onFieldFocus(pathOfFieldId((event.target as HTMLElement).id))}
       onBlurCapture={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) onFieldFocus(null);
@@ -189,27 +221,40 @@ export function PayslipForm({
     >
       {SCALAR_SECTION_ORDER.map((section) => (
         <fieldset key={section} className="flex flex-col gap-3">
-          <SectionLegend section={section} label={t(SECTION_LABEL_KEYS[section])} />
-          {FIELDS_BY_SECTION[section].map((field) => {
-            const kind = SCALAR_KINDS[field];
-            return (
-              <ReviewField
-                key={field}
-                path={field}
-                label={t(SCALAR_LABEL_KEYS[field])}
-                attention={attentionFor(field, signals)}
-                error={errors[field]?.message as ReviewErrorKey | undefined}
-                input={
-                  <input
-                    type="text"
-                    autoComplete="off"
-                    inputMode={kind === "amount" || kind === "quantity" ? "decimal" : undefined}
-                    {...register(field, { validate: validatorFor(kind) })}
-                  />
-                }
-              />
-            );
-          })}
+          <SectionLegend
+            section={section}
+            label={t(SECTION_LABEL_KEYS[section])}
+            expanded={open[section]}
+            controls={`review-section-${section}`}
+            onToggle={() => onToggleSection(section)}
+            summary={<ToCheck count={attentionCount(FIELDS_BY_SECTION[section], signals)} />}
+          />
+          <div
+            id={`review-section-${section}`}
+            hidden={!open[section]}
+            className="flex flex-col gap-3"
+          >
+            {FIELDS_BY_SECTION[section].map((field) => {
+              const kind = SCALAR_KINDS[field];
+              return (
+                <ReviewField
+                  key={field}
+                  path={field}
+                  label={t(SCALAR_LABEL_KEYS[field])}
+                  attention={attentionFor(field, signals)}
+                  error={errors[field]?.message as ReviewErrorKey | undefined}
+                  input={
+                    <input
+                      type="text"
+                      autoComplete="off"
+                      inputMode={kind === "amount" || kind === "quantity" ? "decimal" : undefined}
+                      {...register(field, { validate: validatorFor(kind) })}
+                    />
+                  }
+                />
+              );
+            })}
+          </div>
         </fieldset>
       ))}
 
@@ -222,6 +267,8 @@ export function PayslipForm({
           tablesStatus={detail.tablesStatus}
           signals={signals}
           errors={errors}
+          expanded={open[table]}
+          onToggle={() => onToggleSection(table)}
         />
       ))}
 
@@ -236,17 +283,18 @@ export function PayslipForm({
         <p role="status" className="text-sm text-amber-900 empty:hidden">
           {isDirty ? t("review.unsaved") : ""}
         </p>
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Task 15 D12: full width and stacked on a phone, a row at lg. */}
+        <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center lg:gap-2">
           <button
             type="submit"
             aria-disabled={saving}
-            className="inline-flex min-h-12 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 font-semibold text-slate-700 hover:bg-slate-100 aria-disabled:text-slate-400"
+            className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 font-semibold text-slate-700 hover:bg-slate-100 aria-disabled:text-slate-400 lg:w-auto"
           >
             {saving ? <Spinner label={false} className="size-5" /> : null}
             {saving ? t("review.saving") : t("review.save")}
           </button>
           {confirmed ? (
-            <p className="inline-flex min-h-12 items-center gap-2 font-semibold text-emerald-800">
+            <p className="inline-flex min-h-12 w-full items-center justify-center gap-2 font-semibold text-emerald-800 lg:w-auto lg:justify-start">
               <CheckCircle2 aria-hidden="true" className="size-5" />
               {t("payslipStatus.confirmed")}
             </p>
@@ -257,7 +305,7 @@ export function PayslipForm({
                 onClick={() => void confirm()}
                 aria-disabled={confirming || confirmBlocked !== null}
                 aria-describedby={confirmBlocked === null ? undefined : "review-confirm-reason"}
-                className="inline-flex min-h-12 items-center gap-2 rounded-lg bg-accent px-4 font-semibold text-white hover:bg-accent-hover aria-disabled:bg-slate-400"
+                className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 font-semibold text-white hover:bg-accent-hover aria-disabled:bg-slate-400 lg:w-auto"
               >
                 {confirming ? <Spinner label={false} className="size-5" /> : null}
                 {confirming ? t("review.confirming") : t("review.confirm")}

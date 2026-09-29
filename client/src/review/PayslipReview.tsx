@@ -1,4 +1,6 @@
+import { PencilLine } from "lucide-react";
 import { useEffect, useState } from "react";
+import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
 import {
   canonicalPayslipFieldsSchema,
@@ -7,11 +9,14 @@ import {
   type TablesStatus,
 } from "@payslip/shared";
 import { getPayslipDetail, getPayslipRegions } from "../api/client";
+import { DisclosureButton } from "../components/DisclosureButton";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { Spinner } from "../components/Spinner";
 import { useWideLayout } from "../history/useWideLayout";
 import { PayslipForm } from "./PayslipForm";
+import { useOpenSections } from "./openSections";
 import { fieldId } from "./ReviewField";
+import { sectionOf } from "./regionSections";
 import { SourceDocumentPanel } from "./SourceDocumentPanel";
 import { useUnsavedEdits } from "./unsaved/useUnsavedEdits";
 import { useSoftKeyboard } from "./useSoftKeyboard";
@@ -48,7 +53,9 @@ export function PayslipReview({ payslipId, tablesStatus, onChanged }: PayslipRev
   const [activeField, setActiveField] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(true);
   const [focusedPath, setFocusedPath] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
   const keyboard = useSoftKeyboard(wide ? null : focusedPath);
+  const sections = useOpenSections();
   const formReady = detail !== null && regions !== null;
   useEffect(() => {
     if (formReady) edits.take(payslipId);
@@ -79,6 +86,11 @@ export function PayslipReview({ payslipId, tablesStatus, onChanged }: PayslipRev
   /** Region → field: the input exists for every path a region can name (Task 08 D7). */
   function selectRegion(path: string) {
     setActiveField(path);
+    // Task 15 D9: a hidden input cannot take focus, so its section opens synchronously first.
+    const section = sectionOf(path);
+    if (section !== null && !sections.open[section]) {
+      flushSync(() => sections.setOpen(section, true));
+    }
     const input = document.getElementById(fieldId(path));
     input?.focus();
     // jsdom has no `scrollIntoView`.
@@ -95,80 +107,107 @@ export function PayslipReview({ payslipId, tablesStatus, onChanged }: PayslipRev
   }
 
   return (
-    // Task 14 D12: form and document split 1:1, so the document has room to fit its width.
-    <div className="flex flex-col gap-5 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6">
-      <div className="min-w-0 lg:col-start-1 lg:row-start-1">
-        <PayslipForm
-          detail={detail}
-          initialEdits={initialEdits}
-          onClose={(kept) => edits.keep(payslipId, kept)}
-          onSaved={(next) => {
-            edits.keep(payslipId, null);
-            setDetail(next);
-            onChanged();
-          }}
-          onConfirmed={(next) => {
-            setDetail((current) =>
-              current === null
-                ? current
-                : { ...current, status: next.status, confirmedAt: next.confirmedAt },
-            );
-            onChanged();
-          }}
-          onDirtyChange={(dirty) => edits.markUnsaved(payslipId, dirty)}
-          onFieldFocus={(path) => {
-            setActiveField(path);
-            setFocusedPath(path);
-          }}
-        />
-      </div>
-      {/* Form first in Tab order; CSS puts the source above it on a phone (Task 10 D8).
+    <div className="flex flex-col gap-3">
+      {/* Task 15 D11: above the grid, where the form's dirty state and the saved edits are known.
+          Discard returns the form to the last save; saved edits keep their dashed outlines. */}
+      {dirty || detail.editedFields.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 font-medium text-slate-700">
+            <PencilLine aria-hidden="true" className="size-4" />
+            {t("review.edited")}
+          </span>
+          {dirty ? (
+            <button
+              type="reset"
+              form="review-form"
+              className="min-h-12 font-semibold text-accent underline underline-offset-4 hover:text-accent-hover"
+            >
+              {t("review.discard")}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      {/* Task 14 D12: form and document split 1:1, so the document has room to fit its width. */}
+      <div className="flex flex-col gap-5 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6">
+        <div className="min-w-0 lg:col-start-1 lg:row-start-1">
+          <PayslipForm
+            detail={detail}
+            initialEdits={initialEdits}
+            onClose={(kept) => edits.keep(payslipId, kept)}
+            onSaved={(next) => {
+              edits.keep(payslipId, null);
+              setDetail(next);
+              onChanged();
+            }}
+            onConfirmed={(next) => {
+              setDetail((current) =>
+                current === null
+                  ? current
+                  : { ...current, status: next.status, confirmedAt: next.confirmedAt },
+              );
+              onChanged();
+            }}
+            onDirtyChange={(next) => {
+              setDirty(next);
+              edits.markUnsaved(payslipId, next);
+            }}
+            onFieldFocus={(path) => {
+              setActiveField(path);
+              setFocusedPath(path);
+            }}
+            open={sections.open}
+            onToggleSection={(section) => sections.setOpen(section, !sections.open[section])}
+            onOpenSections={sections.openAll}
+          />
+        </div>
+        {/* Form first in Tab order; CSS puts the source above it on a phone (Task 10 D8).
           `--source-height` is the document frame's height budget (Task 14 D12, D21): `svh` on the
           phone, which does not change as the address bar hides, and at `lg` the screen below the
           sticky offset (5rem), the zoom toolbar (3.5rem), the open-in-a-new-tab row (3.75rem), the
           panel padding (1.5rem) and a 1rem margin, so the whole aside stays in view. */}
-      <aside
-        aria-label={t("review.sourceTitle")}
-        className="order-first flex min-w-0 flex-col gap-3 [--source-height:65svh] lg:order-none lg:sticky lg:top-20 lg:col-start-2 lg:row-start-1 lg:[--source-height:calc(100dvh-15rem)]"
-      >
-        {keyboard ? null : (
-          <button
-            type="button"
-            onClick={() => setPreviewOpen((open) => !open)}
-            aria-expanded={previewOpen}
-            aria-controls="payslip-source"
-            className="flex min-h-12 items-center justify-center self-start rounded-lg border border-slate-300 bg-white px-4 font-semibold text-slate-700 hover:bg-slate-100 lg:hidden"
-          >
-            {previewOpen ? t("session.hideDocument") : t("session.showDocument")}
-          </button>
-        )}
-        <div id="payslip-source" className={previewOpen || keyboard ? "" : "hidden lg:block"}>
-          {/* The poll has stopped by the time a refetch fails, so nothing else would try again. */}
-          {failed ? (
-            <div className="mb-3">
-              <ErrorMessage
-                message={t("review.errors.refresh")}
-                onRetry={() => setAttempt((n) => n + 1)}
-              />
-            </div>
-          ) : null}
-          {/* Outlines, dashes and signals follow the saved detail, not keystrokes. */}
-          <SourceDocumentPanel
-            strip={keyboard}
-            payslipId={payslipId}
-            regions={liveRegions(regions, detail)}
-            activeField={activeField}
-            interaction={wide ? "focus" : "popover"}
-            fieldValues={fieldValuesOf(detail)}
-            lowConfidenceFields={detail.lowConfidenceFields}
-            ungroundableFields={detail.ungroundableFields}
-            unreadableFields={detail.unreadableFields}
-            editedFields={detail.editedFields}
-            onSelect={selectRegion}
-            showTitle={false}
-          />
-        </div>
-      </aside>
+        <aside
+          aria-label={t("review.sourceTitle")}
+          className="order-first flex min-w-0 flex-col gap-3 [--source-height:65svh] lg:order-none lg:sticky lg:top-20 lg:col-start-2 lg:row-start-1 lg:[--source-height:calc(100dvh-15rem)]"
+        >
+          {keyboard ? null : (
+            // Task 15 D10: the same light disclosure as the form's sections.
+            <DisclosureButton
+              expanded={previewOpen}
+              controls="payslip-source"
+              onToggle={() => setPreviewOpen((open) => !open)}
+              className="self-start lg:hidden"
+            >
+              {previewOpen ? t("session.hideDocument") : t("session.showDocument")}
+            </DisclosureButton>
+          )}
+          <div id="payslip-source" className={previewOpen || keyboard ? "" : "hidden lg:block"}>
+            {/* The poll has stopped by the time a refetch fails, so nothing else would try again. */}
+            {failed ? (
+              <div className="mb-3">
+                <ErrorMessage
+                  message={t("review.errors.refresh")}
+                  onRetry={() => setAttempt((n) => n + 1)}
+                />
+              </div>
+            ) : null}
+            {/* Outlines, dashes and signals follow the saved detail, not keystrokes. */}
+            <SourceDocumentPanel
+              strip={keyboard}
+              payslipId={payslipId}
+              regions={liveRegions(regions, detail)}
+              activeField={activeField}
+              interaction={wide ? "focus" : "popover"}
+              fieldValues={fieldValuesOf(detail)}
+              lowConfidenceFields={detail.lowConfidenceFields}
+              ungroundableFields={detail.ungroundableFields}
+              unreadableFields={detail.unreadableFields}
+              editedFields={detail.editedFields}
+              onSelect={selectRegion}
+              showTitle={false}
+            />
+          </div>
+        </aside>
+      </div>
     </div>
   );
 }

@@ -11,8 +11,9 @@ afterEach(() => {
 });
 
 describe("dismissed merge suggestions (plan 11 D6)", () => {
-  it("keys a pair in the suggestion's order", () => {
+  it("keys a group in the suggestion's order (Task 15b D7)", () => {
     expect(suggestionKey(["a", "b"])).toBe("a:b");
+    expect(suggestionKey(["a", "b", "c"])).toBe("a:b:c");
   });
 
   it("shares a dismissal with every reader, including one mounted later", () => {

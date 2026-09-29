@@ -1,6 +1,6 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PayslipSummary } from "@payslip/shared";
 import i18n from "../i18n";
 import { PayslipRail } from "./PayslipRail";
@@ -29,7 +29,6 @@ function withStatus(id: string, status: PayslipSummary["status"]) {
 beforeEach(async () => {
   await i18n.changeLanguage("en");
 });
-afterEach(() => vi.unstubAllGlobals());
 describe("PayslipRail", () => {
   it("names every tab, exposes status and marks selection and unsaved edits", () => {
     mount();
@@ -99,36 +98,5 @@ describe("PayslipRail", () => {
     const select = mount(withStatus("c", "failed"));
     await userEvent.click(screen.getAllByRole("tab")[2]!);
     expect(select).toHaveBeenCalledWith("c");
-  });
-  it("puts the overflow count on the last fully visible chip", () => {
-    let update: IntersectionObserverCallback;
-    vi.stubGlobal(
-      "IntersectionObserver",
-      class {
-        constructor(callback: IntersectionObserverCallback) {
-          update = callback;
-        }
-        observe() {}
-        disconnect() {}
-      },
-    );
-    mount();
-    const tabs = screen.getAllByRole("tab");
-    act(() =>
-      update!(
-        tabs.map((target, index) => ({
-          target,
-          intersectionRatio: index < 2 ? 1 : 0.2,
-          boundingClientRect: new DOMRect(),
-          intersectionRect: new DOMRect(),
-          isIntersecting: true,
-          rootBounds: null,
-          time: 0,
-        })),
-        {} as IntersectionObserver,
-      ),
-    );
-    expect(tabs[1]).toHaveTextContent("+1");
-    expect(screen.getByText("+1")).toHaveAttribute("aria-hidden", "true");
   });
 });

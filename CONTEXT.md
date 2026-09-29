@@ -34,20 +34,23 @@ _Avoid_: Batch, upload, job
 
 **Upload batch**:
 The browser's transient record of the Source Files one tab is still sending into a Session: each
-file waiting, uploading, uploaded or rejected. It lives only in client memory and ends once every
-file has been sent. It is not a Session and has no server representation; the Session is what
-persists. The client names it `UploadBatchProvider`, `BatchItem` and `startBatch` (Task 07).
+file waiting, uploading, uploaded or rejected. It lives only in client memory. An uploaded file
+stands for its Payslip only until the Payslip first appears in a Session read; from then on the
+server's Payslip represents it, even once merged or deleted (Task 15). It is not a Session and has
+no server representation; the Session is what persists. The client names it
+`UploadBatchProvider`, `BatchItem` and `startBatch` (Task 07).
 _Avoid_: Using "batch" for the Session itself
 
 **Merge**:
-Replacing two Payslips that turn out to be pages of one with a single Payslip owning both
-Pages. Merging combines the Source Files and re-extracts, rather than reconciling two sets of
-already-extracted values.
+Replacing two or more Payslips that turn out to be pages of one with a single Payslip owning all
+their Pages. Merging combines the Source Files and re-extracts, rather than reconciling several
+sets of already-extracted values.
 _Avoid_: Join, combine, group
 
 **Merge suggestion**:
-A non-blocking prompt that two Payslips in a Session look like pages of one: the same period and
-employee OIB, or the same employer OIB when an employee OIB is unread. It never merges by itself.
+A non-blocking prompt that several Payslips in a Session look like pages of one: the same period
+and employee OIB, or the same employer OIB when an employee OIB is unread. One prompt per group,
+never per pair. It never merges by itself.
 _Avoid_: Auto-merge, duplicate detection
 
 ## Croatian payroll

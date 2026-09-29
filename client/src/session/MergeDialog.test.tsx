@@ -48,7 +48,7 @@ const payslips = [
   summary("c", { status: "confirmed", period: "2025-03" }),
 ];
 
-function renderDialog(pair: readonly [string, string] | null, selectedId = "a") {
+function renderDialog(group: readonly string[] | null, selectedId = "a") {
   const onMerged = vi.fn();
   const onRefused = vi.fn();
   const onClose = vi.fn();
@@ -57,7 +57,7 @@ function renderDialog(pair: readonly [string, string] | null, selectedId = "a") 
       open
       sessionId="session"
       payslips={payslips}
-      pair={pair}
+      group={group}
       selectedId={selectedId}
       onMerged={onMerged}
       onRefused={onRefused}
@@ -67,7 +67,7 @@ function renderDialog(pair: readonly [string, string] | null, selectedId = "a") 
   return { onMerged, onRefused, onClose };
 }
 
-/** The two cards' filenames, top to bottom. */
+/** The cards' filenames, top to bottom. */
 const cardOrder = () =>
   within(screen.getByRole("list"))
     .getAllByRole("listitem")
@@ -90,54 +90,117 @@ afterEach(() => {
   mockedMerge.mockReset();
 });
 
-describe("MergeDialog (plan 11 D11)", () => {
-  it("picks among the other mergeable payslips, then confirms in upload order", () => {
+describe("MergeDialog (plan 11 D11, Task 15b D6)", () => {
+  it("picks one or more of the other mergeable payslips, then confirms in upload order", () => {
     renderDialog(null);
 
-    expect(screen.getByRole("heading", { name: "Merge with another payslip" })).toBeInTheDocument();
-    const radios = screen.getAllByRole("radio");
-    expect(radios.map((radio) => (radio as HTMLInputElement).value)).toEqual(["b", "c"]);
+    expect(screen.getByRole("heading", { name: "Merge with other payslips" })).toBeInTheDocument();
+    const boxes = screen.getAllByRole("checkbox");
+    expect(boxes.map((box) => (box as HTMLInputElement).value)).toEqual(["b", "c"]);
     expect(screen.getByText("2025-03")).toBeInTheDocument();
     const next = screen.getByRole("button", { name: "Continue" });
     expect(next).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(next);
+    expect(screen.queryByRole("list")).toBeNull();
 
-    fireEvent.click(screen.getByRole("radio", { name: /b\.jpg/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /c\.jpg/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /b\.jpg/ }));
+    expect(next).toHaveAttribute("aria-disabled", "false");
     fireEvent.click(next);
 
     expect(screen.getByRole("heading", { name: "Merge payslips" })).toBeInTheDocument();
-    expect(cardOrder()).toEqual(["a.jpg", "b.jpg"]);
-    expect(screen.getByText("Pages 2–3")).toBeInTheDocument();
+    expect(cardOrder()).toEqual(["a.jpg", "b.jpg", "c.jpg"]);
+    // Page positions are cumulative: b's two pages come second.
+    expect(
+      within(screen.getByRole("list"))
+        .getAllByRole("listitem")
+        .map((item) => item.querySelector("p")?.textContent),
+    ).toEqual(["Page 1", "Pages 2–3", "Page 4"]);
     expect(screen.getByText("2 pages")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
   });
 
-  it("states the consequence in words", () => {
-    renderDialog(["a", "b"]);
+  it("unchecking the only choice disables Continue again", () => {
+    renderDialog(null);
+    const box = screen.getByRole("checkbox", { name: /b\.jpg/ });
 
-    expect(
-      screen.getByText(
-        "The two payslips are replaced by one. It is read again from the combined document, so edits, unsaved changes and confirmation on both are discarded.",
-      ),
-    ).toBeInTheDocument();
+    fireEvent.click(box);
+    fireEvent.click(box);
+
+    expect(screen.getByRole("button", { name: "Continue" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
   });
 
-  it("swaps the page order, announces it, and sends it with the pair in upload order", async () => {
+  it("opens a suggested group straight at the confirm step, in upload order", () => {
+    renderDialog(["c", "a", "b"], "a");
+
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(cardOrder()).toEqual(["a.jpg", "b.jpg", "c.jpg"]);
+  });
+
+  it("moves a document down, announces it and keeps focus on the pressed button", () => {
+    renderDialog(["a", "b", "c"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Move a.jpg down" }));
+
+    expect(cardOrder()).toEqual(["b.jpg", "a.jpg", "c.jpg"]);
+    expect(screen.getByText("a.jpg is now at position 2.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Move a.jpg down" })).toHaveFocus();
+  });
+
+  it("keeps focus on a move button that has just reached an end", () => {
+    renderDialog(["a", "b", "c"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Move b.jpg up" }));
+
+    const up = screen.getByRole("button", { name: "Move b.jpg up" });
+    expect(cardOrder()).toEqual(["b.jpg", "a.jpg", "c.jpg"]);
+    expect(up).toHaveAttribute("aria-disabled", "true");
+    expect(up).toHaveFocus();
+  });
+
+  it("does nothing when the first moves up or the last moves down", () => {
+    renderDialog(["a", "b", "c"]);
+    const up = screen.getByRole("button", { name: "Move a.jpg up" });
+    const down = screen.getByRole("button", { name: "Move c.jpg down" });
+    expect(up).toHaveAttribute("aria-disabled", "true");
+    expect(down).toHaveAttribute("aria-disabled", "true");
+
+    fireEvent.click(up);
+    fireEvent.click(down);
+
+    expect(cardOrder()).toEqual(["a.jpg", "b.jpg", "c.jpg"]);
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+  });
+
+  it("sends the ids in upload order and the page order as shown", async () => {
     mockedMerge.mockResolvedValue({ id: "merged", status: "processing" });
-    const { onMerged } = renderDialog(["b", "a"]);
-    expect(cardOrder()).toEqual(["a.jpg", "b.jpg"]);
+    const { onMerged } = renderDialog(["b", "a", "c"]);
 
-    fireEvent.click(screen.getByRole("button", { name: "Swap order" }));
-
-    expect(cardOrder()).toEqual(["b.jpg", "a.jpg"]);
-    expect(screen.getByText("Order swapped. b.jpg is now first.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Move c.jpg up" }));
+    fireEvent.click(screen.getByRole("button", { name: "Move c.jpg up" }));
+    expect(cardOrder()).toEqual(["c.jpg", "a.jpg", "b.jpg"]);
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Merge" }));
     });
+
     expect(mockedMerge).toHaveBeenCalledWith("session", {
-      payslipIds: ["a", "b"],
-      order: ["b", "a"],
+      payslipIds: ["a", "b", "c"],
+      order: ["c", "a", "b"],
     });
-    expect(onMerged).toHaveBeenCalledWith("merged", ["b", "a"]);
+    expect(onMerged).toHaveBeenCalledWith("merged", ["c", "a", "b"]);
+  });
+
+  it("names the move buttons in Croatian", async () => {
+    renderDialog(["a", "b"]);
+
+    await act(() => i18n.changeLanguage("hr"));
+
+    expect(screen.getByRole("button", { name: "Pomaknite a.jpg dolje" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Pomaknite b.jpg gore" }));
+    expect(screen.getByText("b.jpg je sada na mjestu 1.")).toBeInTheDocument();
   });
 
   it.each([
@@ -174,13 +237,15 @@ describe("MergeDialog (plan 11 D11)", () => {
     );
   });
 
-  it("ignores Cancel, Escape and a second Merge while the request runs", () => {
+  it("ignores Cancel, Escape, a move and a second Merge while the request runs", () => {
     mockedMerge.mockReturnValue(new Promise(() => {}));
     const { onClose } = renderDialog(["a", "b"]);
     const merge = screen.getByRole("button", { name: "Merge" });
 
     fireEvent.click(merge);
     fireEvent.click(merge);
+    fireEvent.click(screen.getByRole("button", { name: "Move a.jpg down" }));
+    expect(cardOrder()).toEqual(["a.jpg", "b.jpg"]);
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     fireEvent(screen.getByRole("dialog"), new Event("cancel", { cancelable: true }));
 

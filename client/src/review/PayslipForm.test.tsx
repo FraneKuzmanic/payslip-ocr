@@ -5,10 +5,12 @@ import type { PayslipDetailResponse } from "@payslip/shared";
 import { ApiError, confirmPayslip, updatePayslip } from "../api/client";
 import { ToastProvider } from "../components/Toast";
 import i18n from "../i18n";
+import { DEFAULT_OPEN } from "./openSections";
 import { PayslipForm } from "./PayslipForm";
+import type { Section } from "./regionSections";
 import { toFormValues } from "./reviewForm";
 import type { UnsavedEdits } from "./unsaved/UnsavedEditsContext";
-import { StrictMode } from "react";
+import { StrictMode, useState, type ComponentProps } from "react";
 
 vi.mock("../api/client", async (importActual) => ({
   ...(await importActual<typeof import("../api/client")>()),
@@ -59,7 +61,48 @@ function stubWide(wide: boolean) {
   );
 }
 
-function renderForm(detail = payslip(), initialEdits?: UnsavedEdits) {
+const ALL_OPEN: Record<Section, boolean> = {
+  employer: true,
+  employee: true,
+  period: true,
+  reconciliation: true,
+  payComponents: true,
+  obustave: true,
+  neoporeziviPrimici: true,
+};
+
+type SectionState = Pick<
+  ComponentProps<typeof PayslipForm>,
+  "open" | "onToggleSection" | "onOpenSections"
+>;
+
+/** Holds the open sections as `PayslipReview` does (Task 15 D9). */
+function Sections({
+  initial,
+  children,
+}: {
+  initial: Record<Section, boolean>;
+  children: (state: SectionState) => React.ReactNode;
+}) {
+  const [open, setOpen] = useState(initial);
+  return children({
+    open,
+    onToggleSection: (section) =>
+      setOpen((current) => ({ ...current, [section]: !current[section] })),
+    onOpenSections: (sections) =>
+      setOpen((current) => ({
+        ...current,
+        ...Object.fromEntries(sections.map((section) => [section, true])),
+      })),
+  });
+}
+
+/** Every section open unless given, so the earlier tests reach every cell as they did. */
+function renderForm(
+  detail = payslip(),
+  initialEdits?: UnsavedEdits,
+  initialOpen: Record<Section, boolean> = ALL_OPEN,
+) {
   const props = {
     onSaved: vi.fn(),
     onConfirmed: vi.fn(),
@@ -68,17 +111,15 @@ function renderForm(detail = payslip(), initialEdits?: UnsavedEdits) {
     onClose: vi.fn(),
     initialEdits,
   };
-  const view = render(
+  const tree = (current: PayslipDetailResponse) => (
     <ToastProvider>
-      <PayslipForm detail={detail} {...props} />
-    </ToastProvider>,
+      <Sections initial={initialOpen}>
+        {(sections) => <PayslipForm detail={current} {...props} {...sections} />}
+      </Sections>
+    </ToastProvider>
   );
-  const rerender = (next: PayslipDetailResponse) =>
-    view.rerender(
-      <ToastProvider>
-        <PayslipForm detail={next} {...props} />
-      </ToastProvider>,
-    );
+  const view = render(tree(detail));
+  const rerender = (next: PayslipDetailResponse) => view.rerender(tree(next));
   return { ...view, props, rerender };
 }
 
@@ -176,6 +217,9 @@ describe("PayslipForm", () => {
             onDirtyChange={onDirtyChange}
             onFieldFocus={vi.fn()}
             onClose={vi.fn()}
+            open={ALL_OPEN}
+            onToggleSection={vi.fn()}
+            onOpenSections={vi.fn()}
           />
         </ToastProvider>
       </StrictMode>,
@@ -416,5 +460,64 @@ describe("PayslipForm", () => {
     expect(props.onFieldFocus).toHaveBeenLastCalledWith("payComponents.1.iznos");
     await userEvent.click(document.body);
     expect(props.onFieldFocus).toHaveBeenLastCalledWith(null);
+  });
+});
+
+const tableToggle = () => screen.getByRole("button", { name: /^Pay components/ });
+
+describe("PayslipForm sections (Task 15 D9)", () => {
+  it("starts the tables collapsed with their row count, and opens them", async () => {
+    renderForm(payslip(), undefined, DEFAULT_OPEN);
+
+    expect(tableToggle()).toHaveAttribute("aria-expanded", "false");
+    expect(tableToggle()).toHaveTextContent("2 rows");
+    expect(byId("payComponents.0.iznos")).not.toBeVisible();
+    expect(screen.getByRole("button", { name: /^Employer/ })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(byId("employerName")).toBeVisible();
+
+    await userEvent.click(tableToggle());
+
+    expect(tableToggle()).toHaveAttribute("aria-expanded", "true");
+    expect(byId("payComponents.0.iznos")).toBeVisible();
+  });
+
+  it("says how many values in a section need a look, even while it is closed", () => {
+    renderForm(
+      payslip({
+        lowConfidenceFields: ["payComponents.1.iznos", "employerName"],
+        warnings: [{ code: "pay_components_sum_mismatch", field: "payComponents" }],
+      }),
+      undefined,
+      DEFAULT_OPEN,
+    );
+
+    expect(tableToggle()).toHaveTextContent("2 to check");
+    expect(screen.getByRole("button", { name: /^Employer/ })).toHaveTextContent("1 to check");
+    expect(screen.getByRole("button", { name: /^Employee/ })).not.toHaveTextContent("to check");
+  });
+
+  it("opens a closed table on a failed save and focuses its invalid cell", async () => {
+    const values = toFormValues(payslip(), "en");
+    renderForm(
+      payslip(),
+      {
+        values: {
+          ...values,
+          payComponents: [{ ...values.payComponents[0]!, iznos: "abc" }, values.payComponents[1]!],
+        },
+        dirtyKeys: ["payComponents"],
+      },
+      DEFAULT_OPEN,
+    );
+    expect(byId("payComponents.0.iznos")).not.toBeVisible();
+
+    await save();
+
+    await waitFor(() => expect(byId("payComponents.0.iznos")).toHaveFocus());
+    expect(tableToggle()).toHaveAttribute("aria-expanded", "true");
+    expect(mockedUpdate).not.toHaveBeenCalled();
   });
 });

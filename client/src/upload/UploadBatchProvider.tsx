@@ -128,6 +128,25 @@ export function UploadBatchProvider() {
     });
   }, []);
 
+  // Task 15 D2: a flag rather than removal, so the session page's upload count never drops. It
+  // runs after every poll, so an unchanged batch keeps its identity and causes no render.
+  const markListed = useCallback((sessionId: string, payslipIds: ReadonlySet<string>) => {
+    setBatches((previous) => {
+      const items = previous.get(sessionId);
+      if (items === undefined) return previous;
+      const toMark = (item: BatchItem) =>
+        item.state === "uploaded" &&
+        item.listed !== true &&
+        item.payslipId !== undefined &&
+        payslipIds.has(item.payslipId);
+      if (!items.some(toMark)) return previous;
+      return new Map(previous).set(
+        sessionId,
+        items.map((item) => (toMark(item) ? { ...item, listed: true as const } : item)),
+      );
+    });
+  }, []);
+
   const unsent = useMemo(
     () =>
       [...batches.values()].some((items) =>
@@ -146,8 +165,8 @@ export function UploadBatchProvider() {
   }, [unsent]);
 
   const value = useMemo<UploadBatchContextValue>(
-    () => ({ startBatch, itemsFor, dismiss }),
-    [startBatch, itemsFor, dismiss],
+    () => ({ startBatch, itemsFor, dismiss, markListed }),
+    [startBatch, itemsFor, dismiss, markListed],
   );
 
   return (

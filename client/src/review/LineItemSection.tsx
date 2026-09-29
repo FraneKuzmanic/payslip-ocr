@@ -1,4 +1,4 @@
-import { TriangleAlert, X } from "lucide-react";
+import { Plus, TriangleAlert, X } from "lucide-react";
 import { Fragment, type ReactNode } from "react";
 import {
   useFieldArray,
@@ -10,7 +10,12 @@ import { useTranslation } from "react-i18next";
 import type { TablesStatus } from "@payslip/shared";
 import { Skeleton } from "../components/Skeleton";
 import { useWideLayout } from "../history/useWideLayout";
-import { attentionFor, sectionWarnings, type AttentionSignals } from "./fieldAttention";
+import {
+  attentionCount,
+  attentionFor,
+  sectionWarnings,
+  type AttentionSignals,
+} from "./fieldAttention";
 import { attentionMessage, fieldId, inputClass } from "./ReviewField";
 import { SECTION_LABEL_KEYS, fieldLabel, type TableField } from "./regionSections";
 import {
@@ -22,7 +27,7 @@ import {
   type ReviewFormValues,
   type RowValues,
 } from "./reviewForm";
-import { SectionLegend } from "./SectionLegend";
+import { SectionLegend, ToCheck } from "./SectionLegend";
 
 interface LineItemSectionProps<T extends TableField> {
   table: T;
@@ -31,6 +36,9 @@ interface LineItemSectionProps<T extends TableField> {
   tablesStatus: TablesStatus;
   signals: AttentionSignals;
   errors: FieldErrors<ReviewFormValues>;
+  /** Task 15 D9: the section is a disclosure; closed, its body stays mounted but hidden. */
+  expanded: boolean;
+  onToggle: () => void;
 }
 
 /**
@@ -43,6 +51,10 @@ interface LineItemSectionProps<T extends TableField> {
  * While the tables pass is pending the section is a read-only skeleton, because that pass would
  * overwrite an edit made before it lands (Task 05). Once it has failed, the section says so and
  * rows can be added by hand (D8).
+ *
+ * The section is a disclosure (Task 15 D9) whose header carries the row count, or the pending
+ * state, and how many cells need a look. A closed body stays mounted with `hidden`, so its fields
+ * stay registered and a region click can open it and focus a cell.
  */
 export function LineItemSection<T extends TableField>({
   table,
@@ -51,6 +63,8 @@ export function LineItemSection<T extends TableField>({
   tablesStatus,
   signals,
   errors,
+  expanded,
+  onToggle,
 }: LineItemSectionProps<T>) {
   const { t } = useTranslation();
   const wide = useWideLayout();
@@ -62,29 +76,58 @@ export function LineItemSection<T extends TableField>({
   const tableErrors = errors[table] as
     ReadonlyArray<Partial<Record<string, { message?: string }>> | undefined> | undefined;
   const warned = sectionWarnings(table, signals.warnings);
-
-  const legend = (
-    <>
-      <SectionLegend section={table} label={section} />
-      {warned.length > 0 ? (
-        <p className="flex items-start gap-1 text-sm text-amber-900">
-          <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-          <span>{warned.map((code) => t(`warnings.${code}`)).join(" ")}</span>
-        </p>
-      ) : null}
-    </>
+  const pending = tablesStatus === "pending";
+  const bodyId = `review-section-${table}`;
+  const cellPaths = rows.fields.flatMap((_, index) =>
+    columns.map((column) => `${table}.${index}.${column}`),
   );
 
-  if (tablesStatus === "pending") {
+  const header = (
+    <SectionLegend
+      section={table}
+      label={section}
+      expanded={expanded}
+      controls={bodyId}
+      onToggle={onToggle}
+      summary={
+        <>
+          {pending
+            ? t("tablesStatus.pending")
+            : t("review.rowCount", { count: rows.fields.length })}
+          <ToCheck count={attentionCount(cellPaths, signals, warned)} />
+        </>
+      }
+    />
+  );
+  const warning =
+    warned.length > 0 ? (
+      <p className="flex items-start gap-1 text-sm text-amber-900">
+        <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+        <span>{warned.map((code) => t(`warnings.${code}`)).join(" ")}</span>
+      </p>
+    ) : null;
+
+  /** The header, then the body, hidden rather than unmounted while closed. */
+  function inSection(body: ReactNode) {
     return (
       <fieldset className="flex flex-col gap-3">
-        {legend}
-        <div role="status" className="flex flex-col gap-2">
-          <span className="text-sm text-slate-600">{t("tablesStatus.pending")}</span>
-          <Skeleton className="h-12 w-full" />
-          <Skeleton className="h-12 w-full" />
+        {header}
+        <div id={bodyId} hidden={!expanded} className="flex flex-col gap-3">
+          {warning}
+          {body}
         </div>
       </fieldset>
+    );
+  }
+
+  if (pending) {
+    // Hidden while closed, so not announced; the header carries the pending text instead.
+    return inSection(
+      <div role="status" className="flex flex-col gap-2">
+        <span className="text-sm text-slate-600">{t("tablesStatus.pending")}</span>
+        <Skeleton className="h-12 w-full" />
+        <Skeleton className="h-12 w-full" />
+      </div>,
     );
   }
 
@@ -168,13 +211,15 @@ export function LineItemSection<T extends TableField>({
   }
 
   const blankRow = Object.fromEntries(columns.map((column) => [column, ""])) as RowValues<T>;
+  // Task 15 D14: a text action at every width, as receipt-ocr's "Add item".
   const addButton = (
     <button
       type="button"
       // RHF's field-array value type does not narrow through the generic table name.
       onClick={() => rows.append(blankRow as never)}
-      className="min-h-12 self-start rounded-lg border border-slate-300 bg-white px-4 font-semibold text-slate-700 hover:bg-slate-100"
+      className="inline-flex min-h-12 items-center gap-1 self-start font-semibold text-accent underline underline-offset-4 hover:text-accent-hover"
     >
+      <Plus aria-hidden="true" className="size-4" />
       {t("review.addRow")}
     </button>
   );
@@ -185,9 +230,8 @@ export function LineItemSection<T extends TableField>({
     ) : null;
 
   if (!wide) {
-    return (
-      <fieldset className="flex flex-col gap-3">
-        {legend}
+    return inSection(
+      <>
         {failedNotice}
         {rows.fields.map((field, index) => {
           const { cells, note, noteId } = rowState(index);
@@ -220,13 +264,12 @@ export function LineItemSection<T extends TableField>({
           );
         })}
         {addButton}
-      </fieldset>
+      </>,
     );
   }
 
-  return (
-    <fieldset className="flex flex-col gap-3">
-      {legend}
+  return inSection(
+    <>
       {failedNotice}
       {rows.fields.length > 0 ? (
         <table className="w-full table-fixed border-collapse">
@@ -285,6 +328,6 @@ export function LineItemSection<T extends TableField>({
         </table>
       ) : null}
       {addButton}
-    </fieldset>
+    </>,
   );
 }

@@ -29,9 +29,12 @@ export function rowAmount(
   return formatAmount(item.iznosZaIsplatu ?? null, { locale: language, currency: "EUR" });
 }
 
-/** Every status opens in its session: the session page handles processing and failed ones. */
+/**
+ * Every status opens in its session: the session page handles processing and failed ones. It opens
+ * the single view (Task 15 D3); the upload view is the session URL without it.
+ */
 export function rowRoute(item: Pick<PayslipListItem, "id" | "sessionId">): string {
-  return `/sessions/${encodeURIComponent(item.sessionId)}?payslip=${encodeURIComponent(item.id)}`;
+  return `/sessions/${encodeURIComponent(item.sessionId)}?payslip=${encodeURIComponent(item.id)}&view=single`;
 }
 
 /** The upload date, so "yesterday's payslips" can be recognised (D7). */

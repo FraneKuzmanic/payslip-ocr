@@ -113,8 +113,9 @@ export function createSessionsRouter(extraction: ExtractionRunner): Router {
   );
 
   /**
-   * PRD §10.11 (plan 11 D3, D4, D8). Combines both sources into one PDF in `order`, stores it, and
-   * replaces the two payslips with one that re-extracts. The checks here are fast refusals that
+   * PRD §10.11 (plan 11 D3, D4, D8; Task 15b D4). Combines every source into one PDF in `order`,
+   * stores it, and replaces the two or more payslips with one that re-extracts. The combined PDF's
+   * page and size caps bound the group. The checks here are fast refusals that
    * download nothing; `merge_payslips` is authoritative. The originals' sources are kept, as for any
    * soft delete.
    */
@@ -132,13 +133,15 @@ export function createSessionsRouter(extraction: ExtractionRunner): Router {
 
       const repository = new PayslipRepository(auth.client, auth.userId);
       const listed = await repository.listBySession(session.id);
-      const [first, second] = request.data.order.map((id) =>
+      const originals = request.data.order.map((id) =>
         listed.find(({ payslip }) => payslip.id === id),
       );
       if (
-        first === undefined ||
-        second === undefined ||
-        ![first, second].every(({ payslip }) => isMergeable(payslip.status, payslip.tablesStatus))
+        !originals.every(
+          (original): original is NonNullable<typeof original> =>
+            original !== undefined &&
+            isMergeable(original.payslip.status, original.payslip.tablesStatus),
+        )
       ) {
         throw new HttpError(409, "merge_not_allowed");
       }
@@ -180,7 +183,7 @@ export function createSessionsRouter(extraction: ExtractionRunner): Router {
           sessionId: session.id,
           id,
           order: request.data.order,
-          originalFilename: mergedFilename(first.originalFilename, second.originalFilename),
+          originalFilename: mergedFilename(originals.map((original) => original.originalFilename)),
           pageCount: combined.pageCount,
         });
       } catch (error) {
