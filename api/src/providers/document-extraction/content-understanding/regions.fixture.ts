@@ -13,6 +13,11 @@ interface FixturePage extends JsonObject {
   height: number;
 }
 
+/** One OCR word of a page, for the region/text agreement tests (Task 16 D6). */
+export function word(content: string, source: string): JsonObject {
+  return { content, source, confidence: 0.99, span: { offset: 0, length: content.length } };
+}
+
 export function regionsPassBody(
   fields: JsonObject,
   pages: FixturePage[] = [{ pageNumber: 1, width: 8, height: 10 }],

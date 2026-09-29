@@ -84,13 +84,16 @@ const NAMED_MONTH = new RegExp(`(${MONTH})\\.?\\s*(\\d{4})`);
 const SPAN_DATE = String.raw`\d{1,2}\.\s?\d{1,2}\.\s?\d{2,4}\.?|\d{1,2}/\d{1,2}/\d{2,4}`;
 const DATE_SPAN = new RegExp(`(?:od\\s*)?(${SPAN_DATE})\\s*(?:do|-|–)\\s*(${SPAN_DATE})`);
 const MONTH_SLASH_YEAR = /^(\d{1,2})[./](\d{4})\.?$/;
+/** `2025-06` inside its label (`OBRAČUN PLAĆE 2025-06`, E01), and not part of a date (Task 16). */
+const ISO_PERIOD_IN_TEXT = /(?<![\d-])(\d{4})-(\d{2})(?![\d-])/g;
 
 /**
  * Normalizes a printed payslip period into `yyyy-mm`.
  *
  * The obračun form prescribes content, not layout (*Pravilnik* NN 68/2023), so the golden set's
  * seven layouts print the period five ways: `svibanj 2025.`, `GODINA 2025, MJESEC 6`,
- * `GODINA 2025, MJESEC SVIBANJ`, a date span `1.05.2025 do 31.05.2025`, or already `2025-06`.
+ * `GODINA 2025, MJESEC SVIBANJ`, a date span `1.05.2025 do 31.05.2025`, or `2025-06`, alone or
+ * after its label (`OBRAČUN PLAĆE 2025-06`, since Task 16 asks for the printed text).
  * The provider returns the printed text with its surrounding label, so the rules below search
  * rather than match whole strings.
  *
@@ -124,6 +127,11 @@ export function parsePeriod(raw: string | null | undefined): string | null {
 
   const monthSlashYear = MONTH_SLASH_YEAR.exec(text);
   if (monthSlashYear !== null) return toPeriod(monthSlashYear[2], monthSlashYear[1]);
+
+  // Last: a date span such as `01.06.2025-30.06.2025` would otherwise read as `2025-30`. Two
+  // months are a span, rejected like a dotted one.
+  const isoInText = [...text.matchAll(ISO_PERIOD_IN_TEXT)];
+  if (isoInText.length === 1) return toPeriod(isoInText[0]?.[1], isoInText[0]?.[2]);
 
   return null;
 }

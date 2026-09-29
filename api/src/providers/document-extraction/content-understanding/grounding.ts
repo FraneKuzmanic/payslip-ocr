@@ -6,10 +6,11 @@
  *
  * Ported from `scripts/bakeoff/ground.ts` (`key`, `surfaceForms` and the contiguous-run match
  * of `groundValue`). The service usually returns the printed string (locked decision 13), but
- * the field schema asks for `paymentDate` as `YYYY-MM-DD` and for OIBs without their `HR`
- * prefix, so a value is grounded by its printed string or by any form its canonical value
- * could be printed as. The bake-off's 200-character run cap is dropped: prefix pruning already
- * ends every run that cannot match, and the cap only made long values ungroundable.
+ * the field schema asks for OIBs without their `HR` prefix, and before Task 16 (D1) it asked
+ * for `paymentDate` as `YYYY-MM-DD`, which payslips analysed then still hold. So a value is
+ * grounded by its printed string or by any form its canonical value could be printed as. The
+ * bake-off's 200-character run cap is dropped: prefix pruning already ends every run that cannot
+ * match, and the cap only made long values ungroundable.
  */
 
 /**
@@ -43,7 +44,7 @@ export function groundingKey(text: string): string {
 /**
  * Croatian forms a canonical date or OIB may be printed as: `2025-06-09` as `09.06.2025`,
  * `9.6.25` and the like; an OIB with its `HR` prefix. These are the two kinds the field schema
- * asks to be normalised. Amounts need none: they come back as printed, and `groundingKey`
+ * asked to be normalised (dates until Task 16 D1). Amounts need none: they come back as printed, and `groundingKey`
  * already ignores their separators. Periods have no forms here: they are never grounded.
  */
 export function surfaceForms(canonical: string): string[] {

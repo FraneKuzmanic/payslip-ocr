@@ -1,6 +1,17 @@
 import { fireEvent, render } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { OUTLINE_GAP_PX, SourceOverlay, padCorners } from "./SourceOverlay";
+
+function stubWide(wide: boolean) {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn(() => ({ matches: wide, addEventListener: vi.fn(), removeEventListener: vi.fn() })),
+  );
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 const regions = [
   {
@@ -64,7 +75,8 @@ describe("SourceOverlay", () => {
     expect(third![1]).toBeCloseTo(0.2 + OUTLINE_GAP_PX / 150);
   });
 
-  it("draws the quad itself without a rendered size, and a 1 px stroke at rest", () => {
+  it("draws the quad itself without a rendered size, and a 1 px stroke at rest at lg", () => {
+    stubWide(true);
     const { container } = render(
       <SourceOverlay
         regions={regions}
@@ -81,6 +93,7 @@ describe("SourceOverlay", () => {
   });
 
   it("renders accessible decoration and selects the canonical field", () => {
+    stubWide(true);
     const onSelect = vi.fn();
     const { container } = render(
       <SourceOverlay
@@ -99,6 +112,24 @@ describe("SourceOverlay", () => {
     expect(outline).toHaveAttribute("stroke-width", "2");
     fireEvent.click(outline!);
     expect(onSelect).toHaveBeenCalledWith("total");
+  });
+
+  // Task 16 D7: 1 CSS px is ~3 device px on a phone, around table rows 3.5–4.3 CSS px tall.
+  it.each([
+    ["at rest", null, "0.5"],
+    ["when active", "total", "1"],
+  ])("draws thinner strokes below lg, %s", (_, activeField, width) => {
+    stubWide(false);
+    const { container } = render(
+      <SourceOverlay
+        regions={regions}
+        page={1}
+        activeField={activeField}
+        editedFields={[]}
+        onSelect={vi.fn()}
+      />,
+    );
+    expect(container.querySelector("polygon")).toHaveAttribute("stroke-width", width);
   });
 
   it("keeps an inactive region's whole area clickable, not just its stroke", () => {

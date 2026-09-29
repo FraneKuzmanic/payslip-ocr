@@ -73,6 +73,7 @@ describe("parsePeriod", () => {
     ["GODINA 2025. MJESEC 6. DANI U MJESECU OD 01. DO 30.", "2025-06"], // C01
     ["GODINA 2025, MJESEC SVIBANJ, DANI U MJESECU OD 01.05.25 DO 31.05.25", "2025-05"], // D01
     ["2025-06", "2025-06"], // B–E, normalised by the provider
+    ["OBRAČUN PLAĆE 2025-06", "2025-06"], // E01, copied as printed since Task 16 D1
     ["1.05.2025 do 31.05.2025", "2025-05"], // F01
     ["01.06.2025-30.06.2025", "2025-06"], // G01 naknade range
   ])("parses the printed %j as %j", (raw, expected) => {
@@ -129,6 +130,11 @@ describe("parsePeriod", () => {
     ["svibanj"],
     ["2025-13"],
     ["GODINA 2025, MJESEC 13"],
+    // A date inside text is not a period, and an ISO month past 12 is none.
+    ["DATUM 2025-06-09"],
+    ["OBRAČUN PLAĆE 2025-13"],
+    // Two ISO months are a span, not one period.
+    ["2025-05 do 2025-06"],
     ["13/2025"],
     [""],
     [null],

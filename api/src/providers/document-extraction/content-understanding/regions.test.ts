@@ -2,9 +2,10 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import type { Json } from "../../../database.types.js";
 import { mapAnalyzeResult } from "./fields.js";
 import { projectSourceRegions } from "./regions.js";
-import { regionsPassBody, rows, sourced } from "./regions.fixture.js";
+import { regionsPassBody, rows, sourced, word } from "./regions.fixture.js";
 
 const QUAD = "D(1,2,1,4,1,4,2,2,2)";
 const QUAD_CORNERS = [
@@ -170,18 +171,143 @@ describe("projectSourceRegions", () => {
   });
 });
 
+// The QUAD box is x 2–4, y 1–2 on an 8 × 10 page; a word spans x0–x1 on that line unless given.
+const wordAt = (content: string, x0: number, x1: number, y0 = 1.1, y1 = 1.9) =>
+  word(content, `D(1,${x0},${y0},${x1},${y0},${x1},${y1},${x0},${y1})`);
+
+function withWords(fields: Parameters<typeof regionsPassBody>[0], ...words: Json[]) {
+  return regionsPassBody(fields, [{ pageNumber: 1, width: 8, height: 10, words }]);
+}
+
+const outlinedPaths = (raw: unknown) =>
+  projectSourceRegions(raw).regions.flatMap((region) => region.fields);
+
+describe("projectSourceRegions: an outline must show its value (Task 16 D6)", () => {
+  it("outlines a value whose words are under its quad", () => {
+    const scalars = withWords(
+      { netoPlaca: sourced("2.298,97", QUAD) },
+      wordAt("2.298,97", 2.2, 3.8),
+    );
+    expect(outlinedPaths({ scalars })).toEqual(["netoPlaca"]);
+  });
+
+  it("withholds a creditor outlined on another word, even when its words are elsewhere (A04)", () => {
+    const tables = withWords(
+      { obustave: rows({ vjerovnik: sourced("SPH PU VUKOVAR", QUAD) }) },
+      wordAt("VUKOVARA", 2.2, 3.8),
+      wordAt("SPH", 5, 5.5, 5.1, 5.9),
+      wordAt("PU", 5.6, 6, 5.1, 5.9),
+      wordAt("VUKOVAR", 6.1, 7, 5.1, 5.9),
+    );
+    expect(outlinedPaths({ tables })).toEqual([]);
+  });
+
+  it("withholds a normalised date over unrelated words, and outlines it over a printed form (D01)", () => {
+    const value = { paymentDate: sourced("2025-06-10", QUAD) };
+    const wrong = withWords(
+      value,
+      wordAt("20", 2.1, 2.5),
+      wordAt(",", 2.6, 2.7),
+      wordAt("10000", 2.8, 3.9),
+    );
+    const right = withWords(value, wordAt("10.06.25", 2.2, 3.8));
+    expect(outlinedPaths({ scalars: wrong })).toEqual([]);
+    expect(outlinedPaths({ scalars: right })).toEqual(["paymentDate"]);
+  });
+
+  it("withholds a date over a lone fragment of it (C01)", () => {
+    const scalars = withWords(
+      { paymentDate: sourced("2025-07-01", QUAD) },
+      wordAt("2025.", 2.2, 3.8),
+    );
+    expect(outlinedPaths({ scalars })).toEqual([]);
+  });
+
+  it.each([[["1.234,56"]], [["1", ".234,56"]]])("outlines an amount split as %j", (contents) => {
+    const words = contents.map((content, index) => wordAt(content, 2.1 + index, 2.9 + index));
+    const scalars = withWords({ brutoPlaca: sourced("1.234,56", QUAD) }, ...words);
+    expect(outlinedPaths({ scalars })).toEqual(["brutoPlaca"]);
+  });
+
+  it("outlines a two-line value when both lines show it, and withholds it when one does not", () => {
+    const value = { employeeAddress: sourced("ILICA 1\nZAGREB", `${QUAD};D(1,2,3,4,3,4,4,2,4)`) };
+    const ilica = [wordAt("ILICA", 2.1, 3), wordAt("1", 3.1, 3.5)];
+    const right = withWords(value, ...ilica, wordAt("ZAGREB", 2.1, 3.8, 3.1, 3.9));
+    const wrong = withWords(value, ...ilica, wordAt("SPLIT", 2.1, 3.8, 3.1, 3.9));
+    expect(outlinedPaths({ scalars: right })).toEqual(["employeeAddress", "employeeAddress"]);
+    expect(outlinedPaths({ scalars: wrong })).toEqual([]);
+  });
+
+  it("outlines a value whose tokens sit under it in another order", () => {
+    const scalars = withWords(
+      { employerName: sourced("GRAD ZAGREB", QUAD) },
+      wordAt("ZAGREB", 2.1, 2.9),
+      wordAt("GRAD", 3.1, 3.9),
+    );
+    expect(outlinedPaths({ scalars })).toEqual(["employerName"]);
+  });
+
+  it("outlines an OIB printed with its HR prefix", () => {
+    const scalars = withWords(
+      { employeeOib: sourced("12345678901", QUAD) },
+      wordAt("HR12345678901", 2.1, 3.9),
+    );
+    expect(outlinedPaths({ scalars })).toEqual(["employeeOib"]);
+  });
+
+  it("ignores a word whose centre is outside the quad", () => {
+    const scalars = withWords({ netoPlaca: sourced("100,00", QUAD) }, wordAt("100,00", 3.5, 5));
+    expect(outlinedPaths({ scalars })).toEqual([]);
+  });
+
+  it("outlines as before on a page without words", () => {
+    expect(outlinedPaths(scalarsOnly({ paymentDate: sourced("2025-06-10", QUAD) }))).toEqual([
+      "paymentDate",
+    ]);
+  });
+});
+
 // Local-only: the recordings are git-ignored personal data, so CI skips this.
 const bakeoff = fileURLToPath(new URL("../../../../../.bakeoff/", import.meta.url));
 const SETS = [
   { name: "two-pass-sequential", twoPass: true },
   { name: "two-pass-concurrent", twoPass: true },
+  { name: "hosted-quads", twoPass: true },
+  { name: "task16-sequential", twoPass: true },
   { name: "cu", twoPass: false },
 ] as const;
+
+/**
+ * The read paths each recording leaves without an outline, because the words under the service's
+ * source do not show the value (Task 16 D6). Measured in planning by a prototype of the rule and
+ * reproduced here exactly: each is on the wrong text or a piece of a composed period, except A01's
+ * `obustave.4.naziv` in `cu`, a correct outline of only the first of its lines, and A04's invented
+ * payout in `task16-sequential`. Every other read path is outlined.
+ */
+const EXPECTED_WITHHELD: Record<(typeof SETS)[number]["name"], Record<string, string[]>> = {
+  "two-pass-sequential": {
+    A01: ["obustave.0.vjerovnik", "obustave.1.vjerovnik", "obustave.2.vjerovnik"],
+    B01: ["period"],
+    C01: ["period", "paymentDate"],
+  },
+  "two-pass-concurrent": { B02: ["period"], D01: ["period", "paymentDate"] },
+  "hosted-quads": { B01: ["period"], B02: ["period"], C01: ["period", "paymentDate"] },
+  // The first V2 set (Task 16 D5): no period or payment date withheld. A04's payout is occluded on
+  // the screenshot, and the value the service invented for it is not what its outline covers.
+  "task16-sequential": { A04: ["iznosZaIsplatu"] },
+  cu: {
+    A01: ["obustave.4.naziv"],
+    B01: ["period"],
+    B02: ["period"],
+    C01: ["period", "paymentDate"],
+    D01: ["period", "paymentDate"],
+  },
+};
 
 describe.skipIf(!existsSync(join(bakeoff, "cu")))(
   "projectSourceRegions over the recorded responses",
   () => {
-    it.each(SETS)("covers every sourced value in $name", ({ name, twoPass }) => {
+    it.each(SETS)("outlines every sourced value that agrees in $name", ({ name, twoPass }) => {
       const dir = join(bakeoff, name);
       const files = readdirSync(dir).filter((file) => file.endsWith(".json"));
       expect(files).toHaveLength(11);
@@ -199,7 +325,7 @@ describe.skipIf(!existsSync(join(bakeoff, "cu")))(
 
         const scalars = mapAnalyzeResult(stored.scalars, "scalars");
         const tables = mapAnalyzeResult(stored.tables, "tables");
-        // Every path the mapper read (a non-blank printed value) has an outline.
+        // Every path the mapper read (a non-blank printed value) is outlined, except those withheld.
         const read = [
           ...Object.keys(scalars?.fieldMetadata ?? {}),
           ...Object.keys(tables?.fieldMetadata ?? {}),
@@ -207,15 +333,7 @@ describe.skipIf(!existsSync(join(bakeoff, "cu")))(
         expect(
           read.filter((path) => !outlined.has(path)),
           file,
-        ).toEqual([]);
-        // The DoD form: every non-null scalar.
-        const nonNull = Object.entries(scalars?.fields ?? {})
-          .filter(([, value]) => typeof value === "string")
-          .map(([path]) => path);
-        expect(
-          nonNull.filter((path) => !outlined.has(path)),
-          file,
-        ).toEqual([]);
+        ).toEqual(EXPECTED_WITHHELD[name][file.replace(/\.json$/, "")] ?? []);
 
         const pageNumbers = new Set(projected.pages.map((page) => page.page));
         for (const region of projected.regions) {

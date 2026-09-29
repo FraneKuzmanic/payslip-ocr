@@ -27,6 +27,7 @@ describe("region sections", () => {
     ["employerOib", "employer"],
     ["employeeName", "employee"],
     ["paymentDate", "period"],
+    ["ukupnoSati", "reconciliation"],
     ["iznosZaIsplatu", "reconciliation"],
     ["payComponents.2.iznos", "payComponents"],
     ["obustave.0.vjerovnik", "obustave"],

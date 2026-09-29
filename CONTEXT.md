@@ -141,7 +141,8 @@ them is the characteristic extraction bug.
 **Source Region**:
 A quadrilateral on one Page, expressed in page-relative fractions, that locates where an
 extracted value was read from. Drives the highlight drawn over the document preview. A value
-printed across several lines has one Source Region per line.
+printed across several lines has one Source Region per line. An outline is drawn only where the
+page's words show the value (Task 16).
 _Avoid_: Bounding box, highlight, annotation
 
 **Extraction pass**:

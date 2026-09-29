@@ -44,16 +44,15 @@ export const PAYSLIP_FIELDS: Record<string, FieldDef> = {
   employeeIban: s(
     "IBAN tekućeg računa radnika na koji se isplaćuje plaća. NE uzimaj IBAN primatelja poreza (redak 'Primatelj:') ni IBAN poslodavca.",
   ),
+  // Task 16 D1: copied as printed, so the service's source finds it; the mapper normalises.
   period: s(
-    "Obračunsko razdoblje na koje se plaća odnosi, u formatu YYYY-MM. Ispisano kao 'ZA RAZDOBLJE: svibanj 2025.', " +
-      "'GODINA 2025, MJESEC 6', 'OBRAČUN PLAĆE 2025-06' ili '1.05.2025 do 31.05.2025'. " +
-      "Hrvatski mjeseci: siječanj=01, veljača=02, ožujak=03, travanj=04, svibanj=05, lipanj=06, " +
-      "srpanj=07, kolovoz=08, rujan=09, listopad=10, studeni=11, prosinac=12. " +
+    "Obračunsko razdoblje na koje se plaća odnosi. Prepiši ga TOČNO kako je ispisano, bez pretvaranja u drugi oblik — " +
+      "npr. 'svibanj 2025.', 'GODINA 2025, MJESEC 6', 'OBRAČUN PLAĆE 2025-06' ili '1.05.2025 do 31.05.2025'. " +
       "NIJE isto što i datum isplate, koji je obično sljedeći mjesec.",
   ),
   paymentDate: s(
-    "Datum isplate u formatu YYYY-MM-DD. Ispisano kao 'Datum isplate', 'Datum određen za isplatu' ili " +
-      "'DATUM I IZNOS ZA ISPLATU'. NE uzimaj datum obračuna ni datum ispisa dokumenta.",
+    "Datum isplate, prepisan TOČNO kako je ispisan (npr. '09.06.2025', '10.06.25'). Ispisano kao 'Datum isplate', " +
+      "'Datum određen za isplatu' ili 'DATUM I IZNOS ZA ISPLATU'. NE uzimaj datum obračuna ni datum ispisa dokumenta.",
   ),
   ukupnoSati: s(
     "Ukupan broj sati ISPISAN U ISTOM RETKU kao ukupni iznos BRUTO PLAĆE — npr. '1. BRUTO PLAĆA  Ukupno sati: 212', " +
@@ -129,13 +128,14 @@ export const PAYSLIP_FIELDS: Record<string, FieldDef> = {
       "Neki obrasci ga ne ispisuju — tada vrati null. 'Bruto 2' NIJE ukupan trošak rada.",
   ),
 
+  // Task 16 D2: every table asks for its rows in printed order.
   payComponents: {
     type: "array",
     description:
       "Stavke koje čine BRUTO PLAĆU (redovan rad, smjene, prekovremeni, godišnji odmor, blagdani, bolovanje, dodaci). " +
       "Zbroj iznosa mora biti jednak bruto plaći. " +
       "VAŽNO: ako tablica ima hijerarhiju (npr. '1.1. za redoviti rad' pa ispod nje '- redovan rad'), uzmi SAMO " +
-      "završne (leaf) retke, ne međuzbrojeve — inače ćeš iznose brojati dvaput.",
+      "završne (leaf) retke, ne međuzbrojeve — inače ćeš iznose brojati dvaput. Retke vrati redoslijedom kojim su ispisani na dokumentu, odozgo prema dolje.",
     items: {
       naziv: s("Naziv vrste rada ili dodatka, bez šifre (VrPr) koja mu prethodi."),
       sati: s("Broj sati za tu stavku; null ako redak nema sate (dodaci izraženi koeficijentom)."),
@@ -146,7 +146,7 @@ export const PAYSLIP_FIELDS: Record<string, FieldDef> = {
   obustave: {
     type: "array",
     description:
-      "Pojedinačne obustave iz plaće. Zbroj iznosa mora biti jednak ukupnom iznosu obustava. Prazan niz ako ih nema.",
+      "Pojedinačne obustave iz plaće. Zbroj iznosa mora biti jednak ukupnom iznosu obustava. Prazan niz ako ih nema. Retke vrati redoslijedom kojim su ispisani na dokumentu, odozgo prema dolje.",
     items: {
       naziv: s("Naziv ili vrsta obustave."),
       vjerovnik: s("Vjerovnik kojem se obustava doznačuje; null ako nije ispisan."),
@@ -160,7 +160,7 @@ export const PAYSLIP_FIELDS: Record<string, FieldDef> = {
   neoporeziviPrimici: {
     type: "array",
     description:
-      "Pojedinačni neoporezivi primici i naknade. Zbroj iznosa mora biti jednak ukupnom iznosu. Prazan niz ako ih nema.",
+      "Pojedinačni neoporezivi primici i naknade. Zbroj iznosa mora biti jednak ukupnom iznosu. Prazan niz ako ih nema. Retke vrati redoslijedom kojim su ispisani na dokumentu, odozgo prema dolje.",
     items: {
       naziv: s(
         "Naziv neoporezivog primitka (npr. 'Trošak prehrane', 'Prijevoz', 'Naknada za topli obrok').",

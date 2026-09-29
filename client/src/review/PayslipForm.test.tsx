@@ -125,6 +125,11 @@ function renderForm(
 
 const byId = (path: string) =>
   document.getElementById(`review-field-${path.replaceAll(".", "-")}`) as HTMLInputElement;
+/** The field paths inside one section's body, in DOM order. */
+const idsIn = (section: string) =>
+  [...document.querySelectorAll(`#review-section-${section} [id^="review-field-"]`)].map((input) =>
+    input.id.replace("review-field-", ""),
+  );
 const save = () => userEvent.click(screen.getByRole("button", { name: "Save changes" }));
 const confirmButton = () => screen.getByRole("button", { name: "Confirm payslip" });
 
@@ -246,6 +251,30 @@ describe("PayslipForm", () => {
     }
     expect(byId("payComponents.0.naziv")).toBeInstanceOf(HTMLTextAreaElement);
     expect(byId("netoPlaca")).toHaveValue("1040.00");
+  });
+
+  // Task 16 D8: the pay calculation follows the IP1 print order, hours beside bruto.
+  it("lists the pay calculation in print order and keeps only the dates under Period", () => {
+    renderForm();
+
+    expect(idsIn("period")).toEqual(["period", "paymentDate"]);
+    expect(idsIn("reconciliation")).toEqual([
+      "brutoPlaca",
+      "ukupnoSati",
+      "doprinosiNaPlacu",
+      "doprinosiIzPlace",
+      "doprinosMioIStup",
+      "doprinosMioIiStup",
+      "dohodak",
+      "osobniOdbitak",
+      "poreznaOsnovica",
+      "porezNaDohodak",
+      "netoPlaca",
+      "neoporeziviPrimiciUkupno",
+      "obustaveUkupno",
+      "iznosZaIsplatu",
+      "ukupanTrosakRada",
+    ]);
   });
 
   it("shows decimals in the Croatian form when the UI is Croatian", async () => {

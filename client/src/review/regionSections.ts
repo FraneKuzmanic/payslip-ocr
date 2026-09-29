@@ -32,7 +32,8 @@ export type ScalarField = Exclude<keyof CanonicalPayslipFields, TableField>;
 
 /**
  * Typed over the canonical keys, so a new scalar is a type error until it is placed. Its order is
- * the review form's field order (Task 09).
+ * the review form's field order (Task 09). The pay calculation follows the IP1 print order, with
+ * the hours printed on the bruto line beside it (Task 16 D8).
  */
 export const SCALAR_SECTIONS: Record<ScalarField, Section> = {
   employerName: "employer",
@@ -45,8 +46,9 @@ export const SCALAR_SECTIONS: Record<ScalarField, Section> = {
   employeeIban: "employee",
   period: "period",
   paymentDate: "period",
-  ukupnoSati: "period",
   brutoPlaca: "reconciliation",
+  ukupnoSati: "reconciliation",
+  doprinosiNaPlacu: "reconciliation",
   doprinosiIzPlace: "reconciliation",
   doprinosMioIStup: "reconciliation",
   doprinosMioIiStup: "reconciliation",
@@ -58,7 +60,6 @@ export const SCALAR_SECTIONS: Record<ScalarField, Section> = {
   neoporeziviPrimiciUkupno: "reconciliation",
   obustaveUkupno: "reconciliation",
   iznosZaIsplatu: "reconciliation",
-  doprinosiNaPlacu: "reconciliation",
   ukupanTrosakRada: "reconciliation",
 };
 
@@ -74,8 +75,9 @@ export const SCALAR_LABEL_KEYS = {
   employeeIban: "review.fields.employeeIban",
   period: "review.fields.period",
   paymentDate: "review.fields.paymentDate",
-  ukupnoSati: "review.fields.ukupnoSati",
   brutoPlaca: "review.fields.brutoPlaca",
+  ukupnoSati: "review.fields.ukupnoSati",
+  doprinosiNaPlacu: "review.fields.doprinosiNaPlacu",
   doprinosiIzPlace: "review.fields.doprinosiIzPlace",
   doprinosMioIStup: "review.fields.doprinosMioIStup",
   doprinosMioIiStup: "review.fields.doprinosMioIiStup",
@@ -87,7 +89,6 @@ export const SCALAR_LABEL_KEYS = {
   neoporeziviPrimiciUkupno: "review.fields.neoporeziviPrimiciUkupno",
   obustaveUkupno: "review.fields.obustaveUkupno",
   iznosZaIsplatu: "review.fields.iznosZaIsplatu",
-  doprinosiNaPlacu: "review.fields.doprinosiNaPlacu",
   ukupanTrosakRada: "review.fields.ukupanTrosakRada",
 } as const satisfies Record<ScalarField, string>;
 

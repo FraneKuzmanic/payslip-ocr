@@ -516,6 +516,8 @@ Selected files collect in a **tray** before anything uploads (Task 07): each **S
 
 Since Task 08: a value printed across several lines has one outline per line. Every region's origin is `model`, the service's own source; a value without one has no outline, and there is no re-grounded fallback. An unreadable value (printed, but not normalisable) is still outlined. Content Understanding applies EXIF orientation and PDF `/Rotate` before reporting page sizes and quads (measured on an EXIF 6 photo and a `/Rotate 90` PDF), so both are outlined correctly. A 180° rotation cannot be detected by aspect ratio; it is correct as long as the service keeps applying the rotation. An image the browser cannot decode (HEIC outside Safari) shows a translated notice and the open-in-new-tab link instead of a broken preview.
 
+Since Task 16: an outline is drawn only when the OCR words under it show the value (its printed text or a form of it); otherwise the value has no outline, as when the service gives no source. A value printed across lines needs all its lines. The service's source sometimes lands on unrelated text (a creditor on a word of the employer address, a normalised date on stray digits), and a wrong highlight costs more trust than a missing one. The rule is computed at read time, so payslips analysed before it benefit too. Task 08's coverage figure (outlines on 100% of non-null scalars) therefore no longer holds by design: over the four recorded sets it withholds 20 of 2,814 read values, 19 of them on the wrong text or on pieces of a composed period, and one correct outline of only the first line of a two-line name. A withheld value keeps its attention signals; on a phone the source strip says it has no highlight.
+
 ### 7.6 Session navigation
 
 **Purpose.** Let the user move between payslips and between pages without losing state.
@@ -541,7 +543,7 @@ Settled in Task 15:
 - **The single view.** A Payslips link opens `/sessions/:id?payslip=:pid&view=single`: that payslip alone, headed by its file name and its status in the list's words, with its downloads once confirmed. No rail, no merge suggestions, no Merge button and no upload rows. A payslip that no longer exists (deleted, merged away) says so, with a link back to Payslips. The session URL without `view=single` is the upload view, unchanged.
 - **The upload batch hands over.** A file's row below the form stands for it only until its payslip first appears in a session read; from then on the server row represents it, even after the payslip is merged or deleted. The header counts live payslips plus files still being sent.
 - **The sidebar collapses** at `lg` to a 76 px icon rail, remembered in the browser, with each link's name kept for assistive technology and shown as a tooltip. Task 15b follows shadcn/ui's Sidebar (`collapsible="icon"`, the `sidebar-07` block): the trigger is a quiet panel-icon button at the left of the top bar, followed by a thin vertical separator, sized like the bar's other controls and with its name as a tooltip. Collapsing animates the width over 200 ms, linear (none under reduced motion); the links keep the same padding, so the icons stay in place, directly below the trigger's icon, while the labels fade and are clipped.
-- **Outlines sit beside the text.** Each is padded outward by 1.5 screen pixels and drawn 1 px at rest, 2 px when active.
+- **Outlines sit beside the text.** Each is padded outward by 1.5 screen pixels and drawn 1 px at rest, 2 px when active, at `lg` (half that below `lg` since Task 16, §7.7).
 
 ### 7.7 Review form
 
@@ -569,6 +571,11 @@ Settled in Task 15:
 - **Edited and Discard changes.** An "Edited" badge sits above the form while it has unsaved changes or the payslip has saved edits. "Discard changes" appears only with unsaved changes and returns the form to the last save, rows included, without a prompt. Restoring the original extraction is not offered.
 - **"+ Add row"** is an underlined text action at every width.
 - **Save and Confirm** are full width and stacked below `lg`, a row at `lg`. "Show document" is the same light disclosure as the section headers.
+
+Settled in Task 16:
+
+- **The pay calculation follows the IP1 print order:** bruto plaća, ukupno sati, doprinosi na plaću, doprinosi iz plaće and its two stupovi, dohodak, osobni odbitak, porezna osnovica, porez, neto plaća, neoporezivi primici, obustave, iznos za isplatu, and ukupan trošak rada last. `ukupnoSati` moved there from Period, since it is the hours printed on the bruto line, and its outline takes the pay calculation's colour. Period holds the period and the payment date. The canonical schema and the export's column order are unchanged.
+- **Thinner outlines below `lg`:** 0.5 px at rest and 1 px active, against 1 and 2 px at `lg` (§7.6). A phone draws a CSS pixel as about three device pixels, around table rows only 3.5–4.3 CSS px tall at fit width.
 
 ### 7.8 Merge
 
