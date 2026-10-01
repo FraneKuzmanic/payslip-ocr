@@ -34,7 +34,10 @@ export interface ExtractionRunner {
 
 export interface ExtractionRunnerDeps {
   readonly provider: DocumentExtractionProvider;
-  /** Concurrent analyses, not payslips: each payslip runs two passes (PRD §7.3, Task 05 D8). */
+  /**
+   * Concurrent passes, not payslips or analyses: each payslip runs two passes, and the scalars
+   * pass is two analyses (PRD §7.3, Task 05 D8, Task 17 D6).
+   */
   readonly concurrency: number;
   /** Per pass. */
   readonly timeoutMs: number;
@@ -43,9 +46,10 @@ export interface ExtractionRunnerDeps {
 /**
  * In-process background extraction (PRD §7.3). Each payslip is analysed in two passes (Task 05):
  * the scalars pass makes the form usable, the tables pass fills the line-item tables. At most
- * `concurrency` analyses run at once, each under its own timeout. A freed slot goes to a waiting
- * scalars pass before any tables pass, so every form appears before the last tables start; within
- * a pass, first in first out. One payslip's failure never touches another's.
+ * `concurrency` passes run at once, each under its own timeout; how many analyses a pass makes is
+ * the provider's business (Task 17 D6). A freed slot goes to a waiting scalars pass before any
+ * tables pass, so every form appears before the last tables start; within a pass, first in first
+ * out. One payslip's failure never touches another's.
  */
 export function createExtractionRunner(deps: ExtractionRunnerDeps): ExtractionRunner {
   const acquire = createPrioritySemaphore(deps.concurrency);

@@ -4,8 +4,9 @@ import {
   type SourceRegion,
   type SourceRegionsResponse,
 } from "@payslip/shared";
-import { SCALAR_FIELDS, TABLE_COLUMNS } from "./fields.js";
+import { TABLE_COLUMNS, scalarPartBodies } from "./fields.js";
 import { groundingKey, surfaceForms } from "./grounding.js";
+import { inPrintedOrder, parseSegment, storedRowOrder, type Segment } from "./row-order.js";
 
 /**
  * Source regions: a read-time projection over the retained pass bodies (PRD §6.2, §7.5), so no
@@ -73,27 +74,39 @@ type Body = {
   dimensions: Dimensions;
   words: ReadonlyMap<number, readonly Word[]>;
 };
-type Segment = { page: number; numbers: number[] };
 
 const EMPTY: SourceRegionsResponse = { pages: [], regions: [] };
-const SEGMENT = /^D\((\d+),([^()]*)\)$/;
 
-export function projectSourceRegions(raw: unknown): SourceRegionsResponse {
+/**
+ * `extractionMetadata` says which order the payslip's table rows were stored in (Task 17 D13), so
+ * a cell's path names the same row here as in the stored fields.
+ */
+export function projectSourceRegions(
+  raw: unknown,
+  extractionMetadata?: unknown,
+): SourceRegionsResponse {
   const stored = storedSchema.safeParse(raw);
   if (!stored.success) return EMPTY;
 
-  const scalars = parseBody(stored.data.scalars);
   const tables = parseBody(stored.data.tables);
   const regions: SourceRegion[] = [];
 
-  if (scalars !== null) {
-    for (const name of SCALAR_FIELDS) {
-      addValue(regions, name, scalars.fields[name], scalars);
+  // One body before Task 17, two parts since: each scalar comes from the body that owns it
+  // (Task 17 D9).
+  let scalarDimensions: Dimensions | undefined;
+  for (const part of scalarPartBodies(stored.data.scalars) ?? []) {
+    const body = parseBody(part.body);
+    if (body === null) continue;
+    scalarDimensions ??= body.dimensions;
+    for (const name of part.fields) {
+      addValue(regions, name, body.fields[name], body);
     }
   }
   if (tables !== null) {
     for (const [table, columns] of Object.entries(TABLE_COLUMNS)) {
-      const cells = tables.fields[table]?.valueArray ?? [];
+      const returned = tables.fields[table]?.valueArray ?? [];
+      const cells =
+        storedRowOrder(extractionMetadata) === "printed" ? inPrintedOrder(returned) : returned;
       cells.forEach((row, index) => {
         for (const column of columns) {
           addValue(regions, `${table}.${index}.${column}`, row.valueObject?.[column], tables);
@@ -102,8 +115,8 @@ export function projectSourceRegions(raw: unknown): SourceRegionsResponse {
     }
   }
 
-  // Both passes OCR the same document; the scalars body is the one a readable form always has.
-  const dimensions = scalars?.dimensions ?? tables?.dimensions ?? new Map();
+  // Every analysis OCRs the same document; a scalars body is the one a readable form always has.
+  const dimensions = scalarDimensions ?? tables?.dimensions ?? new Map();
   const pages = [...dimensions.entries()]
     .toSorted(([a], [b]) => a - b)
     .map(([page, { width, height }]) => ({ page, aspectRatio: width / height }));
@@ -138,15 +151,6 @@ function parseBody(body: unknown): Body | null {
     }
   }
   return { fields: content?.fields ?? {}, dimensions, words };
-}
-
-/** A `D(page,x1,y1,…,x4,y4)` segment, or `null` when it is not one. */
-function parseSegment(segment: string): Segment | null {
-  const match = SEGMENT.exec(segment.trim());
-  if (match === null) return null;
-  const numbers = (match[2] ?? "").split(",").map(Number);
-  if (numbers.length !== 8 || !numbers.every(Number.isFinite)) return null;
-  return { page: Number(match[1]), numbers };
 }
 
 function axes({ numbers }: Segment): { xs: number[]; ys: number[] } {

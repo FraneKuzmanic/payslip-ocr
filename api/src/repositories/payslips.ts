@@ -80,6 +80,8 @@ export interface RetainedResponses {
   readonly fields: CanonicalPayslipFields;
   /** `null` outside `review`/`confirmed` (Task 08 D7). */
   readonly rawProviderResult: unknown;
+  /** As stored, with the bodies: it says how they were mapped (Task 17 D13). `null` likewise. */
+  readonly extractionMetadata: unknown;
 }
 
 export interface PayslipDetailState extends PayslipState {
@@ -235,7 +237,7 @@ export class PayslipRepository {
   async findRetainedResponses(id: string): Promise<RetainedResponses | null> {
     const { data, error } = await this.#client
       .from("payslips")
-      .select("status, tables_status, canonical_data, raw_provider_result")
+      .select("status, tables_status, canonical_data, raw_provider_result, extraction_metadata")
       .eq("id", uuidSchema.parse(id))
       .eq("user_id", this.#userId)
       .is("deleted_at", null)
@@ -246,11 +248,13 @@ export class PayslipRepository {
 
     const fields = canonicalPayslipFieldsSchema.safeParse(data.canonical_data);
     if (!fields.success) throw new PayslipRepositoryError("invalid_data", fields.error);
+    const readable = WARNED_STATUSES.includes(data.status);
     return {
       status: data.status,
       tablesStatus: data.tables_status,
       fields: fields.data,
-      rawProviderResult: WARNED_STATUSES.includes(data.status) ? data.raw_provider_result : null,
+      rawProviderResult: readable ? data.raw_provider_result : null,
+      extractionMetadata: readable ? data.extraction_metadata : null,
     };
   }
 

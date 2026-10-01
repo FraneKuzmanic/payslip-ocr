@@ -1,3 +1,5 @@
+import { scalarPartBodies } from "./fields.js";
+
 /**
  * Estimated cost of Content Understanding analyses, from the `usage` block each retained response
  * carries (Task 04 D17). It lives in the provider module because `usage` is provider vocabulary.
@@ -37,7 +39,11 @@ export function estimateUsageCost(responses: readonly unknown[]): UsageEstimate 
   let cachedInputTokens = 0;
   let outputTokens = 0;
 
-  for (const response of responses) {
+  // A scalars pass retained as its two parts is two analyses, each with its own usage (Task 17 D9).
+  const bodies = responses.flatMap(
+    (response) => scalarPartBodies(response)?.map((part) => part.body) ?? [response],
+  );
+  for (const response of bodies) {
     const usage = (response as { usage?: Usage } | null)?.usage ?? {};
     pages += usage.documentPagesStandard ?? 0;
     contextualizationTokens += usage.contextualizationTokens ?? 0;

@@ -9,7 +9,9 @@ import {
   type FieldMetadata,
 } from "@payslip/shared";
 import type { ExtractionPass } from "../types.js";
+import { SCALAR_PARTS, roleFields } from "./analyzer.js";
 import { UNGROUNDABLE_BY_DESIGN, isGrounded, keyPages, surfaceForms } from "./grounding.js";
+import { inPrintedOrder, type RowOrder } from "./row-order.js";
 
 /**
  * The only place Content Understanding's field names and value shapes meet the canonical model
@@ -81,7 +83,11 @@ export const TABLE_COLUMNS = Object.fromEntries(
 
 // Narrow views of exactly what is read. `.loose()` keeps the rest of the body out of the way.
 const rawValueSchema = z
-  .object({ valueString: z.string().optional(), confidence: z.number().optional() })
+  .object({
+    valueString: z.string().optional(),
+    confidence: z.number().optional(),
+    source: z.string().optional(),
+  })
   .loose();
 
 const rawFieldSchema = rawValueSchema.extend({
@@ -140,11 +146,13 @@ export interface MappedExtraction {
 /**
  * Returns `null` when the body does not have the shape the mapper reads. `pass` limits the mapping
  * to that pass's keys (Task 05); without it every key is mapped, which only the scoring harness
- * uses, for single-pass recordings.
+ * uses, for single-pass recordings. Table rows are mapped in printed order (Task 17 D13);
+ * `returned` re-maps a payslip stored before that, whose rows are in the service's order.
  */
 export function mapAnalyzeResult(
   operation: unknown,
   pass?: ExtractionPass,
+  rowOrder: RowOrder = "printed",
 ): MappedExtraction | null {
   const parsed = operationSchema.safeParse(operation);
   if (!parsed.success) return null;
@@ -189,7 +197,8 @@ export function mapAnalyzeResult(
   for (const [table, columns] of Object.entries(tableParsers)) {
     // Absent and printed-empty tables both come back without `valueArray`; the golden set records
     // both as `[]`. The null-versus-zero distinction lives on the totals, not the tables.
-    const rows = rawFields[table]?.valueArray ?? [];
+    const returned = rawFields[table]?.valueArray ?? [];
+    const rows = rowOrder === "printed" ? inPrintedOrder(returned) : returned;
     fields[table] = rows.map((row, index) =>
       Object.fromEntries(
         Object.entries(columns).map(([column, parse]) => [
@@ -206,5 +215,62 @@ export function mapAnalyzeResult(
     unreadableFields,
     ungroundableFields,
     hasText: (content?.markdown ?? "").trim() !== "",
+  };
+}
+
+/**
+ * The retained scalars pass as the bodies it was analysed in, each with the scalars it owns
+ * (Task 17 D9): `{ header, reconciliation }` since the split, or one body owning every scalar
+ * before it. `null` for anything else.
+ */
+export function scalarPartBodies(
+  retained: unknown,
+): { body: unknown; fields: readonly string[] }[] | null {
+  if (typeof retained !== "object" || retained === null) return null;
+  if ("result" in retained) return [{ body: retained, fields: SCALAR_FIELDS }];
+  const parts = retained as Record<string, unknown>;
+  if (!SCALAR_PARTS.every((part) => parts[part] !== undefined)) return null;
+  return SCALAR_PARTS.map((part) => ({ body: parts[part], fields: Object.keys(roleFields(part)) }));
+}
+
+/**
+ * A retained pass through the mapper, whichever shape it was stored in (Task 17 D5, D9). Each
+ * part of the scalars pass contributes only the scalars it owns, with their metadata and paths, so
+ * every scalar is present exactly once. `null` when any body does not map.
+ */
+export function mapRetainedPass(
+  retained: unknown,
+  pass: ExtractionPass,
+  rowOrder: RowOrder = "printed",
+): MappedExtraction | null {
+  if (pass === "tables") return mapAnalyzeResult(retained, "tables", rowOrder);
+  const parts = scalarPartBodies(retained);
+  if (parts === null) return null;
+
+  const fields: Record<string, unknown> = {};
+  const fieldMetadata: Record<string, FieldMetadata> = {};
+  const unreadableFields: string[] = [];
+  const ungroundableFields: string[] = [];
+  let hasText = false;
+  for (const { body, fields: owned } of parts) {
+    const mapped = mapAnalyzeResult(body, "scalars");
+    if (mapped === null) return null;
+    const values: Record<string, unknown> = mapped.fields;
+    for (const name of owned) {
+      fields[name] = values[name];
+      const metadata = mapped.fieldMetadata[name];
+      if (metadata !== undefined) fieldMetadata[name] = metadata;
+    }
+    unreadableFields.push(...mapped.unreadableFields.filter((path) => owned.includes(path)));
+    ungroundableFields.push(...mapped.ungroundableFields.filter((path) => owned.includes(path)));
+    hasText ||= mapped.hasText;
+  }
+
+  return {
+    fields: canonicalPayslipFieldsSchema.parse(fields),
+    fieldMetadata,
+    unreadableFields,
+    ungroundableFields,
+    hasText,
   };
 }

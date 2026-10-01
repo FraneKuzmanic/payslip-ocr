@@ -60,7 +60,6 @@ export const PAYSLIP_FIELDS: Record<string, FieldDef> = {
       "NE uzimaj ugovoreni mjesečni fond sati ('Fond sati', 'REDOVNI MJESEČNI FOND SATI') ako se razlikuje od sati uz bruto plaću — " +
       "to su dva različita broja i često su oba ispisana na istom obračunu.",
   ),
-  currency: s("Valuta obračuna — 'EUR' za sve obračune od 2023. nadalje, 'HRK' za starije."),
 
   brutoPlaca: s(
     "BRUTO PLAĆA — ukupni bruto iznos prije doprinosa i poreza. Labeli: '1. BRUTO PLAĆA', 'BRUTO PLAĆA (1. do 5.)', " +

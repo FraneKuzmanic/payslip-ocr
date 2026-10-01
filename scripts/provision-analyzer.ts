@@ -1,18 +1,21 @@
 /**
  * Provision the Content Understanding analyzers, repeatably, and check they have not drifted.
  *
- *   npm run provision:analyzer              register defaults if missing; create each pass
+ *   npm run provision:analyzer              register defaults if missing; create each role's
  *                                           analyzer if missing; otherwise verify it matches
  *   npm run provision:analyzer -- --replace delete and recreate a drifted analyzer
  *
  * Two one-time actions live here so they cannot be lost to a portal click:
  * - `PATCH /contentunderstanding/defaults`, the per-resource model registration;
- * - one analyzer per extraction pass (Task 05 D5), `<AZURE_CU_ANALYZER_ID>_scalars` and
- *   `<AZURE_CU_ANALYZER_ID>_tables`, built from the same definitions the API calls.
+ * - one analyzer per role (Task 05 D5, Task 17 D2), `<AZURE_CU_ANALYZER_ID>_header`,
+ *   `<AZURE_CU_ANALYZER_ID>_reconciliation` and `<AZURE_CU_ANALYZER_ID>_tables`, built from the
+ *   same definitions the API calls.
  *
- * The single-pass analyzer `<AZURE_CU_ANALYZER_ID>` itself stays deployed, untouched and no longer
- * managed here: the product no longer calls it, but the single-pass recordings every two-pass
- * figure is compared against came from it.
+ * NEVER run this with a family from before Task 17 (`hrPayslipV1`, `hrPayslipV2`): it would create
+ * `_header` and `_reconciliation` analyzers there, with today's definitions, and report that
+ * family's `_tables` as drifted. Those families stay deployed, untouched and unmanaged, as does
+ * the single-pass analyzer `hrPayslipV1` itself: the product no longer calls them, but the
+ * recordings every later figure is compared against came from them.
  *
  * A replaced analyzer invalidates the recordings made with it: re-record before scoring.
  * The key is never printed.
@@ -21,13 +24,11 @@ import { isDeepStrictEqual } from "node:util";
 import "dotenv/config";
 import {
   ANALYZER_DESCRIPTION,
+  ANALYZER_ROLES,
   analyzerIdFor,
   buildAnalyzerDefinition,
+  type AnalyzerRole,
 } from "../api/src/providers/document-extraction/content-understanding/analyzer.ts";
-import {
-  EXTRACTION_PASSES,
-  type ExtractionPass,
-} from "../api/src/providers/document-extraction/types.ts";
 
 const EMBEDDING_MODEL = "text-embedding-3-large";
 
@@ -43,8 +44,8 @@ console.log(`\nContent Understanding (${apiVersion}) — analyzer family '${anal
 
 await ensureDefaults();
 let drifted = false;
-for (const pass of EXTRACTION_PASSES) {
-  if (await ensureAnalyzer(pass)) drifted = true;
+for (const role of ANALYZER_ROLES) {
+  if (await ensureAnalyzer(role)) drifted = true;
 }
 process.exit(drifted ? 1 : 0);
 
@@ -72,25 +73,32 @@ async function ensureDefaults(): Promise<void> {
 }
 
 /** Returns true when the deployed analyzer differs from the code and was left alone. */
-async function ensureAnalyzer(pass: ExtractionPass): Promise<boolean> {
-  const id = analyzerIdFor(analyzerId, pass);
+async function ensureAnalyzer(role: AnalyzerRole): Promise<boolean> {
+  const id = analyzerIdFor(analyzerId, role);
   const url = `${endpoint}/contentunderstanding/analyzers/${id}?api-version=${apiVersion}`;
   const existing = await fetch(url, { headers });
 
   if (existing.status === 404) {
-    await create(url, id, pass);
+    await create(url, id, role);
     return false;
   }
   if (!existing.ok) fail(`GET analyzer '${id}': HTTP ${existing.status}`);
 
   const deployed = (await existing.json()) as {
     description?: string;
+    config?: Record<string, unknown>;
     fieldSchema?: { fields?: Record<string, unknown> };
   };
-  const expected = buildAnalyzerDefinition(completionModel, pass);
+  const expected = buildAnalyzerDefinition(completionModel, role);
   const deployedFields = deployed.fieldSchema?.fields ?? {};
+  // Every config key the code sets must be deployed as set (Task 17 D8). The service may echo
+  // defaults the code does not set, so extra deployed keys are ignored.
+  const configMatches = Object.entries(expected.config).every(([name, value]) =>
+    isDeepStrictEqual(deployed.config?.[name], value),
+  );
   const differing = [
     ...(deployed.description === ANALYZER_DESCRIPTION ? [] : ["(description)"]),
+    ...(configMatches ? [] : ["(config)"]),
     ...[...new Set([...Object.keys(deployedFields), ...Object.keys(expected.fieldSchema.fields)])]
       .filter(
         (name) =>
@@ -115,19 +123,19 @@ async function ensureAnalyzer(pass: ExtractionPass): Promise<boolean> {
 
   const deleted = await fetch(url, { method: "DELETE", headers });
   if (!deleted.ok) fail(`DELETE analyzer '${id}': HTTP ${deleted.status}`);
-  await create(url, id, pass);
+  await create(url, id, role);
   console.log(
     "  !! two-pass recordings in .bakeoff/ are now stale: re-record them before running score:extraction",
   );
   return false;
 }
 
-async function create(url: string, id: string, pass: ExtractionPass): Promise<void> {
+async function create(url: string, id: string, role: AnalyzerRole): Promise<void> {
   console.log(`  creating analyzer '${id}' (completion model '${completionModel}')...`);
   const response = await fetch(url, {
     method: "PUT",
     headers: { ...headers, "Content-Type": "application/json" },
-    body: JSON.stringify(buildAnalyzerDefinition(completionModel, pass)),
+    body: JSON.stringify(buildAnalyzerDefinition(completionModel, role)),
   });
   if (!response.ok) fail(`PUT analyzer '${id}': HTTP ${response.status}`);
   const operationUrl = response.headers.get("operation-location");

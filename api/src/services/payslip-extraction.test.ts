@@ -106,7 +106,7 @@ describe("createExtractionRunner", () => {
     expect(repo.completeExtractionPass).toHaveBeenCalledWith("a", "tables", expect.anything());
   });
 
-  it("runs at most `concurrency` analyses at once", async () => {
+  it("runs at most `concurrency` passes at once", async () => {
     const { provider, started, open, peak } = gatedProvider();
     const runner = createExtractionRunner({ provider, concurrency: 3, timeoutMs: 60_000 });
     const ids = ["1", "2", "3"];

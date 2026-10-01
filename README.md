@@ -38,9 +38,10 @@ browser.
 
 Two idempotent provisioning scripts:
 
-- `npm run provision:analyzer` checks the two analyzers (`<id>_scalars`, `<id>_tables`) against
-  the committed schema and reports drift. There is one Foundry resource, so local and hosted share
-  the analyzers.
+- `npm run provision:analyzer` checks the three analyzers of the family in `.env`, `hrPayslipV3`
+  (`<id>_header`, `<id>_reconciliation`, `<id>_tables`), against the committed schema and config,
+  and reports drift. There is one Foundry resource, so local and hosted share the analyzers. Never
+  run it with an older family (`hrPayslipV1`, `hrPayslipV2`): it would create analyzers there.
 - `npm run db:provision-storage` creates the private `payslip-sources` bucket if it is missing.
 
 The database schema is `supabase/migrations/*.sql`. There is no ORM; row-level security enforces
@@ -135,8 +136,8 @@ In short:
 
 - **Latency** misses the ≤ 10 s first-form target at today's service generation rate. It is
   accepted for now, and improving it is a later phase.
-- **Cost** is about $0.045 a page, two to four times the PRD's $0.01–0.02, largely because each
-  payslip runs two analyses.
+- **Cost** is about $0.062 a payslip (Task 17's golden run), several times the PRD's $0.01–0.02 a
+  page, largely because each payslip runs three analyses.
 - **Accuracy** is measured on 11 payslips from 7 payroll vendors. A layout from an eighth vendor is
   unmeasured.
 - **iOS keyboard behaviour is unverified.** The `visualViewport` fallback for Safari and Chrome on

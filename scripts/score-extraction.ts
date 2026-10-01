@@ -7,8 +7,9 @@
  * Every `.bakeoff/<set>/` holding CU recordings from the configured analyzer family is a recording
  * set, of one of two kinds (Task 05 D12):
  * - single-pass: one CU body per sample, from analyzer `<AZURE_CU_ANALYZER_ID>`;
- * - two-pass: `{ timings, scalars, tables }` per sample, the bodies from `<id>_scalars` and
- *   `<id>_tables`.
+ * - two-pass: `{ timings, scalars, tables }` per sample. Before Task 17 the bodies are from
+ *   `<id>_scalars` and `<id>_tables`; since, `scalars` is `{ header, reconciliation }`, the bodies
+ *   of `<id>_header` and `<id>_reconciliation`, the two analyses the scalars pass runs.
  * Each set is scored. Two or more sets of a kind give a measured run-to-run spread for that kind; a
  * single run is never a ranking. Other directories are skipped by name, with the reason.
  *
@@ -20,8 +21,15 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { CRITICAL_FIELDS } from "@payslip/shared";
-import { analyzerIdFor } from "../api/src/providers/document-extraction/content-understanding/analyzer.ts";
-import { mapAnalyzeResult } from "../api/src/providers/document-extraction/content-understanding/fields.ts";
+import {
+  SCALAR_PARTS,
+  analyzerIdFor,
+} from "../api/src/providers/document-extraction/content-understanding/analyzer.ts";
+import {
+  mapAnalyzeResult,
+  mapRetainedPass,
+  scalarPartBodies,
+} from "../api/src/providers/document-extraction/content-understanding/fields.ts";
 import type { ExtractionPass } from "../api/src/providers/document-extraction/types.ts";
 import { lowConfidenceFields } from "../api/src/validation/attention.ts";
 import { computeWarnings } from "../api/src/validation/warnings.ts";
@@ -42,7 +50,11 @@ type Kind = "single-pass" | "two-pass";
 const DOCUMENTED_BAND = "~0.5%";
 const analyzerId = requireEnv("AZURE_CU_ANALYZER_ID");
 const SINGLE_PASS_SIGNATURE = `single:${analyzerId}`;
-const TWO_PASS_SIGNATURE = `two:${analyzerIdFor(analyzerId, "scalars")}+${analyzerIdFor(analyzerId, "tables")}`;
+// A scalars pass recorded as one body (before Task 17), or as its two parts (D9).
+const TWO_PASS_SIGNATURES = [
+  `two:${analyzerId}_scalars+${analyzerIdFor(analyzerId, "tables")}`,
+  `two:${SCALAR_PARTS.map((part) => analyzerIdFor(analyzerId, part)).join(",")}+${analyzerIdFor(analyzerId, "tables")}`,
+];
 
 const problems: string[] = [];
 const reports: { set: string; kind: Kind; report: SetReport }[] = [];
@@ -97,8 +109,9 @@ function discoverSets(): { set: string; kind: Kind }[] {
     } else if (signatures.size > 1) {
       problems.push(`.bakeoff/${name}/ mixes analyzers or kinds: ${[...signatures].join(", ")}`);
     } else if (signatures.has(SINGLE_PASS_SIGNATURE)) sets.push({ set: name, kind: "single-pass" });
-    else if (signatures.has(TWO_PASS_SIGNATURE)) sets.push({ set: name, kind: "two-pass" });
-    else console.log(`  skipped .bakeoff/${name}/: ${[...signatures][0]}, not '${analyzerId}'`);
+    else if (TWO_PASS_SIGNATURES.some((signature) => signatures.has(signature))) {
+      sets.push({ set: name, kind: "two-pass" });
+    } else console.log(`  skipped .bakeoff/${name}/: ${[...signatures][0]}, not '${analyzerId}'`);
   }
   console.log("");
   return sets;
@@ -108,10 +121,10 @@ function discoverSets(): { set: string; kind: Kind }[] {
 function signatureOf(body: unknown): string | null {
   if (isCuBody(body)) return `single:${String(body.result.analyzerId ?? "(no analyzer id)")}`;
   const { scalars, tables } = (body ?? {}) as { scalars?: unknown; tables?: unknown };
-  if (isCuBody(scalars) && isCuBody(tables)) {
-    return `two:${String(scalars.result.analyzerId)}+${String(tables.result.analyzerId)}`;
-  }
-  return null;
+  const parts = (scalarPartBodies(scalars) ?? []).map((part) => part.body).filter(isCuBody);
+  if (parts.length === 0 || !isCuBody(tables)) return null;
+  const scalarIds = parts.map((part) => String(part.result.analyzerId)).join(",");
+  return `two:${scalarIds}+${String(tables.result.analyzerId)}`;
 }
 
 function loadSet(set: string, kind: Kind): ScoringInput[] | null {
@@ -175,8 +188,8 @@ function twoPass(body: unknown): Loaded | null {
     tables: unknown;
     timings?: Record<string, { queuedMs?: unknown; latencyMs?: unknown } | undefined>;
   };
-  const mappedScalars = mapAnalyzeResult(scalars, "scalars");
-  const mappedTables = mapAnalyzeResult(tables, "tables");
+  const mappedScalars = mapRetainedPass(scalars, "scalars");
+  const mappedTables = mapRetainedPass(tables, "tables");
   if (mappedScalars === null || mappedTables === null) return null;
 
   // Enqueue to recorded, per pass. A missing `timings` block is "not recorded", not a problem.

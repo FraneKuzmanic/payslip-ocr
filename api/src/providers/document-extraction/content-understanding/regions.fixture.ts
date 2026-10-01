@@ -54,6 +54,7 @@ export function mappedPass(body: JsonObject, pass: ExtractionPass) {
       fields: mapped.fieldMetadata,
       unreadableFields: mapped.unreadableFields,
       ungroundableFields: mapped.ungroundableFields,
+      ...(pass === "tables" ? { rowOrder: "printed" } : {}),
       queuedMs: 1,
     } as unknown as Json,
     raw: body,

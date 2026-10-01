@@ -11,7 +11,7 @@ implemented:
 - viewer: outlines are 0.5 / 1 px below `lg` (D7);
 - form: the pay calculation follows the IP1 print order, with `ukupnoSati` in it (D8).
 
-**Status: implemented, then reviewed and validated (below); not committed.** The implementing
+**Status: implemented, then reviewed and validated (below); committed as `69e1f0b`.** The implementing
 session ran the ordinary checks, the scoring harness and the one paid run; at the product owner's
 request the same session then ran `/code-review`, `/validate` and journey 9.15 (below). **Paid
 runs: 1, $0.55 (estimate). Production is still on `hrPayslipV1`.**

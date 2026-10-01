@@ -1,6 +1,8 @@
 # Spec — Two-pass extraction (latency)
 
 **Status:** implemented (Task 05, 2026-09-25). The first-form target is **missed**: p50 12.2 s.
+Task 17 splits the scalars pass into two analyses run at once, still one pass (plan 17 D1;
+evidence in `.agents/research/extraction-latency.md` §0, record in `.agents/history/17-*.md`).
 **Owner:** ROADMAP Task 05, because it changes the API shape
 **Evidence:** `.agents/history/01-extraction-bakeoff.md`, `.agents/history/05-extraction-latency-two-pass.md`
 

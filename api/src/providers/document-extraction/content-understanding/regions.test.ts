@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { Json } from "../../../database.types.js";
-import { mapAnalyzeResult } from "./fields.js";
+import { mapAnalyzeResult, mapRetainedPass, scalarPartBodies } from "./fields.js";
 import { projectSourceRegions } from "./regions.js";
 import { regionsPassBody, rows, sourced, word } from "./regions.fixture.js";
 
@@ -14,6 +14,17 @@ const QUAD_CORNERS = [
   { x: 0.5, y: 0.2 },
   { x: 0.25, y: 0.2 },
 ];
+
+// The QUAD box is x 2–4, y 1–2 on an 8 × 10 page; a word spans x0–x1 on that line unless given.
+const wordAt = (content: string, x0: number, x1: number, y0 = 1.1, y1 = 1.9) =>
+  word(content, `D(1,${x0},${y0},${x1},${y0},${x1},${y1},${x0},${y1})`);
+
+function withWords(fields: Parameters<typeof regionsPassBody>[0], ...words: Json[]) {
+  return regionsPassBody(fields, [{ pageNumber: 1, width: 8, height: 10, words }]);
+}
+
+const outlinedPaths = (raw: unknown) =>
+  projectSourceRegions(raw).regions.flatMap((region) => region.fields);
 
 function scalarsOnly(
   fields: Parameters<typeof regionsPassBody>[0],
@@ -89,6 +100,42 @@ describe("projectSourceRegions", () => {
     ]);
   });
 
+  describe("table rows in printed order (Task 17 D13)", () => {
+    // Returned bottom row first.
+    const tables = regionsPassBody({
+      obustave: rows(
+        { naziv: sourced("DRUGA", "D(1,0,5,1,5,1,6,0,6)") },
+        { naziv: sourced("PRVA", "D(1,0,2,1,2,1,3,0,3)") },
+      ),
+    });
+
+    it("keys cells by the printed row index when the tables pass was stored that way", () => {
+      const projected = projectSourceRegions({ tables }, { tables: { rowOrder: "printed" } });
+
+      expect(projected.regions.map((region) => [region.fields[0], region.corners[0]?.y])).toEqual([
+        ["obustave.0.naziv", 0.2],
+        ["obustave.1.naziv", 0.5],
+      ]);
+      // The same rows the mapper stored under those indexes.
+      expect(mapAnalyzeResult(tables, "tables")?.fields.obustave?.map((row) => row.naziv)).toEqual([
+        "PRVA",
+        "DRUGA",
+      ]);
+    });
+
+    it("keeps the returned index for a payslip stored before", () => {
+      for (const metadata of [undefined, null, { tables: {} }]) {
+        const projected = projectSourceRegions({ tables }, metadata);
+        expect(projected.regions.map((region) => [region.fields[0], region.corners[0]?.y])).toEqual(
+          [
+            ["obustave.0.naziv", 0.5],
+            ["obustave.1.naziv", 0.2],
+          ],
+        );
+      }
+    });
+  });
+
   it("skips a malformed segment and keeps its siblings", () => {
     const projected = projectSourceRegions(
       scalarsOnly({
@@ -157,6 +204,65 @@ describe("projectSourceRegions", () => {
     expect(projectSourceRegions(raw)).toEqual({ pages: [], regions: [] });
   });
 
+  describe("a scalars pass retained as its two parts (Task 17 D9)", () => {
+    it("reads each scalar from the part that owns it, and nothing from the other", () => {
+      const projected = projectSourceRegions({
+        scalars: {
+          header: regionsPassBody({
+            employerName: sourced("Tvrtka d.o.o.", QUAD),
+            // The reconciliation part owns it.
+            netoPlaca: sourced("9,00", "D(1,0,5,1,5,1,6,0,6)"),
+          }),
+          reconciliation: regionsPassBody({
+            netoPlaca: sourced("1,00", "D(1,0,8,1,8,1,9,0,9)"),
+            // The header part owns it.
+            employerName: sourced("Druga tvrtka", "D(1,0,2,1,2,1,3,0,3)"),
+          }),
+        },
+      });
+      expect(projected.regions.map((region) => region.fields)).toEqual([
+        ["employerName"],
+        ["netoPlaca"],
+      ]);
+      expect(projected.regions[0]?.corners).toEqual(QUAD_CORNERS);
+      expect(projected.regions[1]?.corners[0]).toEqual({ x: 0, y: 0.8 });
+      expect(projected.pages).toEqual([{ page: 1, aspectRatio: 0.8 }]);
+    });
+
+    it("checks a value against the words of its own part", () => {
+      const scalars = {
+        header: withWords(
+          { employerName: sourced("GRAD ZAGREB", QUAD) },
+          wordAt("SPLIT", 2.2, 3.8),
+        ),
+        reconciliation: withWords(
+          { netoPlaca: sourced("2.298,97", QUAD) },
+          wordAt("2.298,97", 2.2, 3.8),
+        ),
+      };
+      expect(outlinedPaths({ scalars })).toEqual(["netoPlaca"]);
+    });
+
+    it("keeps the readable part's regions when the other part is garbage", () => {
+      const projected = projectSourceRegions({
+        scalars: {
+          header: { nonsense: 1 },
+          reconciliation: regionsPassBody({ netoPlaca: sourced("1,00", QUAD) }),
+        },
+      });
+      expect(projected.regions.map((region) => region.fields)).toEqual([["netoPlaca"]]);
+      expect(projected.pages).toEqual([{ page: 1, aspectRatio: 0.8 }]);
+    });
+
+    it("projects nothing from one part alone", () => {
+      expect(
+        projectSourceRegions({
+          scalars: { header: regionsPassBody({ employerName: sourced("Tvrtka", QUAD) }) },
+        }),
+      ).toEqual({ pages: [], regions: [] });
+    });
+  });
+
   it("takes pages from the tables body when there is no scalars body", () => {
     const projected = projectSourceRegions({
       tables: regionsPassBody({}, [
@@ -170,17 +276,6 @@ describe("projectSourceRegions", () => {
     ]);
   });
 });
-
-// The QUAD box is x 2–4, y 1–2 on an 8 × 10 page; a word spans x0–x1 on that line unless given.
-const wordAt = (content: string, x0: number, x1: number, y0 = 1.1, y1 = 1.9) =>
-  word(content, `D(1,${x0},${y0},${x1},${y0},${x1},${y1},${x0},${y1})`);
-
-function withWords(fields: Parameters<typeof regionsPassBody>[0], ...words: Json[]) {
-  return regionsPassBody(fields, [{ pageNumber: 1, width: 8, height: 10, words }]);
-}
-
-const outlinedPaths = (raw: unknown) =>
-  projectSourceRegions(raw).regions.flatMap((region) => region.fields);
 
 describe("projectSourceRegions: an outline must show its value (Task 16 D6)", () => {
   it("outlines a value whose words are under its quad", () => {
@@ -274,6 +369,7 @@ const SETS = [
   { name: "two-pass-concurrent", twoPass: true },
   { name: "hosted-quads", twoPass: true },
   { name: "task16-sequential", twoPass: true },
+  { name: "task17-sequential", twoPass: true },
   { name: "cu", twoPass: false },
 ] as const;
 
@@ -295,6 +391,11 @@ const EXPECTED_WITHHELD: Record<(typeof SETS)[number]["name"], Record<string, st
   // The first V2 set (Task 16 D5): no period or payment date withheld. A04's payout is occluded on
   // the screenshot, and the value the service invented for it is not what its outline covers.
   "task16-sequential": { A04: ["iznosZaIsplatu"] },
+  // The first V3 set (Task 17 D10): A01's obustave came back in `two-pass-sequential`'s row order,
+  // with the same three creditors on the wrong text. A04's occluded payout was left null.
+  "task17-sequential": {
+    A01: ["obustave.0.vjerovnik", "obustave.1.vjerovnik", "obustave.2.vjerovnik"],
+  },
   cu: {
     A01: ["obustave.4.naziv"],
     B01: ["period"],
@@ -307,6 +408,29 @@ const EXPECTED_WITHHELD: Record<(typeof SETS)[number]["name"], Record<string, st
 describe.skipIf(!existsSync(join(bakeoff, "cu")))(
   "projectSourceRegions over the recorded responses",
   () => {
+    // Outlines and the mapper must agree on a row's index in whichever order the payslip was
+    // stored (Task 17 D13): the same number of values is withheld, on the same cells.
+    it.each(SETS)("withholds as many outlines in printed order in $name", ({ name, twoPass }) => {
+      const dir = join(bakeoff, name);
+      for (const file of readdirSync(dir).filter((entry) => entry.endsWith(".json"))) {
+        const recording = JSON.parse(readFileSync(join(dir, file), "utf8")) as {
+          scalars?: unknown;
+          tables?: unknown;
+        };
+        const tables = twoPass ? recording.tables : recording;
+        const projected = projectSourceRegions({ tables }, { tables: { rowOrder: "printed" } });
+        const outlined = new Set(projected.regions.flatMap((region) => region.fields));
+        const read = Object.keys(mapAnalyzeResult(tables, "tables")?.fieldMetadata ?? {});
+        const expected = (EXPECTED_WITHHELD[name][file.replace(/\.json$/, "")] ?? []).filter(
+          (path) => path.includes("."),
+        );
+        expect(
+          read.filter((path) => !outlined.has(path)),
+          file,
+        ).toHaveLength(expected.length);
+      }
+    });
+
     it.each(SETS)("outlines every sourced value that agrees in $name", ({ name, twoPass }) => {
       const dir = join(bakeoff, name);
       const files = readdirSync(dir).filter((file) => file.endsWith(".json"));
@@ -323,8 +447,14 @@ describe.skipIf(!existsSync(join(bakeoff, "cu")))(
         const projected = projectSourceRegions(stored);
         const outlined = new Set(projected.regions.flatMap((region) => region.fields));
 
-        const scalars = mapAnalyzeResult(stored.scalars, "scalars");
-        const tables = mapAnalyzeResult(stored.tables, "tables");
+        // A single-pass recording is one body holding both passes' fields.
+        const scalars = twoPass
+          ? mapRetainedPass(stored.scalars, "scalars")
+          : mapAnalyzeResult(stored.scalars, "scalars");
+        // No metadata is given above, so the regions are in the returned order: so is this.
+        const tables = mapAnalyzeResult(stored.tables, "tables", "returned");
+        expect(scalars, file).not.toBeNull();
+        expect(tables, file).not.toBeNull();
         // Every path the mapper read (a non-blank printed value) is outlined, except those withheld.
         const read = [
           ...Object.keys(scalars?.fieldMetadata ?? {}),
@@ -342,7 +472,10 @@ describe.skipIf(!existsSync(join(bakeoff, "cu")))(
             expect(x >= 0 && x <= 1 && y >= 0 && y <= 1, file).toBe(true);
           }
         }
-        const body = stored.scalars as { result: { contents: [{ pages: unknown[] }] } };
+        // Either stored shape (Task 17 D9): the pages are those of the first scalars body.
+        const body = scalarPartBodies(stored.scalars)?.[0]?.body as {
+          result: { contents: [{ pages: unknown[] }] };
+        };
         expect(projected.pages, file).toHaveLength(body.result.contents[0].pages.length);
       }
     });

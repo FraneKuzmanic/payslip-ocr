@@ -110,7 +110,7 @@ The downstream consumer of the exported data is **deliberately unspecified**. Th
 - ✅ A provider abstraction with a second, measured implementation (DI `prebuilt-layout` + LLM + grounding) used to validate the primary choice
 - ✅ An offline extraction-scoring harness replaying recorded provider responses against a committed golden set
 - ✅ Supabase authentication, Postgres persistence with row-level security, and private file storage
-- ✅ Parallel extraction, capped at three concurrent analyses
+- ✅ Parallel extraction, capped at three concurrent passes
 
 ### 4.4 Integration — In Scope
 
@@ -496,15 +496,15 @@ Selected files collect in a **tray** before anything uploads (Task 07): each **S
 
 **Expected flow.** The client refreshes its auth session, creates a Session, then POSTs each selected file to it as its own Payslip, **one at a time in tray order**, so upload order is selection order. The refresh gives the background extraction writes, which use the token the upload carried, the full token lifetime. Each POST starts extraction immediately and returns `201` without waiting. The client navigates to the session review screen as soon as the first Payslip exists; the remaining uploads continue in the background.
 
-**Rules.** One Source File is always exactly one Payslip — a three-page PDF is one Payslip with three Pages. Extraction runs in parallel, capped at three concurrent analyses. A payslip is two analyses (the scalars and tables passes, §7.4), and a waiting scalars pass is served before any tables pass, so forms appear before the last tables start. A Payslip that fails does not affect its siblings.
+**Rules.** One Source File is always exactly one Payslip — a three-page PDF is one Payslip with three Pages. Extraction runs in parallel, capped at three concurrent passes. A payslip is two passes (scalars and tables, §7.4); the scalars pass is two analyses (Task 17), so up to six analyses can be in flight. A waiting scalars pass is served before any tables pass, so forms appear before the last tables start. A Payslip that fails does not affect its siblings.
 
 ### 7.4 Extraction
 
 **Purpose.** Turn a payslip document into canonical fields with per-field geometry and confidence.
 
-**Requirements.** Primary engine is an Azure Content Understanding custom analyzer with a Croatian-language field schema and `estimateFieldSourceAndConfidence` enabled, so page, bounding quad and confidence arrive per field including for nested table rows. Extraction runs as **two analyzers over the same document** (Task 05), partitioned from one field schema with the descriptions unchanged: `<id>_scalars` returns the scalar fields and makes the form usable; `<id>_tables` returns the three line-item tables. Each pass has its own timeout via `AbortController` and is recorded atomically on its own, in either order. A scalars failure fails the payslip and cancels its tables pass; a tables failure leaves a usable payslip with `tablesStatus: failed`. Failures classified into `unreadable_document` (non-retryable), `provider_rejected` (non-retryable) and `provider_unavailable` (retryable). The raw response is retained verbatim.
+**Requirements.** Primary engine is an Azure Content Understanding custom analyzer with a Croatian-language field schema and `estimateFieldSourceAndConfidence` enabled, so page, bounding quad and confidence arrive per field including for nested table rows. Extraction runs as **two passes over the same document** (Task 05), partitioned from one field schema with the descriptions unchanged: the scalars pass returns the scalar fields and makes the form usable; the tables pass (`<id>_tables`) returns the three line-item tables. Each pass has its own timeout via `AbortController` and is recorded atomically on its own, in either order. Since Task 17 the scalars pass is two analyzers submitted together, `<id>_header` (parties, period, payment date) and `<id>_reconciliation` (the pay calculation); either failing fails the pass, and both bodies are retained. It is still one pass to everything outside the provider. A scalars failure fails the payslip and cancels its tables pass; a tables failure leaves a usable payslip with `tablesStatus: failed`. Failures classified into `unreadable_document` (non-retryable), `provider_rejected` (non-retryable) and `provider_unavailable` (retryable). The raw response is retained verbatim.
 
-**Rules.** Confidence never suppresses a value. Amounts are parsed from text, never from a numeric field. A value that cannot be normalised is recorded as unreadable rather than guessed.
+**Rules.** Confidence never suppresses a value. Amounts are parsed from text, never from a numeric field. A value that cannot be normalised is recorded as unreadable rather than guessed. Table rows are stored in the order they are printed, read from each cell's own position on the page (Task 17): the service returns one document's rows in an order that varies between runs. A payslip stored before keeps the order it was stored in, so its outlines stay on its rows.
 
 ### 7.5 Source regions and highlighting
 
@@ -736,9 +736,9 @@ One `.env` at the prototype root, validated at startup with all problems reporte
 PORT, NODE_ENV, LOG_LEVEL, WEB_ORIGIN
 AZURE_CONTENT_UNDERSTANDING_ENDPOINT      # required, server-only
 AZURE_CONTENT_UNDERSTANDING_KEY           # required, server-only
-AZURE_CU_ANALYZER_ID                      # e.g. hr-payslip
+AZURE_CU_ANALYZER_ID                      # the analyzer family, e.g. hrPayslipV3
 AZURE_CU_API_VERSION                      # 2025-11-01
-EXTRACTION_TIMEOUT_MS, EXTRACTION_CONCURRENCY   # per pass; concurrent analyses
+EXTRACTION_TIMEOUT_MS, EXTRACTION_CONCURRENCY   # per pass; concurrent passes
 AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT      # challenger path only
 AZURE_DOCUMENT_INTELLIGENCE_KEY           # challenger path only
 AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_KEY   # challenger path only
@@ -781,7 +781,7 @@ All routes under `/api/sessions` and `/api/payslips` require `Authorization: Bea
 → `201 {id, sessionId, status, createdAt}` · `413 file_too_large` · `415 unsupported_media_type` · `422 pdf_encrypted | pdf_too_many_pages | pdf_unreadable` · `409 session_full`
 
 **10.4** `GET /api/sessions/:id`
-→ `200 {id, createdAt, payslips: [{id, status, tablesStatus, period, employeeName, pageCount, failureReason, warningCount, originalFilename}]}`. `originalFilename` identifies a payslip before extraction has read a name (Task 07). The body also carries `mergeSuggestions: [[id, id], …]`, the pairs that look like pages of one payslip, in upload order (Task 11). A client parses a missing list as empty.
+→ `200 {id, createdAt, payslips: [{id, status, tablesStatus, period, employeeName, pageCount, failureReason, warningCount, originalFilename}]}`. `originalFilename` identifies a payslip before extraction has read a name (Task 07). The body also carries `mergeSuggestions: [[id, id, …], …]`, the groups of two or more that look like pages of one payslip, in upload order (Task 11; groups since Task 15b). A client parses a missing list as empty.
 
 **10.5** `GET /api/payslips/:id`
 → `200` canonical payslip (including `tablesStatus`) + `lowConfidenceFields`, `unreadableFields`, `ungroundableFields`, `warnings`, `editedFields`, `failureReason`. `editedFields` holds scalars and table cells (`obustave.2.iznos`) (Task 09).
@@ -895,6 +895,30 @@ original bytes without the client's downscale. "Cap 3" counts analyses, and each
 so a quad is eight analyses at three at a time. Over the twelve: first form p50 11.9 s, p90 21.3 s,
 max 22.7 s; complete p50 17.9 s, max 68.0 s. Accuracy on the deployed stack was 270/273 scalars and
 518/548 line-item cells, within the noise band. The run cost about $0.68.
+
+Measured in Task 17 (2026-09-30, [`research/extraction-latency.md`](./.agents/research/extraction-latency.md) §0),
+a paired same-day experiment over the eleven samples, analysis time only (from `202` to the
+result, without the upload): the scalars pass as one analysis **p50 11.1 s, p90 13.4 s**; the same
+fields as two analyses submitted together, the slower of the two, **p50 7.0 s, p90 8.6 s**. The
+split was faster on 11 of 11 documents, by 2.5–6.5 s (median 4.4 s), with accuracy inside the
+noise band (270/273 scalars against 269/273). It adds about $0.017 per document, about $0.065 for
+a payslip (estimate). Task 17 ships that split on the `hrPayslipV3` analyzer family, and polls the
+service every 250 ms and the session every 500 ms. The target is still measured as queue plus
+analysis (Task 05 D2); the phone's upload, the stored source and the client's fetches come on top,
+an estimated 2.5–6 s.
+
+The golden run on the product path (2026-10-01, one payslip at a time, from the development
+machine, [`history/17`](./.agents/history/17-extraction-latency-split-scalars.md)): first form
+**p50 9.1 s, p90 14.9 s, max 33.8 s**, the first set under the ≤10 s line. The scalars analysis
+itself ran p50 6.0 s and at most 7.7 s on all eleven; the rest is this machine's uplink, which
+now sends the document three times at once (p50 3.0 s, 28.1 s for B02). Complete p50 11.8 s, max
+61.9 s (A01's tables pass). Scalars 272/273, critical 76/77. Line-item cells came back at
+468/548, under the task's floor of 478, on a tables input byte-identical to the Task 16 run's:
+A01's obustave in another row order (as in four of the eight recorded sets) and F01's pay
+components with the total row included. Rows are now stored in printed order, which scores this
+set **495/548** and every earlier set 502–518; F01's extra row remains, and raises
+`pay_components_sum_mismatch`. The run cost about $0.68, $0.062 a payslip. Not yet measured on
+the deployed stack.
 
 ### 11.5 User-experience targets
 
@@ -1065,7 +1089,8 @@ users                    (Supabase auth)
               status, tables_status, failure_reason, canonical_data jsonb,
               extraction_metadata jsonb   -- { scalars?, tables? }, one entry per pass
               -- no warnings column: computed on read (Task 06 D1)
-              raw_provider_result jsonb   -- { scalars?, tables? }, verbatim per pass
+              raw_provider_result jsonb   -- { scalars?, tables? }, verbatim per pass;
+                                          -- scalars is { header, reconciliation } since Task 17
               edited_fields text[],
               original_filename, content_type, page_count,
               merged_from uuid[], confirmed_at, created_at,

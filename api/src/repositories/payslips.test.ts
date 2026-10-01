@@ -281,10 +281,11 @@ describe("PayslipRepository.findDetailState", () => {
 
 describe("PayslipRepository.findRetainedResponses (Task 08 D7, Task 09 D4)", () => {
   const raw = { scalars: { id: "op" } };
+  const metadata = { tables: { unreadableFields: [], rowOrder: "printed" } };
 
   it.each(["review", "confirmed"] as const)("returns the retained bodies in %s", async (status) => {
     const repository = new PayslipRepository(
-      singleRow(payslipRow({ status, raw_provider_result: raw })),
+      singleRow(payslipRow({ status, raw_provider_result: raw, extraction_metadata: metadata })),
       USER_ID,
     );
 
@@ -293,6 +294,7 @@ describe("PayslipRepository.findRetainedResponses (Task 08 D7, Task 09 D4)", () 
       tablesStatus: "ready",
       fields: { employeeName: "Ana Horvat", period: "2025-03", netoPlaca: "1234.56" },
       rawProviderResult: raw,
+      extractionMetadata: metadata,
     });
   });
 
@@ -304,6 +306,7 @@ describe("PayslipRepository.findRetainedResponses (Task 08 D7, Task 09 D4)", () 
 
     expect(await repository.findRetainedResponses(PAYSLIP_ID)).toMatchObject({
       rawProviderResult: null,
+      extractionMetadata: null,
     });
   });
 

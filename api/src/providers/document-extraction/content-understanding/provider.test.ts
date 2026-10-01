@@ -20,6 +20,38 @@ function stubFetch(steps: Step[]) {
   return calls;
 }
 
+/**
+ * Scripts `fetch` per analyzer (Task 17): the scalars pass runs two analyses at once, so their
+ * calls interleave in no fixed order. A submit is routed by its analyzer's role, and a poll by the
+ * operation URL `acceptedFor` gave that role.
+ */
+function stubFetchByAnalyzer(steps: Record<string, Step[]>) {
+  const calls: { url: string; init: RequestInit | undefined }[] = [];
+  const fetchStub = vi.fn((input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    calls.push({ url, init });
+    const role =
+      /_(\w+):analyzeBinary/.exec(url)?.[1] ?? /analyzerResults\/op-(\w+)\?/.exec(url)?.[1];
+    const step = role === undefined ? undefined : steps[role]?.shift();
+    if (step === undefined) throw new Error(`unexpected fetch ${url}`);
+    return step(url, init);
+  });
+  vi.stubGlobal("fetch", fetchStub);
+  return calls;
+}
+
+const acceptedFor =
+  (role: string): Step =>
+  () =>
+    Promise.resolve(
+      new Response(null, {
+        status: 202,
+        headers: {
+          "operation-location": `https://cu.invalid/contentunderstanding/analyzerResults/op-${role}?api-version=x`,
+        },
+      }),
+    );
+
 const accepted: Step = () =>
   Promise.resolve(
     new Response(null, { status: 202, headers: { "operation-location": OPERATION_URL } }),
@@ -27,6 +59,17 @@ const accepted: Step = () =>
 
 /** What the service does from the client's side when the submit budget runs out. */
 const stalled: Step = () => Promise.reject(new DOMException("stalled", "TimeoutError"));
+
+/** A request the service sits on: it ends only when its signal aborts. */
+const held =
+  (signals: AbortSignal[]): Step =>
+  (_url, init) =>
+    new Promise((_resolve, reject) => {
+      const signal = init?.signal;
+      if (!signal) throw new Error("the request carries no signal");
+      signals.push(signal);
+      signal.addEventListener("abort", () => reject(signal.reason));
+    });
 
 const json =
   (body: unknown, status = 200): Step =>
@@ -79,7 +122,7 @@ async function drain(body: BodyInit | null | undefined, pauseMs = 0): Promise<Bu
 
 const input = (
   signal: AbortSignal = new AbortController().signal,
-  pass: "scalars" | "tables" = "scalars",
+  pass: "scalars" | "tables" = "tables",
 ) => ({
   bytes: Buffer.from("%PDF-1.7"),
   contentType: "application/pdf" as const,
@@ -100,27 +143,42 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+// One analysis, from submit to result. These run on the tables pass, which is a single analysis;
+// the scalars pass runs two of the same at once (Task 17) and has its own block below.
 describe("ContentUnderstandingProvider", () => {
+  const rows = {
+    payComponents: {
+      type: "array",
+      valueArray: [
+        {
+          valueObject: {
+            naziv: { valueString: "REDOVAN RAD", confidence: 0.9 },
+            iznos: { valueString: "1.200,00", confidence: 0.9 },
+          },
+        },
+      ],
+    },
+  };
+
   it("submits the bytes, polls to success and returns canonical fields", async () => {
-    const calls = stubFetch([accepted, json({ status: "Running" }), succeeded()]);
+    const calls = stubFetch([accepted, json({ status: "Running" }), succeeded("# page", rows)]);
 
     const result = await provider().extract(input());
 
-    expect(result.fields.netoPlaca).toBe("2298.97");
+    expect(result.fields.payComponents?.[0]?.iznos).toBe("1200.00");
     expect(result.metadata).toMatchObject({
       provider: "content-understanding",
-      modelId: "testAnalyzer_scalars",
+      modelId: "testAnalyzer_tables",
       apiVersion: "2025-11-01",
       submitAttempts: 1,
       unreadableFields: [],
-      ungroundableFields: [],
-      fields: { netoPlaca: { confidence: 0.9, source: "model" } },
+      fields: { "payComponents.0.iznos": { confidence: 0.9, source: "model" } },
     });
     expect(result.raw).toMatchObject({ status: "Succeeded" });
 
     const submit = calls[0];
     expect(submit?.url).toBe(
-      "https://cu.invalid/contentunderstanding/analyzers/testAnalyzer_scalars:analyzeBinary?api-version=2025-11-01",
+      "https://cu.invalid/contentunderstanding/analyzers/testAnalyzer_tables:analyzeBinary?api-version=2025-11-01",
     );
     expect(submit?.init?.method).toBe("POST");
     expect(submit?.init?.headers).toMatchObject({
@@ -241,52 +299,152 @@ describe("ContentUnderstandingProvider", () => {
     expect((await failure(provider().extract(input()))).reason).toBe("provider_unavailable");
   });
 
-  it("classifies blank markdown as unreadable_document, not retryable", async () => {
-    stubFetch([accepted, succeeded("   ")]);
+  describe("the scalars pass: two analyses at once (Task 17 D1, D5)", () => {
+    const scalars = (signal?: AbortSignal) => input(signal, "scalars");
+    const header = (markdown = "# OBRAČUN PLAĆE") =>
+      succeeded(markdown, {
+        employerName: { type: "string", valueString: "Tvrtka d.o.o.", confidence: 0.8 },
+        // Not the header's field: the reconciliation part owns it.
+        netoPlaca: { type: "string", valueString: "1,00", confidence: 0.9 },
+      });
+    const noValue = (markdown = "# page") => succeeded(markdown, { netoPlaca: { type: "string" } });
 
-    const error = await failure(provider().extract(input()));
+    it("submits to both parts' analyzers and merges the fields each owns", async () => {
+      const calls = stubFetchByAnalyzer({
+        header: [acceptedFor("header"), json({ status: "Running" }), header()],
+        reconciliation: [acceptedFor("reconciliation"), succeeded()],
+      });
 
-    expect(error.reason).toBe("unreadable_document");
-    expect(error.retryable).toBe(false);
-  });
+      const result = await provider().extract(scalars());
 
-  it("classifies text with no extracted value as unreadable_document", async () => {
-    stubFetch([accepted, succeeded("# page", { netoPlaca: { type: "string" } })]);
+      expect(
+        calls
+          .map((call) => /analyzers\/(\w+):analyzeBinary/.exec(call.url)?.[1])
+          .filter((id) => id !== undefined)
+          .toSorted(),
+      ).toEqual(["testAnalyzer_header", "testAnalyzer_reconciliation"]);
+      expect(result.fields.employerName).toBe("Tvrtka d.o.o.");
+      expect(result.fields.netoPlaca).toBe("2298.97");
+      expect(result.fields).toHaveProperty("employeeName", null);
+      expect(result.fields).not.toHaveProperty("payComponents");
+      expect(result.metadata).toMatchObject({
+        modelId: "testAnalyzer_header+testAnalyzer_reconciliation",
+        submitAttempts: 1,
+        fields: {
+          employerName: { confidence: 0.8, source: "model" },
+          netoPlaca: { confidence: 0.9, source: "model" },
+        },
+      });
+      // The pass's upload ends at the later `202`; the rest of its latency is analysis.
+      const { latencyMs, uploadMs, analyzeMs } = result.metadata;
+      expect(uploadMs).toBeGreaterThanOrEqual(0);
+      expect(analyzeMs).toBeGreaterThanOrEqual(0);
+      expect(latencyMs).toBe((uploadMs ?? NaN) + (analyzeMs ?? NaN));
+    });
 
-    expect((await failure(provider().extract(input()))).reason).toBe("unreadable_document");
-  });
+    it("retains both bodies verbatim, by part", async () => {
+      stubFetchByAnalyzer({
+        header: [acceptedFor("header"), header()],
+        reconciliation: [acceptedFor("reconciliation"), succeeded()],
+      });
 
-  it("maps only the scalars pass's keys on the scalars pass", async () => {
-    stubFetch([accepted, succeeded()]);
+      const { raw, metadata } = await provider().extract(scalars());
 
-    const { fields } = await provider().extract(input());
+      expect(metadata).not.toHaveProperty("rowOrder");
+      expect(Object.keys(raw as object)).toEqual(["header", "reconciliation"]);
+      expect(raw).toMatchObject({
+        header: { result: { contents: [{ fields: { employerName: {} } }] } },
+        reconciliation: { result: { contents: [{ fields: { netoPlaca: {} } }] } },
+      });
+    });
 
-    expect(fields).not.toHaveProperty("payComponents");
-    expect(fields).toHaveProperty("employerName", null);
+    it("reports the larger of the parts' submit attempts", async () => {
+      stubFetchByAnalyzer({
+        header: [stalled, acceptedFor("header"), header()],
+        reconciliation: [acceptedFor("reconciliation"), succeeded()],
+      });
+
+      const result = await provider().extract(scalars());
+
+      expect(result.metadata.submitAttempts).toBe(2);
+    });
+
+    it("fails with the failing part's reason and aborts the other part", async () => {
+      const signals: AbortSignal[] = [];
+      stubFetchByAnalyzer({ header: [httpError(400)], reconciliation: [held(signals)] });
+
+      const error = await failure(provider().extract(scalars()));
+
+      expect(error.reason).toBe("provider_rejected");
+      expect(signals).toHaveLength(1);
+      expect(signals[0]?.aborted).toBe(true);
+    });
+
+    it("stops both parts when the whole-analysis signal aborts", async () => {
+      const controller = new AbortController();
+      const signals: AbortSignal[] = [];
+      stubFetchByAnalyzer({ header: [held(signals)], reconciliation: [held(signals)] });
+
+      const pending = failure(provider().extract(scalars(controller.signal)));
+      controller.abort();
+
+      expect((await pending).reason).toBe("provider_unavailable");
+      expect(signals).toHaveLength(2);
+      expect(signals.every((signal) => signal.aborted)).toBe(true);
+    });
+
+    it("classifies blank markdown in both parts as unreadable_document, not retryable", async () => {
+      stubFetchByAnalyzer({
+        header: [acceptedFor("header"), header("   ")],
+        reconciliation: [acceptedFor("reconciliation"), succeeded("   ")],
+      });
+
+      const error = await failure(provider().extract(scalars()));
+
+      expect(error.reason).toBe("unreadable_document");
+      expect(error.retryable).toBe(false);
+    });
+
+    it("classifies text with no extracted value in either part as unreadable_document", async () => {
+      stubFetchByAnalyzer({
+        header: [acceptedFor("header"), noValue()],
+        reconciliation: [acceptedFor("reconciliation"), noValue()],
+      });
+
+      expect((await failure(provider().extract(scalars()))).reason).toBe("unreadable_document");
+    });
+
+    it("keeps a payslip readable when only one part returns values", async () => {
+      stubFetchByAnalyzer({
+        header: [acceptedFor("header"), noValue()],
+        reconciliation: [acceptedFor("reconciliation"), succeeded()],
+      });
+
+      const { fields } = await provider().extract(scalars());
+
+      expect(fields.netoPlaca).toBe("2298.97");
+      expect(fields.employerName).toBeNull();
+    });
+
+    it("classifies a part the mapper cannot read as provider_unavailable", async () => {
+      stubFetchByAnalyzer({
+        header: [acceptedFor("header"), json({ status: "Succeeded", result: {} })],
+        reconciliation: [acceptedFor("reconciliation"), succeeded()],
+      });
+
+      expect((await failure(provider().extract(scalars()))).reason).toBe("provider_unavailable");
+    });
   });
 
   describe("the tables pass (Task 05 D9)", () => {
-    const rows = {
-      payComponents: {
-        type: "array",
-        valueArray: [
-          {
-            valueObject: {
-              naziv: { valueString: "REDOVAN RAD" },
-              iznos: { valueString: "1.200,00" },
-            },
-          },
-        ],
-      },
-    };
-
     it("analyses with the tables analyzer and returns only the table keys", async () => {
       const calls = stubFetch([accepted, succeeded("# page", rows)]);
 
-      const result = await provider().extract(input(undefined, "tables"));
+      const result = await provider().extract(input());
 
       expect(calls[0]?.url).toContain("/analyzers/testAnalyzer_tables:analyzeBinary");
       expect(result.metadata.modelId).toBe("testAnalyzer_tables");
+      expect(result.metadata.rowOrder).toBe("printed");
       expect(Object.keys(result.fields).toSorted()).toEqual([
         "neoporeziviPrimici",
         "obustave",
@@ -301,7 +459,7 @@ describe("ContentUnderstandingProvider", () => {
     it("treats a page with text and three empty tables as a result, not a failure", async () => {
       stubFetch([accepted, succeeded("# page")]);
 
-      const { fields } = await provider().extract(input(undefined, "tables"));
+      const { fields } = await provider().extract(input());
 
       expect(fields).toEqual({ payComponents: [], obustave: [], neoporeziviPrimici: [] });
     });
@@ -309,7 +467,7 @@ describe("ContentUnderstandingProvider", () => {
     it("classifies blank markdown as unreadable_document", async () => {
       stubFetch([accepted, succeeded("  ", rows)]);
 
-      const error = await failure(provider().extract(input(undefined, "tables")));
+      const error = await failure(provider().extract(input()));
 
       expect(error.reason).toBe("unreadable_document");
     });

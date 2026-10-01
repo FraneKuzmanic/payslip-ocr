@@ -146,9 +146,10 @@ page's words show the value (Task 16).
 _Avoid_: Bounding box, highlight, annotation
 
 **Extraction pass**:
-One of the two analyses a Payslip's extraction is split into — the scalars pass, which makes the
+One of the two parts a Payslip's extraction is split into — the scalars pass, which makes the
 form usable, and the tables pass, which fills the three line-item tables. They run over the same
-document and land in either order.
+document and land in either order. A pass is one or more analyses by the extraction service: the
+tables pass is one, the scalars pass two run at once (Task 17).
 _Avoid_: Phase, stage, job
 
 **Extracted value**:

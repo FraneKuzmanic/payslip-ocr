@@ -8,16 +8,16 @@ import {
   type ExtractionInput,
   type ProviderExtractionResult,
 } from "../types.js";
-import { analyzerIdFor } from "./analyzer.js";
-import { mapAnalyzeResult } from "./fields.js";
+import { SCALAR_PARTS, analyzerIdFor } from "./analyzer.js";
+import { mapRetainedPass } from "./fields.js";
 
 export interface ContentUnderstandingOptions {
   readonly endpoint: string;
   readonly key: string;
-  /** The analyzer family: each pass analyses with `<family>_<pass>` (Task 05 D5). */
+  /** The analyzer family: each analysis runs on `<family>_<role>` (Task 05 D5, Task 17 D2). */
   readonly analyzerFamilyId: string;
   readonly apiVersion: string;
-  /** 1 s by default (Task 04 D12); tests pass a tiny value. */
+  /** 250 ms by default (Task 17 D7); tests pass a tiny value. */
   readonly pollIntervalMs?: number;
   /** 5 s by default (ROADMAP locked decision 12); tests pass a tiny value. */
   readonly submitTimeoutMs?: number;
@@ -49,6 +49,15 @@ const SUBMIT_TRIES = 4;
  * chunk is taken tracks transmission: that chunk was taken at 7.0 s of an 8.3 s upload.
  */
 
+/** One analysis, from its submit to its result. */
+interface Analysis {
+  readonly analyzerId: string;
+  readonly body: unknown;
+  readonly submitted: number;
+  readonly finished: number;
+  readonly attempts: number;
+}
+
 const operationStatusSchema = z
   .object({
     status: z.string(),
@@ -60,6 +69,10 @@ const operationStatusSchema = z
  * Azure AI Content Understanding over REST (`fetch`, no SDK). Failures are classified into the
  * three reasons of PRD §7.4 (Task 04 D9). Only codes and statuses are logged, never the service's
  * `message`, which may quote document text.
+ *
+ * The tables pass is one analysis. The scalars pass is two submitted at once, one per
+ * `SCALAR_PARTS`, whose fields are merged into one result (Task 17 D1): nothing outside this
+ * module learns that a pass may be more than one analysis.
  */
 export class ContentUnderstandingProvider implements DocumentExtractionProvider {
   readonly #options: ContentUnderstandingOptions;
@@ -70,7 +83,7 @@ export class ContentUnderstandingProvider implements DocumentExtractionProvider 
   constructor(options: ContentUnderstandingOptions) {
     this.#options = options;
     this.#headers = { "Ocp-Apim-Subscription-Key": options.key };
-    this.#pollIntervalMs = options.pollIntervalMs ?? 1000;
+    this.#pollIntervalMs = options.pollIntervalMs ?? 250;
     this.#submitTimeoutMs = options.submitTimeoutMs ?? DEFAULT_SUBMIT_TIMEOUT_MS;
   }
 
@@ -80,19 +93,37 @@ export class ContentUnderstandingProvider implements DocumentExtractionProvider 
     signal,
     pass,
   }: ExtractionInput): Promise<ProviderExtractionResult> {
-    const analyzerId = analyzerIdFor(this.#options.analyzerFamilyId, pass);
+    const family = this.#options.analyzerFamilyId;
     const started = Date.now();
-    const { operationUrl, attempts } = await this.#submitWithRetry(
-      analyzerId,
-      bytes,
-      contentType,
-      signal,
-    );
-    const submitted = Date.now();
-    const body = await this.#poll(operationUrl, signal);
-    const finished = Date.now();
+    let runs: Analysis[];
+    let raw: unknown;
+    if (pass === "tables") {
+      const run = await this.#analyze(analyzerIdFor(family, "tables"), bytes, contentType, signal);
+      runs = [run];
+      raw = run.body;
+    } else {
+      // Either part failing fails the pass with that part's reason, and stops the other
+      // (Task 17 D5).
+      const parts = new AbortController();
+      const partSignal = AbortSignal.any([signal, parts.signal]);
+      runs = await Promise.all(
+        SCALAR_PARTS.map((part) =>
+          this.#analyze(analyzerIdFor(family, part), bytes, contentType, partSignal).catch(
+            (error: unknown) => {
+              parts.abort();
+              throw error;
+            },
+          ),
+        ),
+      );
+      // Both bodies verbatim, by part: what `mapRetainedPass` and the read-time projections read.
+      raw = Object.fromEntries(SCALAR_PARTS.map((part, index) => [part, runs[index]?.body]));
+    }
+    // The pass is done when its slower analysis is (Task 17 D5).
+    const submitted = Math.max(...runs.map((run) => run.submitted));
+    const finished = Math.max(...runs.map((run) => run.finished));
 
-    const mapped = mapAnalyzeResult(body, pass);
+    const mapped = mapRetainedPass(raw, pass);
     if (mapped === null) {
       // Contract drift, not the document's fault.
       logger.error("content understanding result did not match the mapped shape");
@@ -103,7 +134,7 @@ export class ContentUnderstandingProvider implements DocumentExtractionProvider 
     );
     // PRD US-11: a blank or illegible page is a per-payslip failure the user retakes. Three empty
     // tables are a valid tables result (G01 prints no pay components), so only the scalars pass
-    // needs a value (Task 05 D9).
+    // needs a value (Task 05 D9). Judged on the merged parts: text or a value in either is enough.
     if (!mapped.hasText || (pass === "scalars" && !anyValue)) {
       throw new ExtractionError("unreadable_document");
     }
@@ -112,7 +143,7 @@ export class ContentUnderstandingProvider implements DocumentExtractionProvider 
       fields: mapped.fields,
       metadata: {
         provider: "content-understanding",
-        modelId: analyzerId,
+        modelId: runs.map((run) => run.analyzerId).join("+"),
         apiVersion: this.#options.apiVersion,
         analyzedAt: new Date(finished).toISOString(),
         latencyMs: finished - started,
@@ -122,10 +153,30 @@ export class ContentUnderstandingProvider implements DocumentExtractionProvider 
         fields: mapped.fieldMetadata,
         unreadableFields: mapped.unreadableFields,
         ungroundableFields: mapped.ungroundableFields,
-        submitAttempts: attempts,
+        // The most any one analysis needed, so "above 1" keeps its meaning.
+        submitAttempts: Math.max(...runs.map((run) => run.attempts)),
+        // What the read-time projections go by (Task 17 D13).
+        ...(pass === "tables" ? { rowOrder: "printed" as const } : {}),
       },
-      raw: body,
+      raw,
     };
+  }
+
+  async #analyze(
+    analyzerId: string,
+    bytes: Buffer,
+    contentType: string,
+    signal: AbortSignal,
+  ): Promise<Analysis> {
+    const { operationUrl, attempts } = await this.#submitWithRetry(
+      analyzerId,
+      bytes,
+      contentType,
+      signal,
+    );
+    const submitted = Date.now();
+    const body = await this.#poll(operationUrl, signal);
+    return { analyzerId, body, submitted, finished: Date.now(), attempts };
   }
 
   async #submitWithRetry(
@@ -166,7 +217,7 @@ export class ContentUnderstandingProvider implements DocumentExtractionProvider 
         };
         response = await fetch(url, init);
       } catch (error) {
-        // The whole-analysis budget is spent: no further attempt.
+        // The pass's budget is spent, or its other part failed (Task 17 D5): no further attempt.
         if (signal.aborted) throw new ExtractionError("provider_unavailable", error);
         if (error instanceof DOMException && error.name === "TimeoutError") {
           lastStall = error;

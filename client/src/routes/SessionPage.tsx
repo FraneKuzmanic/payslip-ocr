@@ -32,7 +32,7 @@ import { MergeSuggestions } from "../session/MergeSuggestions";
 import type { BatchItem } from "../upload/UploadBatchContext";
 import { useUploadBatch } from "../upload/useUploadBatch";
 
-export const POLL_INTERVAL_MS = 2_000;
+export const POLL_INTERVAL_MS = 500;
 
 type LoadState = "loading" | "ready" | "not_found" | "error";
 

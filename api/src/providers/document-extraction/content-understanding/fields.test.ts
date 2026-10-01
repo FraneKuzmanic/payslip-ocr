@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { canonicalPayslipFieldsSchema } from "@payslip/shared";
-import { mapAnalyzeResult } from "./fields.js";
+import { SCALAR_FIELDS, mapAnalyzeResult, mapRetainedPass, scalarPartBodies } from "./fields.js";
 
 /** A minimal succeeded operation body, shaped like the recordings in `.bakeoff/cu/`. */
 function operation(fields: Record<string, unknown>, markdown = "# OBRAČUN PLAĆE") {
@@ -166,6 +166,41 @@ describe("mapAnalyzeResult", () => {
     expect(Object.keys(mapped?.fieldMetadata ?? {})).toEqual(["obustave.0.naziv"]);
   });
 
+  describe("table rows in printed order (Task 17 D13)", () => {
+    const cell = (valueString: string, y: number) => ({
+      ...str(valueString),
+      source: `D(1,1,${y},2,${y},2,${y + 0.2},1,${y + 0.2})`,
+    });
+    // Returned bottom row first.
+    const body = operation({
+      obustave: table([
+        { naziv: cell("DRUGA", 5), iznos: cell("n/a", 5) },
+        { naziv: cell("PRVA", 2), iznos: cell("10,00", 2) },
+      ]),
+    });
+
+    it("maps rows in the order they are printed, with every path following", () => {
+      const mapped = mapAnalyzeResult(body, "tables");
+
+      expect(mapped?.fields.obustave?.map((row) => row.naziv)).toEqual(["PRVA", "DRUGA"]);
+      expect(mapped?.unreadableFields).toEqual(["obustave.1.iznos"]);
+      expect(Object.keys(mapped?.fieldMetadata ?? {})).toEqual([
+        "obustave.0.naziv",
+        "obustave.0.iznos",
+        "obustave.1.naziv",
+        "obustave.1.iznos",
+      ]);
+    });
+
+    it("keeps the returned order when asked, for a payslip stored before", () => {
+      const mapped = mapAnalyzeResult(body, "tables", "returned");
+
+      expect(mapped?.fields.obustave?.map((row) => row.naziv)).toEqual(["DRUGA", "PRVA"]);
+      expect(mapped?.unreadableFields).toEqual(["obustave.0.iznos"]);
+      expect(mapRetainedPass(body, "tables", "returned")).toEqual(mapped);
+    });
+  });
+
   describe("grounding", () => {
     it("lists an invented value and not a printed one", () => {
       const mapped = mapAnalyzeResult(
@@ -226,6 +261,97 @@ describe("mapAnalyzeResult", () => {
     ["not an object", "Succeeded"],
   ])("returns null for a body with %s", (_name, body) => {
     expect(mapAnalyzeResult(body)).toBeNull();
+  });
+});
+
+describe("scalarPartBodies (Task 17 D9)", () => {
+  it("gives a single body every scalar", () => {
+    const body = operation({});
+    expect(scalarPartBodies(body)).toEqual([{ body, fields: SCALAR_FIELDS }]);
+  });
+
+  it("gives one entry per part, each owning its role's fields", () => {
+    const header = operation({});
+    const reconciliation = operation({});
+    const parts = scalarPartBodies({ header, reconciliation });
+
+    expect(parts?.map((part) => part.body)).toEqual([header, reconciliation]);
+    expect(parts?.[0]?.fields).toContain("period");
+    expect(parts?.[1]?.fields).toContain("ukupnoSati");
+    expect(parts?.flatMap((part) => part.fields).toSorted()).toEqual(SCALAR_FIELDS.toSorted());
+  });
+
+  it.each([null, "garbage", {}, { header: operation({}) }])("gives null for %j", (retained) => {
+    expect(scalarPartBodies(retained)).toBeNull();
+  });
+});
+
+describe("mapRetainedPass (Task 17 D5)", () => {
+  const header = operationWithWords(
+    { employerName: str("Tvrtka d.o.o."), period: str("svibanj 2025."), employeeOib: str("x y") },
+    [["Tvrtka", "d.o.o.", "svibanj", "2025."]],
+  );
+  const reconciliation = operationWithWords(
+    {
+      netoPlaca: str("2.298,97", 0.7),
+      brutoPlaca: str("abc"),
+      // Not this part's field: the header owns it.
+      employerName: str("Druga tvrtka"),
+    },
+    [["NETO", "2.298,97"]],
+  );
+
+  it("maps a single scalars body exactly as the mapper does", () => {
+    const body = operationWithWords({ netoPlaca: str("2.298,97"), employerName: str("Tvrtka") }, [
+      ["NETO", "2.298,97"],
+    ]);
+    expect(JSON.stringify(mapRetainedPass(body, "scalars"))).toBe(
+      JSON.stringify(mapAnalyzeResult(body, "scalars")),
+    );
+  });
+
+  it("maps the tables body as the mapper does", () => {
+    const body = operation({ obustave: table([{ naziv: str("Sindikat") }]) });
+    expect(mapRetainedPass(body, "tables")).toEqual(mapAnalyzeResult(body, "tables"));
+  });
+
+  it("takes each scalar from the part that owns it", () => {
+    const mapped = mapRetainedPass({ header, reconciliation }, "scalars");
+
+    expect(mapped?.fields.employerName).toBe("Tvrtka d.o.o.");
+    expect(mapped?.fields.period).toBe("2025-05");
+    expect(mapped?.fields.netoPlaca).toBe("2298.97");
+    expect(mapped?.fieldMetadata["employerName"]).toEqual({ confidence: 0.9, source: "model" });
+    expect(mapped?.fieldMetadata["netoPlaca"]).toEqual({ confidence: 0.7, source: "model" });
+  });
+
+  it("has every scalar key once, in schema order, and no table key", () => {
+    const mapped = mapRetainedPass({ header, reconciliation }, "scalars");
+    expect(Object.keys(mapped?.fields ?? {})).toEqual(SCALAR_FIELDS);
+  });
+
+  it("merges unreadable and ungroundable paths, each from its owning part", () => {
+    const mapped = mapRetainedPass({ header, reconciliation }, "scalars");
+
+    // `employerName` is ungroundable in the reconciliation body, which does not own it.
+    expect(mapped?.unreadableFields).toEqual(["brutoPlaca"]);
+    expect(mapped?.ungroundableFields).toEqual(["employeeOib", "brutoPlaca"]);
+  });
+
+  it("has text when either part has it", () => {
+    const blank = operation({}, "  ");
+    expect(mapRetainedPass({ header: blank, reconciliation }, "scalars")?.hasText).toBe(true);
+    expect(mapRetainedPass({ header: blank, reconciliation: blank }, "scalars")?.hasText).toBe(
+      false,
+    );
+  });
+
+  it.each([
+    ["a missing part", { header }],
+    ["a garbage part", { header, reconciliation: { result: {} } }],
+    ["garbage", "nope"],
+  ])("gives null for %s", (_name, retained) => {
+    expect(mapRetainedPass(retained, "scalars")).toBeNull();
   });
 });
 

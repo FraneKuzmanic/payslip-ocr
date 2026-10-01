@@ -134,7 +134,10 @@ export function createPayslipsRouter(extraction: ExtractionRunner): Router {
       );
       if (source === null) throw new HttpError(404, "not_found");
 
-      const body: SourceRegionsResponse = projectSourceRegions(source.rawProviderResult);
+      const body: SourceRegionsResponse = projectSourceRegions(
+        source.rawProviderResult,
+        source.extractionMetadata,
+      );
       res.json(body);
     }),
   );
@@ -216,7 +219,7 @@ export function createPayslipsRouter(extraction: ExtractionRunner): Router {
 
       const edited = editedFields(
         { ...retained.fields, ...patch.data },
-        originalExtraction(retained.rawProviderResult),
+        originalExtraction(retained.rawProviderResult, retained.extractionMetadata),
       );
       if (!(await repository.updateFields(id.data, patch.data, edited))) {
         // The state changed since the read. One re-read says why.

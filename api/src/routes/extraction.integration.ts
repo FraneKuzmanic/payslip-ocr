@@ -69,7 +69,8 @@ interface PassTimings {
   submitAttempts?: number;
 }
 
-const POLL_INTERVAL_MS = 2000;
+// The client's own interval (`SessionPage.tsx`, Task 17 D7).
+const POLL_INTERVAL_MS = 500;
 const POLL_CAP_MS = 6 * 60 * 1000;
 const BLANK = "blank.pdf";
 const QUAD_TARGET_MS = 25_000;
@@ -290,8 +291,8 @@ describe("extraction against the real service", () => {
         report(
           "\n  FOUR IN PARALLEL (PRD §11.4, ≤ 25 s): client wall clock from the first upload " +
             `request to the settled session, polled every ${secs(POLL_INTERVAL_MS)}. It includes ` +
-            "the four uploads over this machine's uplink. Each payslip is two analyses and the " +
-            "concurrency cap counts analyses, so a quad is eight analyses under the API's cap.",
+            "the four uploads over this machine's uplink. Each payslip is three analyses in two " +
+            "passes, and the concurrency cap counts passes (Task 17 D6).",
         );
         for (const run of quadRuns) {
           report(

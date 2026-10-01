@@ -39,6 +39,12 @@ export interface ExtractionMetadata {
    * response, which no request path reads (Task 06 D8).
    */
   readonly ungroundableFields: string[];
+  /**
+   * Set on the tables pass when its rows were mapped in the order they are printed, not the order
+   * the provider returned them (Task 17 D13). Absent on a payslip extracted before; the read-time
+   * projections re-map its rows in the order they were stored.
+   */
+  readonly rowOrder?: "printed";
   /** Submits made before one was accepted; above 1 a duplicate analysis may have been billed. */
   readonly submitAttempts?: number;
   /**
