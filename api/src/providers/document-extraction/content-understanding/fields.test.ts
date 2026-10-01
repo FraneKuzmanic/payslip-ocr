@@ -3,7 +3,13 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { canonicalPayslipFieldsSchema } from "@payslip/shared";
-import { SCALAR_FIELDS, mapAnalyzeResult, mapRetainedPass, scalarPartBodies } from "./fields.js";
+import {
+  SCALAR_FIELDS,
+  findTotalRow,
+  mapAnalyzeResult,
+  mapRetainedPass,
+  scalarPartBodies,
+} from "./fields.js";
 
 /** A minimal succeeded operation body, shaped like the recordings in `.bakeoff/cu/`. */
 function operation(fields: Record<string, unknown>, markdown = "# OBRAČUN PLAĆE") {
@@ -201,6 +207,66 @@ describe("mapAnalyzeResult", () => {
     });
   });
 
+  describe("the total row left out of the pay components (Task 17 D14)", () => {
+    const cell = (valueString: string, y: number) => ({
+      ...str(valueString),
+      source: `D(1,1,${y},2,${y},2,${y + 0.2},1,${y + 0.2})`,
+    });
+    // As F01 came back: the gross total first, then the components that sum to it.
+    const body = operation({
+      payComponents: table([
+        { naziv: cell("PLAĆA (BRUTO SVOTA)", 1), iznos: cell("2.009,94", 1) },
+        { naziv: cell("Redovan rad", 2), iznos: cell("1.074,28", 2) },
+        { naziv: cell("Stimulacija", 3), iznos: cell("935,66", 3) },
+      ]),
+    });
+
+    it("finds the row that repeats bruto plaća when the other rows sum to it", () => {
+      expect(findTotalRow(body, "2009.94")).toBe(0);
+    });
+
+    it.each([
+      ["no row equals bruto plaća", "3000.00"],
+      ["bruto plaća was not read", null],
+    ])("finds none when %s", (_case, brutoPlaca) => {
+      expect(findTotalRow(body, brutoPlaca)).toBeNull();
+    });
+
+    it("finds none when a row equals bruto plaća and the others do not sum to it", () => {
+      const only = operation({ payComponents: table([{ iznos: str("2.009,94") }]) });
+      const short = operation({
+        payComponents: table([{ iznos: str("2.009,94") }, { iznos: str("100,00") }]),
+      });
+
+      expect(findTotalRow(only, "2009.94")).toBeNull();
+      expect(findTotalRow(short, "2009.94")).toBeNull();
+    });
+
+    it("finds none in a body that does not map", () => {
+      expect(findTotalRow("garbage", "2009.94")).toBeNull();
+    });
+
+    it("maps the table without that row, with every path following", () => {
+      const mapped = mapAnalyzeResult(body, "tables", "printed", 0);
+
+      expect(mapped?.fields.payComponents?.map((row) => row.naziv)).toEqual([
+        "Redovan rad",
+        "Stimulacija",
+      ]);
+      expect(Object.keys(mapped?.fieldMetadata ?? {})).toEqual([
+        "payComponents.0.naziv",
+        "payComponents.0.iznos",
+        "payComponents.1.naziv",
+        "payComponents.1.iznos",
+      ]);
+      expect(mapRetainedPass(body, "tables", "printed", 0)).toEqual(mapped);
+    });
+
+    it("keeps every row when none was left out", () => {
+      expect(mapAnalyzeResult(body, "tables")?.fields.payComponents).toHaveLength(3);
+    });
+  });
+
   describe("grounding", () => {
     it("lists an invented value and not a printed one", () => {
       const mapped = mapAnalyzeResult(
@@ -393,6 +459,19 @@ describe.skipIf(!existsSync(recordingsDir))("mapAnalyzeResult over the recorded 
         ...(tables?.ungroundableFields ?? []),
       ]).toEqual(whole?.ungroundableFields);
     }
+  });
+
+  // Task 17 D14, measured over this set, where F01 came back with its total row first.
+  it("finds a total row among the pay components of F01 alone", () => {
+    const files = readdirSync(recordingsDir).filter((name) => name.endsWith(".json"));
+    const found = files.flatMap((file) => {
+      const body: unknown = JSON.parse(readFileSync(join(recordingsDir, file), "utf8"));
+      const brutoPlaca = mapAnalyzeResult(body, "scalars")?.fields.brutoPlaca ?? null;
+      const totalRow = findTotalRow(body, brutoPlaca);
+      return totalRow === null ? [] : [[file, totalRow]];
+    });
+
+    expect(found).toEqual([["F01.json", 0]]);
   });
 
   // Task 06 D8, measured over this set: correct values ground, so the signal stays rare.

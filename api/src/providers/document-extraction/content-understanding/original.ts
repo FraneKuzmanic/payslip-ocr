@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { CanonicalPayslipFields } from "@payslip/shared";
 import { mapRetainedPass } from "./fields.js";
-import { storedRowOrder } from "./row-order.js";
+import { storedRowOrder, storedTotalRow } from "./row-order.js";
 
 const storedSchema = z
   .object({ scalars: z.unknown().optional(), tables: z.unknown().optional() })
@@ -13,7 +13,8 @@ const storedSchema = z
  * pass, exactly as the extraction runner stored it, and the passes' keys are disjoint, so their
  * merge order does not matter. A scalars pass retained as its two parts is merged as the provider
  * merged it (Task 17 D9), and table rows are re-mapped in the order `extractionMetadata` says
- * they were stored in (Task 17 D13). `null` when neither pass maps.
+ * they were stored in (Task 17 D13), without the pay-component row it says was left out (D14).
+ * `null` when neither pass maps.
  *
  * The comparison is against today's mapper. A later mapper change that maps an old body
  * differently would mark those values edited on the payslip's next save.
@@ -26,7 +27,12 @@ export function originalExtraction(
   if (!stored.success) return null;
 
   const scalars = mapRetainedPass(stored.data.scalars, "scalars");
-  const tables = mapRetainedPass(stored.data.tables, "tables", storedRowOrder(extractionMetadata));
+  const tables = mapRetainedPass(
+    stored.data.tables,
+    "tables",
+    storedRowOrder(extractionMetadata),
+    storedTotalRow(extractionMetadata),
+  );
   if (scalars === null && tables === null) return null;
   return { ...scalars?.fields, ...tables?.fields };
 }

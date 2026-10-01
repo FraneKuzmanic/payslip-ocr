@@ -136,6 +136,33 @@ describe("projectSourceRegions", () => {
     });
   });
 
+  describe("the pay components' total row (Task 17 D14)", () => {
+    const tables = regionsPassBody({
+      payComponents: rows(
+        { naziv: sourced("UKUPNO", "D(1,0,1,1,1,1,2,0,2)") },
+        { naziv: sourced("RAD", "D(1,0,3,1,3,1,4,0,4)") },
+      ),
+    });
+    const paths = (metadata: unknown) =>
+      projectSourceRegions({ tables }, metadata).regions.map((region) => [
+        region.fields[0],
+        region.corners[0]?.y,
+      ]);
+
+    it("has no outline for the row the tables pass left out, and numbers the rest as stored", () => {
+      expect(paths({ tables: { rowOrder: "printed", totalRow: 0 } })).toEqual([
+        ["payComponents.0.naziv", 0.3],
+      ]);
+    });
+
+    it("keeps the row on a payslip stored with it", () => {
+      expect(paths({ tables: { rowOrder: "printed" } })).toEqual([
+        ["payComponents.0.naziv", 0.1],
+        ["payComponents.1.naziv", 0.3],
+      ]);
+    });
+  });
+
   it("skips a malformed segment and keeps its siblings", () => {
     const projected = projectSourceRegions(
       scalarsOnly({

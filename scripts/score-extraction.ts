@@ -26,6 +26,7 @@ import {
   analyzerIdFor,
 } from "../api/src/providers/document-extraction/content-understanding/analyzer.ts";
 import {
+  findTotalRow,
   mapAnalyzeResult,
   mapRetainedPass,
   scalarPartBodies,
@@ -175,7 +176,12 @@ function signals(passes: readonly Mapped[]) {
 }
 
 function singlePass(body: unknown): Loaded | null {
-  const mapped = mapAnalyzeResult(body);
+  const scalars = mapAnalyzeResult(body, "scalars");
+  if (scalars === null) return null;
+  // As the product stores a payslip today: without a pay-component row that repeats bruto
+  // plaća (Task 17 D14).
+  const totalRow = findTotalRow(body, scalars.fields.brutoPlaca ?? null);
+  const mapped = mapAnalyzeResult(body, undefined, "printed", totalRow);
   if (mapped === null) return null;
   const latencyMs = (body as { latencyMs?: unknown }).latencyMs;
   return { ...signals([mapped]), latencyMs: typeof latencyMs === "number" ? latencyMs : null };
@@ -189,8 +195,11 @@ function twoPass(body: unknown): Loaded | null {
     timings?: Record<string, { queuedMs?: unknown; latencyMs?: unknown } | undefined>;
   };
   const mappedScalars = mapRetainedPass(scalars, "scalars");
-  const mappedTables = mapRetainedPass(tables, "tables");
-  if (mappedScalars === null || mappedTables === null) return null;
+  if (mappedScalars === null) return null;
+  // The tables pass is given the scalars pass's bruto plaća (Task 17 D14).
+  const totalRow = findTotalRow(tables, mappedScalars.fields.brutoPlaca ?? null);
+  const mappedTables = mapRetainedPass(tables, "tables", "printed", totalRow);
+  if (mappedTables === null) return null;
 
   // Enqueue to recorded, per pass. A missing `timings` block is "not recorded", not a problem.
   const done = (pass: ExtractionPass) => {

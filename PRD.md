@@ -504,7 +504,7 @@ Selected files collect in a **tray** before anything uploads (Task 07): each **S
 
 **Requirements.** Primary engine is an Azure Content Understanding custom analyzer with a Croatian-language field schema and `estimateFieldSourceAndConfidence` enabled, so page, bounding quad and confidence arrive per field including for nested table rows. Extraction runs as **two passes over the same document** (Task 05), partitioned from one field schema with the descriptions unchanged: the scalars pass returns the scalar fields and makes the form usable; the tables pass (`<id>_tables`) returns the three line-item tables. Each pass has its own timeout via `AbortController` and is recorded atomically on its own, in either order. Since Task 17 the scalars pass is two analyzers submitted together, `<id>_header` (parties, period, payment date) and `<id>_reconciliation` (the pay calculation); either failing fails the pass, and both bodies are retained. It is still one pass to everything outside the provider. A scalars failure fails the payslip and cancels its tables pass; a tables failure leaves a usable payslip with `tablesStatus: failed`. Failures classified into `unreadable_document` (non-retryable), `provider_rejected` (non-retryable) and `provider_unavailable` (retryable). The raw response is retained verbatim.
 
-**Rules.** Confidence never suppresses a value. Amounts are parsed from text, never from a numeric field. A value that cannot be normalised is recorded as unreadable rather than guessed. Table rows are stored in the order they are printed, read from each cell's own position on the page (Task 17): the service returns one document's rows in an order that varies between runs. A payslip stored before keeps the order it was stored in, so its outlines stay on its rows.
+**Rules.** Confidence never suppresses a value. Amounts are parsed from text, never from a numeric field. A value that cannot be normalised is recorded as unreadable rather than guessed. Table rows are stored in the order they are printed, read from each cell's own position on the page (Task 17): the service returns one document's rows in an order that varies between runs. A payslip stored before keeps the order it was stored in, so its outlines stay on its rows. A pay-component row whose amount equals bruto plaća, while the other rows already sum to bruto plaća, is the payslip's total and not a component: it is left out (Task 17 D14; the service returned one for F01 in 4 of 10 recorded runs). The tables pass waits for the scalars pass's bruto plaća to decide, and records which row it left out; a payslip stored with such a row keeps it.
 
 ### 7.5 Source regions and highlighting
 
@@ -917,8 +917,15 @@ now sends the document three times at once (p50 3.0 s, 28.1 s for B02). Complete
 A01's obustave in another row order (as in four of the eight recorded sets) and F01's pay
 components with the total row included. Rows are now stored in printed order, which scores this
 set **495/548** and every earlier set 502–518; F01's extra row remains, and raises
-`pay_components_sum_mismatch`. The run cost about $0.68, $0.062 a payslip. Not yet measured on
-the deployed stack.
+`pay_components_sum_mismatch`. The run cost about $0.68, $0.062 a payslip.
+
+Measured on the **deployed** stack (2026-10-01, [`history/17`](./.agents/history/17-extraction-latency-split-scalars.md)),
+the eleven samples one at a time: first form **p50 8.2 s, p90 10.2 s, max 11.7 s** (Task 13:
+p50 11.9 s), complete p50 9.4 s, max 33.7 s (A01). In sessions of four: first form p50 10.6 s,
+and **four in parallel 43.8 s, 32.8 s and 78.3 s against ≤ 25 s, still missed**: A01's tables
+analysis ran 22.8 s and 57.8 s, and the tables passes queue behind the scalars passes. Scalars
+271 and 269 of 273. Line-item cells, with the pay components' total row left out (§7.4): 524
+and 524 of 548, against 505–519 for every set recorded before Task 17. The two runs cost $1.51.
 
 ### 11.5 User-experience targets
 

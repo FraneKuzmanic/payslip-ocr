@@ -378,3 +378,146 @@ navigation or form code.
   (≤ $0.07) or the golden set (about $0.68).
 - Open items 5–7 above are unchanged. Of item 8, history/16's header is corrected; whether 15b
   had its review session is still unrecorded.
+
+## Production measurement (2026-10-01)
+
+Committed as `2d303d7`, pushed to the mirror (`8794e2b`), deployed, and Render switched to
+`hrPayslipV3` by the product owner. Then measured on the deployed stack through
+`GOLDEN_API_URL=https://payslip-ocr-api.onrender.com`, from the development machine. Every
+recording's analyzers are `hrPayslipV3_header`, `_reconciliation` and `_tables`.
+**Paid: two golden runs, $0.76 and $0.75, and an 18-analysis experiment (about $0.30, estimate).
+Running total for Task 17: about $2.95.**
+
+### Latency
+
+| Measure | Before (Task 13, deployed, V1) | Now (deployed, V3) | Target |
+| --- | --- | --- | --- |
+| First form, one payslip at a time | p50 11.9 s, max 22.7 s (in quads) | **p50 8.2 s, p90 10.2 s, max 11.7 s** | ≤ 10 s |
+| Scalars analysis alone | — | 3.9–10.7 s, median 7.6 s | — |
+| Complete, one at a time | p50 17.9 s (in quads) | p50 9.4 s, p90 22.2 s, max 33.7 s (A01) | ≤ 25 s |
+| First form, four at once | p50 11.9 s | p50 10.6 s, p90 16.7 s, max 18.7 s | — |
+| Four in parallel, wall clock | 73.3 / 32.4 / 73.2 s | **43.8 / 32.8 / 78.3 s** | ≤ 25 s |
+
+Four in parallel is still missed. A01's tables analysis sets it (22.8 s in quad 1, 57.8 s in
+quad 3), and with four payslips the tables passes wait behind the scalars passes (queued up to
+19.6 s). Quad 2 includes 15.5 s of uploads from this machine. The upload from Render to the
+service was 0.2–3.1 s per pass, one resubmit in 46 passes.
+
+### Accuracy over three V3 runs
+
+| Set | Scalars | Critical | Cells |
+| --- | --- | --- | --- |
+| task17-sequential (dev machine) | 272/273 | 76/77 | 495/548 |
+| task17-hosted-sequential | 271/273 | 75/77 | 509/548 |
+| task17-hosted-quads | 269/273 | 74/77 | **524/548** |
+| Earlier sets, scored the same way (printed order) | 268–272 | 73–76 | 502–518 |
+
+- **Scalars: no change.** Every miss in the three runs is one the V1 and V2 sets also have:
+  G01's `netoPlaca` printed as `1.219.08` (unreadable, flagged), A04's occluded payout invented
+  (ungroundable, flagged), and on F01 an employer name invented from other text (one run; also in
+  `two-pass-concurrent` and `hosted-quads`).
+- **Cells: the three runs span the earlier range and exceed it once.** The whole spread is two
+  tables: F01's pay components (20/20 or 5/20) and C01's (20/20 or 9/20, which varied on V1 too:
+  6, 9, 20). Every other table is equal or better (A02 and A04 obustave +2 each in both hosted
+  runs).
+
+### F01's total row is older than this task, and not caused by the trim
+
+Open item 1 asked whether `enableFormula: false` on the V3 tables analyzer adds F01's total row
+(`PLAĆA (BRUTO SVOTA) 2.009,94` as a sixth pay component, first). It does not:
+
+- The row is in **4 of the 10 recorded sets, from 2026-09-20 on**: `cu` and `production` (V1,
+  single-pass, formula on), `task17-sequential` and `task17-hosted-sequential` (V3). History
+  above says "not seen in the four earlier two-pass sets", which is true and missed the
+  single-pass ones. The markdown the model read is the same 4,797 characters in all ten.
+- **Paired experiment:** F01's tables pass six times each, interleaved, through
+  `hrPayslipV2_tables` (formula on), `hrPayslipV3_tables` (formula off) and a candidate with one
+  added sentence saying the gross-total row is not a component. **18 of 18 returned the five
+  correct rows.** So neither the trim nor the sentence can be judged from it: the fault did not
+  occur. The candidate analyzer was deleted.
+- The third V3 golden run returned the five correct rows too.
+
+It is a run-to-run behaviour of the model on this layout. When it happens the app flags it
+(`pay_components_sum_mismatch`), and D13 keeps the other five rows in order behind it.
+
+**A $0 prototype of the one deterministic fix:** drop a pay-component row whose amount equals
+`brutoPlaca` when the other rows already sum to `brutoPlaca`. Over all ten sets it removes
+exactly F01's total row in the four affected sets and nothing else: `cu` 502 → 517, `production`
+504 → 519, `task17-sequential` 495 → 510, `task17-hosted-sequential` 509 → 524; the other six
+unchanged. Not built: it is one more post-processing rule, and the product owner decides.
+
+### Open items now
+
+- Open item 1 is answered as above; open items 2–4 are closed by the deploy and this section.
+- C01's pay components (the statutory breakdown taken instead of the employer's rows, in 4 of 7
+  two-pass sets) is the larger intermittent table fault left, with no fix proposed.
+- Four in parallel stays missed (ROADMAP §5).
+
+## Follow-up D14: the pay components' total row is left out (2026-10-01, $0)
+
+**Asked by the product owner** after the production measurement: build the fix for F01's total
+row, test first. Accuracy ranks above speed for this product.
+
+**The rule.** A pay-component row is left out when its amount equals `brutoPlaca` and the other
+rows already sum to `brutoPlaca`, both to the cent. It is the payslip's own arithmetic (the
+field description already says the components sum to bruto plaća) and reads no label.
+
+**What was built:**
+
+- `findTotalRow(tablesBody, brutoPlaca)` in `fields.ts`: the index of that row among the rows as
+  returned, or `null`.
+- The rule needs both passes: bruto plaća is a scalar, the pay components a table. The runner
+  gives the tables pass a promise of the scalars pass's `brutoPlaca`
+  (`ExtractionInput.brutoPlaca`), settled when the scalars pass ends and `null` when it read none
+  or failed. The provider awaits it after its analysis, so the tables pass's timings do not
+  include the wait, and both passes still run at once.
+- The row is left out **before any path is numbered** (`storedRows` in `row-order.ts`, used by
+  the mapper and the regions projection), so stored rows, field paths, confidence, unreadable and
+  ungroundable paths and outlines all name the same rows. The retained body is verbatim: the row
+  is still in it.
+- The tables metadata records which row: `totalRow`, its index as returned. The regions
+  projection and the "edited" reference replay that index (`storedTotalRow`). **A payslip stored
+  with its total row keeps it**: no mark, no change, as with D13.
+- The harness scores recordings as the product would store them today, so it applies the rule.
+
+**Measured at $0, over every recorded set, with the built code:** the rule leaves out exactly
+F01's `PLAĆA (BRUTO SVOTA)` row in the four sets that have it, and no row anywhere else.
+
+| Set | Cells before | Cells with D14 |
+| --- | --- | --- |
+| cu (V1) | 502 | **517** |
+| production (V1) | 504 | **519** |
+| task17-sequential (V3) | 495 | **510** |
+| task17-hosted-sequential (V3) | 509 | **524** |
+| the other six | 505–524 | unchanged |
+
+Scalars are unchanged in every set. F01's `pay_components_sum_mismatch` no longer fires. The V3
+sets now score **510, 524 and 524** cells, against 505–519 for every earlier set.
+
+**Red first:** 18 tests failed (`findTotalRow` missing, the row still mapped, no mark, the
+projections keeping the row, the runner giving no promise); all green after.
+
+**End to end, $0** (the local API with an invalid extraction key, payslips recorded through
+`complete_extraction_pass` from the `task17-sequential` recording): F01 stored with the rule has
+5 pay components, `totalRow: 0`, no sum warning, and every numeric cell's outline on its own value
+(11/11); F01 stored without it has 6 rows, the sum warning, and 13/13; A01 has no total row and
+59/59. On all three, editing `brutoPlaca` marks only `brutoPlaca`, and reverting clears it.
+
+**Limits, stated plainly:**
+
+- It is a second deterministic post-processing rule in this task (ROADMAP §5). It is arithmetic
+  on canonical values, not Croatian, and it cannot fire unless the table double-counts bruto
+  plaća exactly.
+- It removes a **total** row only. A subtotal row, or C01's statutory breakdown taken instead of
+  the employer's rows, is not touched: C01's pay components stay the larger intermittent fault.
+- It needs the scalars pass's bruto plaća. When that is unread or wrong, the row stays and the
+  sum warning flags it, as before.
+- An edit to `brutoPlaca` afterwards changes nothing: the decision is made once, at extraction.
+- A row left out is not shown to the user. The retained response still holds it.
+- Rolling the code back has the same caveat as D13: a payslip stored with `totalRow` would be
+  re-mapped with the row by older code.
+
+**Validation:** typecheck, oxlint, Prettier; **77 files / 1,312 tests** (+25); `npm run
+test:integration` 3 + 65 + 4; build; `check:secrets`; `check:golden`; `score:extraction` V3, V2
+and V1 exit 0 with the table above. No analyzer changed: `hrPayslipV3` stays as provisioned, and
+Render needs no change.

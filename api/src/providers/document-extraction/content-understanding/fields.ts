@@ -1,17 +1,20 @@
 import { z } from "zod";
 import {
+  addAmounts,
+  amountsEqual,
   canonicalPayslipFieldsSchema,
   parseAmount,
   parseDate,
   parsePeriod,
   parseQuantity,
+  subtractAmounts,
   type CanonicalPayslipFields,
   type FieldMetadata,
 } from "@payslip/shared";
 import type { ExtractionPass } from "../types.js";
 import { SCALAR_PARTS, roleFields } from "./analyzer.js";
 import { UNGROUNDABLE_BY_DESIGN, isGrounded, keyPages, surfaceForms } from "./grounding.js";
-import { inPrintedOrder, type RowOrder } from "./row-order.js";
+import { storedRows, type RowOrder } from "./row-order.js";
 
 /**
  * The only place Content Understanding's field names and value shapes meet the canonical model
@@ -148,11 +151,13 @@ export interface MappedExtraction {
  * to that pass's keys (Task 05); without it every key is mapped, which only the scoring harness
  * uses, for single-pass recordings. Table rows are mapped in printed order (Task 17 D13);
  * `returned` re-maps a payslip stored before that, whose rows are in the service's order.
+ * `totalRow` is the pay-component row to leave out, as `findTotalRow` gives it (Task 17 D14).
  */
 export function mapAnalyzeResult(
   operation: unknown,
   pass?: ExtractionPass,
   rowOrder: RowOrder = "printed",
+  totalRow: number | null = null,
 ): MappedExtraction | null {
   const parsed = operationSchema.safeParse(operation);
   if (!parsed.success) return null;
@@ -197,8 +202,7 @@ export function mapAnalyzeResult(
   for (const [table, columns] of Object.entries(tableParsers)) {
     // Absent and printed-empty tables both come back without `valueArray`; the golden set records
     // both as `[]`. The null-versus-zero distinction lives on the totals, not the tables.
-    const returned = rawFields[table]?.valueArray ?? [];
-    const rows = rowOrder === "printed" ? inPrintedOrder(returned) : returned;
+    const rows = storedRows(table, rawFields[table]?.valueArray ?? [], rowOrder, totalRow);
     fields[table] = rows.map((row, index) =>
       Object.fromEntries(
         Object.entries(columns).map(([column, parse]) => [
@@ -216,6 +220,30 @@ export function mapAnalyzeResult(
     ungroundableFields,
     hasText: (content?.markdown ?? "").trim() !== "",
   };
+}
+
+/**
+ * The pay-component row that repeats the payslip's total instead of being a component (Task 17
+ * D14): its amount is `brutoPlaca`, and the other rows already sum to `brutoPlaca`. The service
+ * returns such a row on some runs of one document (F01's `PLAĆA (BRUTO SVOTA)`, in 4 of 10
+ * recorded sets) although the field description asks for leaf rows only. The test is the
+ * payslip's own arithmetic, to the cent, and reads no label. An index into the rows as returned,
+ * or `null`.
+ */
+export function findTotalRow(tablesBody: unknown, brutoPlaca: string | null): number | null {
+  const parsed = operationSchema.safeParse(tablesBody);
+  if (!parsed.success || brutoPlaca === null) return null;
+
+  const rows = parsed.data.result.contents[0]?.fields?.["payComponents"]?.valueArray ?? [];
+  const amounts = rows.map((row) => parseAmount(row.valueObject?.["iznos"]?.valueString));
+  const sum = amounts.reduce<string>((total, amount) => addAmounts(total, amount ?? "0"), "0");
+  const index = amounts.findIndex(
+    (amount) =>
+      amount !== null &&
+      amountsEqual(amount, brutoPlaca) &&
+      amountsEqual(subtractAmounts(sum, amount), brutoPlaca),
+  );
+  return index === -1 ? null : index;
 }
 
 /**
@@ -242,8 +270,9 @@ export function mapRetainedPass(
   retained: unknown,
   pass: ExtractionPass,
   rowOrder: RowOrder = "printed",
+  totalRow: number | null = null,
 ): MappedExtraction | null {
-  if (pass === "tables") return mapAnalyzeResult(retained, "tables", rowOrder);
+  if (pass === "tables") return mapAnalyzeResult(retained, "tables", rowOrder, totalRow);
   const parts = scalarPartBodies(retained);
   if (parts === null) return null;
 

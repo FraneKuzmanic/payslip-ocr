@@ -68,6 +68,24 @@ export function inPrintedOrder<Row extends SourcedRow>(rows: readonly Row[]): Ro
   return entries.map(({ row, place }) => (place === null ? row : (placed[next++]?.row ?? row)));
 }
 
+/**
+ * A table's rows as a payslip stores them: the pay components without their total row when one
+ * was left out (Task 17 D14, `totalRow` is its index as returned), then in the payslip's row order.
+ * The mapper and the regions projection both number rows from this, so a path names one row.
+ */
+export function storedRows<Row extends SourcedRow>(
+  table: string,
+  returned: readonly Row[],
+  rowOrder: RowOrder,
+  totalRow: number | null,
+): readonly Row[] {
+  const kept =
+    table === "payComponents" && totalRow !== null
+      ? returned.filter((_, index) => index !== totalRow)
+      : returned;
+  return rowOrder === "printed" ? inPrintedOrder(kept) : kept;
+}
+
 const printedSchema = z
   .object({ tables: z.object({ rowOrder: z.literal("printed") }).loose() })
   .loose();
@@ -75,4 +93,17 @@ const printedSchema = z
 /** The order a stored payslip's table rows are in, from its extraction metadata. */
 export function storedRowOrder(extractionMetadata: unknown): RowOrder {
   return printedSchema.safeParse(extractionMetadata).success ? "printed" : "returned";
+}
+
+const totalRowSchema = z
+  .object({ tables: z.object({ totalRow: z.int().nonnegative() }).loose() })
+  .loose();
+
+/**
+ * The pay-component row a stored payslip's tables pass left out, as an index into the returned
+ * rows, from its extraction metadata (Task 17 D14). `null` when it left none out.
+ */
+export function storedTotalRow(extractionMetadata: unknown): number | null {
+  const stored = totalRowSchema.safeParse(extractionMetadata);
+  return stored.success ? stored.data.tables.totalRow : null;
 }

@@ -19,6 +19,12 @@ export interface ExtractionInput {
   /** The whole-analysis budget; aborting it ends the extraction as `provider_unavailable`. */
   readonly signal: AbortSignal;
   readonly pass: ExtractionPass;
+  /**
+   * For the tables pass: the scalars pass's bruto plaća, settled once that pass has finished, and
+   * `null` when it read none or failed. The pay components sum to it, which is how a provider can
+   * tell a total row from a component (Task 17 D14). It always settles and never rejects.
+   */
+  readonly brutoPlaca?: Promise<string | null>;
 }
 
 export interface ExtractionMetadata {
@@ -45,6 +51,12 @@ export interface ExtractionMetadata {
    * projections re-map its rows in the order they were stored.
    */
   readonly rowOrder?: "printed";
+  /**
+   * Set on the tables pass when a pay-component row that repeats bruto plaća was left out (Task 17
+   * D14): its index among the rows the provider returned. The read-time projections leave the same
+   * row out, so their paths name the stored rows.
+   */
+  readonly totalRow?: number;
   /** Submits made before one was accepted; above 1 a duplicate analysis may have been billed. */
   readonly submitAttempts?: number;
   /**

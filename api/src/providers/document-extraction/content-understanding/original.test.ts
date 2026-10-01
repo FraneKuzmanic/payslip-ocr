@@ -66,6 +66,20 @@ describe("originalExtraction", () => {
     expect(names()).toEqual(["DRUGA", "PRVA"]);
   });
 
+  it("re-maps the pay components without the row the tables pass left out (Task 17 D14)", () => {
+    const tables = regionsPassBody({
+      payComponents: rows(
+        { naziv: sourced("UKUPNO", "D(1,0,1,1,1,1,2,0,2)") },
+        { naziv: sourced("RAD", "D(1,0,3,1,3,1,4,0,4)") },
+      ),
+    });
+    const names = (metadata: unknown) =>
+      originalExtraction({ tables }, metadata)?.payComponents?.map((row) => row.naziv);
+
+    expect(names({ tables: { rowOrder: "printed", totalRow: 0 } })).toEqual(["RAD"]);
+    expect(names({ tables: { rowOrder: "printed" } })).toEqual(["UKUPNO", "RAD"]);
+  });
+
   it("gives the scalars alone while the tables body is missing", () => {
     const original = originalExtraction({ scalars: scalarsBody })!;
     expect(original.netoPlaca).toBe("1500.00");

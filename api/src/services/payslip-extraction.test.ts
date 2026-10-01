@@ -106,6 +106,52 @@ describe("createExtractionRunner", () => {
     expect(repo.completeExtractionPass).toHaveBeenCalledWith("a", "tables", expect.anything());
   });
 
+  describe("the scalars pass's bruto plaća, for the tables pass (Task 17 D14)", () => {
+    /** A provider whose tables pass reports what its `brutoPlaca` resolved to. */
+    function reportingProvider(scalars: () => Promise<ProviderExtractionResult>) {
+      const seen: unknown[] = [];
+      const provider: DocumentExtractionProvider = {
+        async extract(input) {
+          if (input.pass === "scalars") return scalars();
+          seen.push(input.brutoPlaca === undefined ? "not given" : await input.brutoPlaca);
+          return result;
+        },
+      };
+      return { provider, seen };
+    }
+
+    it("is what the scalars pass read", async () => {
+      const { provider, seen } = reportingProvider(() =>
+        Promise.resolve({ ...result, fields: { brutoPlaca: "2009.94" } }),
+      );
+      const runner = createExtractionRunner({ provider, concurrency: 3, timeoutMs: 60_000 });
+
+      await runner.enqueue(job("a"));
+
+      expect(seen).toEqual(["2009.94"]);
+    });
+
+    it("is null when the scalars pass read none", async () => {
+      const { provider, seen } = reportingProvider(() => Promise.resolve(result));
+      const runner = createExtractionRunner({ provider, concurrency: 3, timeoutMs: 60_000 });
+
+      await runner.enqueue(job("a"));
+
+      expect(seen).toEqual([null]);
+    });
+
+    it("is null when the scalars pass fails, so a running tables pass never waits on it", async () => {
+      const { provider, seen } = reportingProvider(() =>
+        Promise.reject(new ExtractionError("provider_unavailable")),
+      );
+      const runner = createExtractionRunner({ provider, concurrency: 3, timeoutMs: 60_000 });
+
+      await runner.enqueue(job("a"));
+
+      expect(seen).toEqual([null]);
+    });
+  });
+
   it("runs at most `concurrency` passes at once", async () => {
     const { provider, started, open, peak } = gatedProvider();
     const runner = createExtractionRunner({ provider, concurrency: 3, timeoutMs: 60_000 });

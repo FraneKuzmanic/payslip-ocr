@@ -60,16 +60,21 @@ export function createExtractionRunner(deps: ExtractionRunnerDeps): ExtractionRu
       // Aborted when the scalars pass fails or its result cannot be kept. The tables would then be
       // discarded, so a queued tables pass never calls the provider and a running one stops.
       const tablesAbort = new AbortController();
-      const runPass = async (pass: ExtractionPass) => {
+      const inSlot = async <Result>(pass: ExtractionPass, run: () => Promise<Result>) => {
         const release = await acquire(pass);
         try {
-          if (pass === "scalars") await runScalars(deps, job, enqueuedAt, tablesAbort);
-          else await runTables(deps, job, enqueuedAt, tablesAbort.signal);
+          return await run();
         } finally {
           release();
         }
       };
-      await Promise.all([runPass("scalars"), runPass("tables")]);
+      // The scalars pass settles with the bruto plaća it read, however it ends, and the tables
+      // pass is given that promise (Task 17 D14).
+      const scalars = inSlot("scalars", () => runScalars(deps, job, enqueuedAt, tablesAbort));
+      const tables = inSlot("tables", () =>
+        runTables(deps, job, enqueuedAt, tablesAbort.signal, scalars),
+      );
+      await Promise.all([scalars, tables]);
     },
   };
 }
@@ -79,7 +84,7 @@ async function runScalars(
   job: ExtractionJob,
   enqueuedAt: number,
   tablesAbort: AbortController,
-): Promise<void> {
+): Promise<string | null> {
   const { payslipId } = job;
   const pass = "scalars";
   try {
@@ -89,17 +94,19 @@ async function runScalars(
       tablesAbort.abort();
       const recorded = await job.repository.failExtraction(payslipId, extracted.failure.reason);
       logFailure(payslipId, pass, recorded ? "failed" : "discarded", extracted);
-      return;
+      return null;
     }
     const recorded = await record(job, pass, extracted);
     // Discarded means the payslip was deleted or reaped: its tables would be discarded too.
     if (!recorded) tablesAbort.abort();
     logSuccess(payslipId, pass, recorded ? "review" : "discarded", extracted);
+    return extracted.result.fields.brutoPlaca ?? null;
   } catch (error) {
     // Recording failed. The row stays `processing` until the stale reaper fails it (Task 04 D3),
     // so its tables would be discarded: do not pay for them.
     tablesAbort.abort();
     logger.error({ err: error, payslipId, pass }, "extraction result could not be recorded");
+    return null;
   }
 }
 
@@ -108,6 +115,7 @@ async function runTables(
   job: ExtractionJob,
   enqueuedAt: number,
   cancelled: AbortSignal,
+  brutoPlaca: Promise<string | null>,
 ): Promise<void> {
   const { payslipId } = job;
   const pass = "tables";
@@ -121,7 +129,7 @@ async function runTables(
       return;
     }
     const signal = AbortSignal.any([AbortSignal.timeout(deps.timeoutMs), cancelled]);
-    const extracted = await extract(deps, job, pass, enqueuedAt, signal);
+    const extracted = await extract(deps, job, pass, enqueuedAt, signal, brutoPlaca);
     if ("failure" in extracted) {
       // Only the tables are lost; the payslip stays usable (Task 05 D9). The reason is logged.
       const recorded = await job.repository.failTablesExtraction(payslipId);
@@ -154,6 +162,7 @@ async function extract(
   pass: ExtractionPass,
   enqueuedAt: number,
   signal: AbortSignal,
+  brutoPlaca?: Promise<string | null>,
 ): Promise<Succeeded | Failed> {
   const { payslipId } = job;
   // Enqueue to provider call: the wait a user sits through before the analysis starts.
@@ -168,6 +177,7 @@ async function extract(
       contentType: job.contentType,
       signal,
       pass,
+      ...(brutoPlaca === undefined ? {} : { brutoPlaca }),
     });
     return { result, queuedMs };
   } catch (error) {

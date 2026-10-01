@@ -456,6 +456,59 @@ describe("ContentUnderstandingProvider", () => {
       });
     });
 
+    describe("a pay-component row that repeats bruto plaća (Task 17 D14)", () => {
+      const withTotal = {
+        payComponents: {
+          type: "array",
+          valueArray: [
+            {
+              valueObject: {
+                naziv: { valueString: "UKUPNO BRUTO" },
+                iznos: { valueString: "1.200,00" },
+              },
+            },
+            ...rows.payComponents.valueArray,
+          ],
+        },
+      };
+
+      it("is left out once the scalars pass's bruto plaća says so, and recorded", async () => {
+        stubFetch([accepted, succeeded("# page", withTotal)]);
+
+        const result = await provider().extract({
+          ...input(),
+          brutoPlaca: Promise.resolve("1200.00"),
+        });
+
+        expect(result.fields.payComponents?.map((row) => row.naziv)).toEqual(["REDOVAN RAD"]);
+        expect(Object.keys(result.metadata.fields)).toEqual([
+          "payComponents.0.naziv",
+          "payComponents.0.iznos",
+        ]);
+        expect(result.metadata.totalRow).toBe(0);
+        // The retained body is verbatim: the row is still in it.
+        expect(result.raw).toMatchObject({
+          result: { contents: [{ fields: { payComponents: { valueArray: [{}, {}] } } }] },
+        });
+      });
+
+      it.each([
+        ["bruto plaća was not read", Promise.resolve(null)],
+        ["the runner gives none", undefined],
+        ["bruto plaća is another amount", Promise.resolve("1500.00")],
+      ])("stays when %s, with no mark", async (_case, brutoPlaca) => {
+        stubFetch([accepted, succeeded("# page", withTotal)]);
+
+        const result = await provider().extract({
+          ...input(),
+          ...(brutoPlaca === undefined ? {} : { brutoPlaca }),
+        });
+
+        expect(result.fields.payComponents).toHaveLength(2);
+        expect(result.metadata).not.toHaveProperty("totalRow");
+      });
+    });
+
     it("treats a page with text and three empty tables as a result, not a failure", async () => {
       stubFetch([accepted, succeeded("# page")]);
 

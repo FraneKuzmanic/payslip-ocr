@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { inPrintedOrder, parseSegment, storedRowOrder } from "./row-order.js";
+import { inPrintedOrder, parseSegment, storedRowOrder, storedTotalRow } from "./row-order.js";
 
 /** A cell printed on `page` with its top edge at `y`, 0.2 tall. */
 const at = (page: number, y: number) => ({
@@ -80,6 +80,19 @@ describe("inPrintedOrder (Task 17 D13)", () => {
     const rows = [row("a", { naziv: at(1, 1) }), row("b", { naziv: at(1, 2) })];
     expect(inPrintedOrder(rows)).toEqual(rows);
   });
+});
+
+describe("storedTotalRow (Task 17 D14)", () => {
+  it("is the row the tables pass recorded as left out", () => {
+    expect(storedTotalRow({ tables: { rowOrder: "printed", totalRow: 0 } })).toBe(0);
+  });
+
+  it.each([null, {}, { tables: {} }, { tables: { totalRow: "0" } }, { scalars: { totalRow: 0 } }])(
+    "is null for %j: no row was left out",
+    (metadata) => {
+      expect(storedTotalRow(metadata)).toBeNull();
+    },
+  );
 });
 
 describe("storedRowOrder", () => {

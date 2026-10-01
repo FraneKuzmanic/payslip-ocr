@@ -9,7 +9,7 @@ import {
   type ProviderExtractionResult,
 } from "../types.js";
 import { SCALAR_PARTS, analyzerIdFor } from "./analyzer.js";
-import { mapRetainedPass } from "./fields.js";
+import { findTotalRow, mapRetainedPass } from "./fields.js";
 
 export interface ContentUnderstandingOptions {
   readonly endpoint: string;
@@ -92,6 +92,7 @@ export class ContentUnderstandingProvider implements DocumentExtractionProvider 
     contentType,
     signal,
     pass,
+    brutoPlaca,
   }: ExtractionInput): Promise<ProviderExtractionResult> {
     const family = this.#options.analyzerFamilyId;
     const started = Date.now();
@@ -123,7 +124,10 @@ export class ContentUnderstandingProvider implements DocumentExtractionProvider 
     const submitted = Math.max(...runs.map((run) => run.submitted));
     const finished = Math.max(...runs.map((run) => run.finished));
 
-    const mapped = mapRetainedPass(raw, pass);
+    // A pay-component row that repeats bruto plaća is left out before any path is numbered
+    // (Task 17 D14). Waiting for the scalars pass here is outside the pass's own timings.
+    const totalRow = pass === "tables" ? findTotalRow(raw, (await brutoPlaca) ?? null) : null;
+    const mapped = mapRetainedPass(raw, pass, "printed", totalRow);
     if (mapped === null) {
       // Contract drift, not the document's fault.
       logger.error("content understanding result did not match the mapped shape");
@@ -155,8 +159,9 @@ export class ContentUnderstandingProvider implements DocumentExtractionProvider 
         ungroundableFields: mapped.ungroundableFields,
         // The most any one analysis needed, so "above 1" keeps its meaning.
         submitAttempts: Math.max(...runs.map((run) => run.attempts)),
-        // What the read-time projections go by (Task 17 D13).
+        // What the read-time projections go by (Task 17 D13, D14).
         ...(pass === "tables" ? { rowOrder: "printed" as const } : {}),
+        ...(totalRow === null ? {} : { totalRow }),
       },
       raw,
     };

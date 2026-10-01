@@ -6,7 +6,13 @@ import {
 } from "@payslip/shared";
 import { TABLE_COLUMNS, scalarPartBodies } from "./fields.js";
 import { groundingKey, surfaceForms } from "./grounding.js";
-import { inPrintedOrder, parseSegment, storedRowOrder, type Segment } from "./row-order.js";
+import {
+  parseSegment,
+  storedRowOrder,
+  storedRows,
+  storedTotalRow,
+  type Segment,
+} from "./row-order.js";
 
 /**
  * Source regions: a read-time projection over the retained pass bodies (PRD §6.2, §7.5), so no
@@ -78,8 +84,9 @@ type Body = {
 const EMPTY: SourceRegionsResponse = { pages: [], regions: [] };
 
 /**
- * `extractionMetadata` says which order the payslip's table rows were stored in (Task 17 D13), so
- * a cell's path names the same row here as in the stored fields.
+ * `extractionMetadata` says which order the payslip's table rows were stored in (Task 17 D13) and
+ * which pay-component row was left out (D14), so a cell's path names the same row here as in the
+ * stored fields.
  */
 export function projectSourceRegions(
   raw: unknown,
@@ -104,9 +111,12 @@ export function projectSourceRegions(
   }
   if (tables !== null) {
     for (const [table, columns] of Object.entries(TABLE_COLUMNS)) {
-      const returned = tables.fields[table]?.valueArray ?? [];
-      const cells =
-        storedRowOrder(extractionMetadata) === "printed" ? inPrintedOrder(returned) : returned;
+      const cells = storedRows(
+        table,
+        tables.fields[table]?.valueArray ?? [],
+        storedRowOrder(extractionMetadata),
+        storedTotalRow(extractionMetadata),
+      );
       cells.forEach((row, index) => {
         for (const column of columns) {
           addValue(regions, `${table}.${index}.${column}`, row.valueObject?.[column], tables);
