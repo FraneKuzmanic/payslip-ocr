@@ -6,11 +6,16 @@
  * explicitly and reported; anything else that cannot be scored is a loud failure, because a
  * harness that silently drops what it cannot measure reports the health of the corpus it kept.
  */
+import { parsePeriod } from "@payslip/shared";
 import { loadExpected, readCache, SCALAR_FIELDS, CRITICAL_FIELDS } from "./common.ts";
 
 const engine = process.argv[2] ?? "llm";
 const isCu = engine.startsWith("cu");
 const verbose = process.argv.includes("--verbose");
+const only = process.argv
+  .find((a) => a.startsWith("--only="))
+  ?.slice(7)
+  .split(",");
 
 const norm = (v: unknown): string | null => {
   if (v === null || v === undefined) return null;
@@ -98,8 +103,9 @@ function matches(expected: unknown, actual: unknown, field?: string): boolean {
   if (e === null || a === null) return false;
 
   if (field === "period") {
-    const ep = asPeriod(e);
-    const ap = asPeriod(a);
+    // The mapper's parser also reads a period printed after its label (Task 16), as the app does.
+    const ep = asPeriod(e) ?? parsePeriod(e);
+    const ap = asPeriod(a) ?? parsePeriod(a);
     if (ep && ap) return ep === ap;
   }
   if (field === "paymentDate") {
@@ -149,15 +155,22 @@ function extractedFields(sample: string): Record<string, unknown> | null {
   return out;
 }
 
-const samples = loadExpected();
+const samples = loadExpected().filter((e) => !only || only.includes(e.sample));
 let sTotal = 0;
 let sHit = 0;
 let cTotal = 0;
 let cHit = 0;
 let skipped = 0;
 let unscored = 0;
+let notAsked = 0;
 const perField = new Map<string, { hit: number; total: number }>();
 const rowStats = { exact: 0, docs: 0, cellHit: 0, cellTotal: 0 };
+// Reported beside payComponents, never added to it, so the bake-off's 180 cells stay comparable.
+const OTHER_TABLES = {
+  obustave: ["naziv", "vjerovnik", "iznos", "ostatakSalda", "brojRata"],
+  neoporeziviPrimici: ["naziv", "iznos"],
+};
+const otherStats = { exact: 0, tables: 0, cellHit: 0, cellTotal: 0 };
 
 console.log(`\nScoring engine '${engine}' against the golden set\n`);
 console.log("  sample  scalars        critical   payComponents");
@@ -183,6 +196,12 @@ for (const e of samples) {
   for (const f of SCALAR_FIELDS) {
     if (skip.has(f)) {
       skipped++;
+      continue;
+    }
+    // `currency` left the field schema in Task 17, so a set recorded since was never asked for
+    // it. Strict output always carries every key it was asked for.
+    if (f === "currency" && !("currency" in got)) {
+      notAsked++;
       continue;
     }
     n++;
@@ -219,6 +238,19 @@ for (const e of samples) {
     rowNote = `${act.length}/${exp.length} rows`;
   }
 
+  for (const [table, cells] of Object.entries(OTHER_TABLES)) {
+    if (skip.has(table)) continue;
+    const exp = (e[table] as Record<string, unknown>[] | undefined) ?? [];
+    const act = (got[table] as Record<string, unknown>[] | null) ?? [];
+    otherStats.tables++;
+    if (exp.length === act.length) otherStats.exact++;
+    for (let i = 0; i < exp.length; i++)
+      for (const c of cells) {
+        otherStats.cellTotal++;
+        if (matches(exp[i]?.[c], act[i]?.[c])) otherStats.cellHit++;
+      }
+  }
+
   console.log(
     `  ${e.sample.padEnd(6)}  ${String(hit).padStart(2)}/${String(n).padEnd(2)} (${String(Math.round((hit / n) * 100)).padStart(3)}%)   ` +
       `${ch}/${cn}        ${rowNote}` +
@@ -234,7 +266,12 @@ console.log(
   `  LINE ITEMS      row-count exact on ${rowStats.exact}/${rowStats.docs} docs; ` +
     `cells ${rowStats.cellHit}/${rowStats.cellTotal} ${pct(rowStats.cellHit, rowStats.cellTotal)}%   (target >= 85%)`,
 );
+console.log(
+  `  OTHER TABLES    row-count exact on ${otherStats.exact}/${otherStats.tables} tables; ` +
+    `cells ${otherStats.cellHit}/${otherStats.cellTotal} ${pct(otherStats.cellHit, otherStats.cellTotal)}%   (obustave, neoporeziviPrimici)`,
+);
 console.log(`  skipped (declared unscorable): ${skipped}`);
+if (notAsked) console.log(`  not scored (currency, not in this set's schema): ${notAsked}`);
 if (unscored) console.log(`  !! ${unscored} sample(s) produced NO output and were not scored`);
 
 const worst = [...perField.entries()]

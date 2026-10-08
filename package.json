@@ -36,6 +36,8 @@
     "layout": "tsx scripts/bakeoff/run-layout.ts",
     "cu": "tsx scripts/bakeoff/run-cu.ts",
     "llm": "tsx scripts/bakeoff/run-llm.ts",
+    "input-modes": "tsx scripts/bakeoff/run-input-modes.ts",
+    "boxes": "tsx scripts/bakeoff/run-boxes.ts",
     "score": "tsx scripts/bakeoff/score.ts",
     "check:golden": "python scripts/check-golden-set.py",
     "check:secrets": "node scripts/check-client-secrets.mjs",
