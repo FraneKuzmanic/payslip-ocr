@@ -1,0 +1,33 @@
+# Wakes the two free Render APIs shortly before the cron-job.org health pings start at 08:00
+# Zagreb time. A free instance sleeps after 15 minutes idle, and its cold start (about 22 s, with
+# Render's own page in place of the JSON) fails a ping that has a 30 s timeout and a size limit.
+# curl waits and retries until the API itself answers.
+#
+# GitHub schedules in UTC and has no daylight saving, so there is one line per season: 05:50 UTC is
+# 07:50 in summer and 06:50 UTC is 07:50 in winter. The other line of each season is a spare ping.
+# Scheduled runs can start several minutes late.
+name: Wake APIs
+
+on:
+  schedule:
+    - cron: "50 5 * * *"
+    - cron: "50 6 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  wake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        url:
+          - https://payslip-ocr-api.onrender.com/api/health
+          - https://receipt-ocr-api-lzx4.onrender.com/api/health
+    steps:
+      - run: >
+          curl --fail --silent --show-error --output /dev/null
+          --max-time 90 --retry 5 --retry-delay 10 --retry-all-errors
+          ${{ matrix.url }}
